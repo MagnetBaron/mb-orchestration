@@ -1,43 +1,48 @@
 # Install
 
-## Per project
+## 1. Copy policy into projects
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/AGENTS.md -o AGENTS.md
 curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/CLAUDE.md -o CLAUDE.md
 ```
 
-Codex reads `AGENTS.md`. Claude Code reads `CLAUDE.md` which imports `AGENTS.md`.
+Codex → `AGENTS.md`. Claude Code → `CLAUDE.md` (imports AGENTS).
 
-## Global (home)
+Optional global:
 
 ```bash
-# Codex
-mkdir -p ~/.codex
+mkdir -p ~/.codex ~/.claude
 cp AGENTS.md ~/.codex/AGENTS.md
-
-# Claude
-mkdir -p ~/.claude
 cp CLAUDE.md ~/.claude/CLAUDE.md
-# ensure AGENTS.md is reachable from Claude import path, or paste the table into CLAUDE.md
+# place AGENTS.md where Claude @import can resolve, or inline the table
 ```
 
-## teamclaude
+## 2. teamclaude
 
-1. Install and login each seat: `teamclaude login`
+1. `teamclaude login` per seat
 2. Merge `teamclaude.routes.example.json` into `~/.config/teamclaude.json`
 3. `teamclaude server` then `teamclaude run -- --model opus-4.8`
+4. After plan downgrade: delete the Fable route
 
-## Optional published harnesses (not required)
+## 3. Ordered adoption (from the source checklist, cut to your reality)
 
-If you want a heavier skill/plugin layer later:
+1. **Buckets classified** — Grok abundant; Claude+Sol scarce judgment; Codex Terra/Luna dispatch; Cursor $400 last
+2. **AGENTS.md live** in repos you touch from phone/Codex
+3. **Brief schema** enforced by dispatch (refuse incomplete briefs)
+4. **Worktrees** for any parallel Grok jobs
+5. **Risk gate + reviewer order** before frontier spend
+6. **teamclaude routes** for Claude seats
+7. **Usage ledger** (manual % in backlog header only)
+8. **Pre/post-reset** drain of Grok / surplus Claude mid-tier — judgment, not cron yet
+9. Later only: landing mutex, full-suite semaphore, CAO/tmux multi-CLI, fable-foreman if you want a skill runtime
 
-| Project | Role |
+## 4. Optional heavy harnesses
+
+| Project | When |
 |---------|------|
-| [olsenbrands/fable-foreman](https://github.com/olsenbrands/fable-foreman) | Fable/Opus lead + Grok/Codex workers + blind verify |
-| [luckeyfaraday/master-workflow](https://github.com/luckeyfaraday/master-workflow) | Worker → cross-model reviewer until score ≥ 9 |
-| [mar3co/fable-orchestrator](https://github.com/mar3co/fable-orchestrator) | Fable architect, Grok/Codex implement lanes |
-| [RichardAtCT/agent-routing-skills](https://github.com/RichardAtCT/agent-routing-skills) | Claude skills + routing matrix vs Codex/Grok |
-| [awslabs/cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator) | tmux multi-CLI supervisor |
+| [olsenbrands/fable-foreman](https://github.com/olsenbrands/fable-foreman) | Need Claude skill pack + blind verify |
+| [luckeyfaraday/master-workflow](https://github.com/luckeyfaraday/master-workflow) | Automated worker→reviewer score loop |
+| [awslabs/cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator) | Parallel CLI processes in tmux |
 
-This repo intentionally stays **prompt-thin**. Prefer AGENTS.md over loading full plugin trees into every context.
+Prefer this repo’s thin files until context pressure forces a plugin.
