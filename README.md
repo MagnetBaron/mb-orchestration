@@ -2,7 +2,7 @@
 
 **v1 + Review D.** Tight multi-CLI policy for Magnet Baron.
 
-**Codex dispatches. Grok implements. Frontier reviews git diffs. Website Visual QA reviews pixels via Slack. Cursor $400 is last.**
+**Codex dispatches. Grok implements. Frontier reviews git diffs. Website Visual QA reviews pixels via Slack. Cursor Other Models $400 is last.**
 
 ## Clone (desktop + CLI)
 
@@ -24,6 +24,9 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 | [CLAUDE.md](./CLAUDE.md) | Claude Code |
 | [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
 | [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
+| [sol-usage.md](./sol-usage.md) | Codex $200 Sol: 90% week, Sun 10 PM CT |
+| [cursor-usage.md](./cursor-usage.md) | Cursor Ultra pools vs $400 vs Heavy |
+| [luna-close-loop.md](./luna-close-loop.md) | Luna forwards done reports only |
 | [SETUP-BOTS.md](./SETUP-BOTS.md) | First machine: Codex hands this to Grok, Cursor, Claude |
 | [DOCTRINE.md](./DOCTRINE.md) | Designing the system only |
 | [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
