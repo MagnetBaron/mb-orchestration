@@ -11,7 +11,7 @@ Codex is the entry point. Codex does not implement. Hand this file to Grok Build
 
 ## Grok Build — implement install
 
-Read `install.md`, `AGENTS.md`, `visual-qa.md`, `visual-qa-slack.md`.
+Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md`.
 
 - Confirm clones: `mb-orchestration`, `teamclaude` (MagnetBaron org).
 - Confirm `AGENTS.md` / `CLAUDE.md` at orchestration root so Codex/Cursor/Claude see them.
@@ -27,36 +27,36 @@ Read `install.md`, `AGENTS.md`, `visual-qa.md`, `visual-qa-slack.md`.
 
 ## Claude Code — review only
 
-- Read `DOCTRINE.md` + `visual-qa.md` + `visual-qa-slack.md` against what Grok/Cursor did.
+- Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md` against what Grok/Cursor did.
 - Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change.
 - Pin opus-4.8. teamclaude if seats exist. No Fable as installer.
 
 ## Owner-only (not a coding bot)
 
-Once per account. Full Slack wake-up steps: [visual-qa-slack.md](./visual-qa-slack.md).
+Once per account.
 
-1. Open Grok Bot on a non-worker machine if possible; else one short session on the Mini.
-2. Create or rename Bot **Website Visual QA**. Paste `visual-qa.md`.
-3. Slack **plugin** + Slack **event** integration (two different connections).
-4. Invite the Slack app into `#visual-qa`. Create the channel if missing.
-5. Routine: new `#visual-qa` message containing `shopifypreview.com` → walk allowlist → reply in thread.
-6. Test run, then quit Grok Bot.app. Login item off.
+1. **Website Visual QA + Slack** — full steps in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
+2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
+3. **Luna close-loop** — paste standing add-on from [luna-close-loop.md](./luna-close-loop.md) if you want finish reports forwarded.
+4. **Usage ledger** — optional backlog header note for Sol % and Cursor $400 remaining.
 
 ## Packet for Codex to paste
 
-objective: Finish mb-orchestration + teamclaude desktop discovery and Review D wiring on THIS machine per SETUP-BOTS.md. Codex stays dispatcher.
+objective: Finish mb-orchestration + teamclaude desktop discovery and policy wiring on THIS machine per SETUP-BOTS.md. Codex stays dispatcher.
 
 must_read:
 - install.md
 - AGENTS.md
+- mcp-routing.md
 - visual-qa.md
 - visual-qa-slack.md
+- EDGE-CASES.md
 - SETUP-BOTS.md
 
 must_not_touch: Shopify Admin, theme publish, Grok Bot.app left running, four Claude desktop apps, Cursor $400, Luna implementing
 
-output_path: a short report in the session (clone paths, clients that see the folders, owner-only leftover)
+output_path: a short report in the session (clone paths, clients that see the folders, owner-only leftover including MCP connector check)
 
-done_when: both repos openable; AGENTS.md loaded; Visual QA Slack wake-up documented; Grok Bot.app not required on the Mini for daily dispatch
+done_when: both repos openable; AGENTS.md loaded; Visual QA Slack path documented; MCP routing docs present; Grok Bot.app not required on the Mini for daily dispatch
 
 effort: setup

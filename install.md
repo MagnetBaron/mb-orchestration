@@ -42,19 +42,25 @@ No four Claude desktop apps.
 
 ## 3. Review D (Website Visual QA)
 
-Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI.
+Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md).
 
-## 4. Ordered adoption
+## 4. Google MCP (for mcp-routing)
 
-1. Buckets classified — Grok abundant; Claude+Sol scarce; Codex Terra/Luna dispatch; Cursor $400 last
+Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex GPT** and **Claude/Opus** seats so bulk analytics and product research briefs can run. Grok is not assumed to have these connectors.
+
+## 5. Ordered adoption
+
+1. Buckets classified — Grok abundant; GPT Terra for Google MCP volume; Claude+Sol scarce; Codex Terra/Luna dispatch; Cursor $400 last
 2. AGENTS.md live
-3. Brief schema enforced
+3. Brief schema enforced (`effort` included)
 4. Worktrees for parallel Grok jobs
-5. Risk gate + reviewer order
+5. Risk gate + reviewer order (Fable if present → Sol → Opus)
 6. teamclaude routes
 7. Slack `#visual-qa` + Website Visual QA Bot (owner)
-8. Usage ledger (manual % in backlog header only)
+8. Google MCP on Codex/Claude (owner)
+9. Usage ledger (manual % in backlog header only)
+10. EDGE-CASES.md known to dispatcher for outages
 
-## 5. Optional heavy harnesses
+## 6. Optional heavy harnesses
 
 Prefer this repo’s thin files until context pressure forces a plugin.
