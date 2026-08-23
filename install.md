@@ -32,11 +32,15 @@ cp CLAUDE.md ~/.claude/CLAUDE.md
 
 Source: https://github.com/MagnetBaron/teamclaude
 
-1. `npm install -g @karpeleslab/teamclaude` or run from the local clone
-2. `teamclaude login` per seat
-3. Merge `teamclaude.routes.example.json` into `~/.config/teamclaude.json`
-4. `teamclaude server` then `teamclaude run -- --model opus-4.8`
-5. After plan downgrade: delete the Fable route
+Runtime is the npm package (self-updates). The org fork holds the clone URL plus `mb/` overlay.
+
+1. `npm install -g @karpeleslab/teamclaude`
+2. From the clone: `./mb/install-local.sh`
+3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat
+4. `teamclaude service install` and `teamclaude alias --install`
+5. `teamclaude run -- --model opus-4.8`
+
+Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit.
 
 No four Claude desktop apps.
 
@@ -55,7 +59,7 @@ Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex 
 3. Brief schema enforced (`effort` included)
 4. Worktrees for parallel Grok jobs
 5. Risk gate + reviewer order (Fable if present → Sol → Opus)
-6. teamclaude routes
+6. teamclaude (login + plan-sync agent; no exclusive Fable route)
 7. Slack `#visual-qa` + Website Visual QA Bot (owner)
 8. Google MCP on Codex/Claude (owner)
 9. Usage ledger (manual % in backlog header only)

@@ -1,15 +1,8 @@
 {
-  "routes": [
-    {
-      "name": "fable",
-      "match": ["*fable*"],
-      "accounts": ["max", "premium-1", "premium-2"]
-    },
-    {
-      "name": "opus",
-      "match": ["*opus*"],
-      "accounts": ["max", "premium-1", "premium-2", "standard-1"]
-    }
-  ],
-  "notes": "Rename account keys to match teamclaude login names. After downgrade delete the fable route."
+  "distributeSessions": true,
+  "quotaProbeSeconds": 300,
+  "holdSeconds": 120,
+  "blockedModels": [],
+  "routes": [],
+  "notes": "Do not exclusive-pin Fable/Opus to aliases like max or premium-1. Login stores emails, and those names go stale on plan change. MagnetBaron/teamclaude mb/sync-plan.mjs sets blockedModels [*fable*] when no seat reports a Fable bucket, and clears it if a seat gains Fable again. Per-model quota routing is automatic."
 }
