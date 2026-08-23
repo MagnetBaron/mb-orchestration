@@ -1,16 +1,14 @@
 # mb-orchestration
 
-**v1 frozen.** Tight multi-CLI policy for Magnet Baron.
+**v1 + Review D.** Tight multi-CLI policy for Magnet Baron.
 
-**Grok implements. Non-Grok frontier reviews. Codex dispatches. Cursor $400 is last.**
+**Codex dispatches. Grok implements. Frontier reviews git diffs. Website Visual QA reviews pixels via Slack. Cursor $400 is last.**
 
 ## Clone (desktop + CLI)
 
-GitHub Desktop, Cursor, Claude Code, and Codex pick these up from the Magnet Baron org:
-
 | Repo | URL | Opens as |
 |------|-----|----------|
-| **This policy** | https://github.com/MagnetBaron/mb-orchestration | Workspace — loads `AGENTS.md` + `CLAUDE.md` |
+| **This policy** | https://github.com/MagnetBaron/mb-orchestration | Workspace — `AGENTS.md` + `CLAUDE.md` |
 | **teamclaude fork** | https://github.com/MagnetBaron/teamclaude | Multi-seat Claude proxy source |
 
 ```bash
@@ -18,29 +16,23 @@ git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
 ```
 
-Suggested rename in GitHub Settings: `grok-lanes` (old URL keeps redirecting).
-
 ## Files
 
 | File | Load when |
 |------|-----------|
 | [AGENTS.md](./AGENTS.md) | **Every** Codex / Cursor / shared agent session |
-| [CLAUDE.md](./CLAUDE.md) | Claude Code (`@AGENTS.md` + pins) |
-| [DOCTRINE.md](./DOCTRINE.md) | Designing the system only — not every turn |
+| [CLAUDE.md](./CLAUDE.md) | Claude Code |
+| [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
+| [SETUP-BOTS.md](./SETUP-BOTS.md) | First machine: Codex hands this to Grok, Cursor, Claude |
+| [DOCTRINE.md](./DOCTRINE.md) | Designing the system only |
 | [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
 | [install.md](./install.md) | First wire-up |
-| [FUTURE.md](./FUTURE.md) | Humans only — multi-Mini / active-host (not built) |
-
-## v1 scope (done)
-
-- Seat table and legwork-or-stop
-- Brief schema, refill, worktrees, risk-gated review
-- Fable → Sol → Opus 4.8; Cursor Other Models last
-- teamclaude route example + org fork
-- Trimmed doctrine from the multi-bucket architecture note
-
-**Not in v1:** host detection, RAM/CPU allocation across Minis, exclusive-QA lock, landing mutex daemons, usage-meter APIs. See [FUTURE.md](./FUTURE.md).
+| [FUTURE.md](./FUTURE.md) | Humans only — multi-Mini |
 
 ## Setup
 
-See [install.md](./install.md). One worker machine is enough.
+1. Clone as above.
+2. Codex opens this repo and pastes the packet in `SETUP-BOTS.md` to Grok Build, Cursor, and Claude Code.
+3. Owner creates Grok Bot **Website Visual QA** + Slack `#visual-qa` once (`visual-qa.md`). Quit the app on the worker Mini.
+
+Daily: Codex is still the only entry point.
