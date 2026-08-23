@@ -1,8 +1,10 @@
 # mb-orchestration
 
-Tight multi-CLI coding policy for Magnet Baron.
+**v1 frozen.** Tight multi-CLI policy for Magnet Baron.
 
 **Grok implements. Non-Grok frontier reviews. Codex dispatches. Cursor $400 is last.**
+
+Suggested rename in GitHub Settings: `grok-lanes` (old URL keeps redirecting).
 
 ## Files
 
@@ -13,28 +15,18 @@ Tight multi-CLI coding policy for Magnet Baron.
 | [DOCTRINE.md](./DOCTRINE.md) | Designing the system only — not every turn |
 | [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
 | [install.md](./install.md) | First wire-up |
+| [FUTURE.md](./FUTURE.md) | Humans only — multi-Mini / active-host (not built) |
 
-## What we took from the long architecture doc
+## v1 scope (done)
 
-Kept as standing law:
+- Seat table and legwork-or-stop
+- Brief schema, refill, worktrees, risk-gated review
+- Fable → Sol → Opus 4.8; Cursor Other Models last
+- teamclaude route example
+- Trimmed doctrine from the multi-bucket architecture note
 
-- Unspent quota at reset = waste; abundant bucket does volume
-- Roles over models; lead/dispatch does not do legwork
-- Legwork-or-stop (never burn scarce buckets on false outages)
-- Brief schema; refill on completion; worktree isolation
-- Risk-gated cross-family review; diff not transcript; two-loop max
-
-Deferred (source system had these; you adopt later):
-
-- Full overnight land-to-prod without phone approval
-- EA board-compaction daemons / idle watchdogs
-- Machine load/memory gates and landing mutex (add when parallel volume needs them)
-- Automated usage % (providers still mostly manual)
-
-## Published peers
-
-Same ideas, heavier context: [fable-foreman](https://github.com/olsenbrands/fable-foreman), [master-workflow](https://github.com/luckeyfaraday/master-workflow), [fable-orchestrator](https://github.com/mar3co/fable-orchestrator), [cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator).
+**Not in v1:** host detection, RAM/CPU allocation across Minis, exclusive-QA lock, landing mutex daemons, usage-meter APIs. See [FUTURE.md](./FUTURE.md).
 
 ## Setup
 
-See [install.md](./install.md).
+See [install.md](./install.md). One worker machine is enough.
