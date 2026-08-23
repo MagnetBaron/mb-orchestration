@@ -2,40 +2,39 @@
 
 Tight multi-CLI coding policy for Magnet Baron.
 
-**Grok implements. A non-Grok frontier reviews. Codex dispatches. Cursor $400 is last.**
-
-## Why this exists
-
-Public orchestration prompts and plugins (Fable-as-commander, 28-agent catalogs, full skill trees) work, but they **blow context**. This repo keeps one canonical `AGENTS.md` (~120 lines) shared by Codex/Cursor-family tools, plus a one-screen `CLAUDE.md` import for Claude Code.
-
-## Roles
-
-1. **Codex ($200)** — phone task manager only (Terra/Luna)
-2. **Grok Super Heavy / Build / Bot** — primary implementer
-3. **Fable 5** (while Max/Premium include it) — frontier reviewer / architect
-4. **GPT-5.6 Sol** — frontier reviewer when Fable is empty or post-downgrade
-5. **Opus 4.8** — Claude reliability reviewer (not Opus 5)
-6. **Cursor Ultra** — IDE on Cursor Models; Other Models $400 last resort
+**Grok implements. Non-Grok frontier reviews. Codex dispatches. Cursor $400 is last.**
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| [AGENTS.md](./AGENTS.md) | Canonical routing (all agents) |
-| [CLAUDE.md](./CLAUDE.md) | `@AGENTS.md` + Claude pins |
-| [teamclaude.routes.example.json](./teamclaude.routes.example.json) | Fable/Opus seat routes |
-| [install.md](./install.md) | Copy paths + optional heavier harnesses |
+| File | Load when |
+|------|-----------|
+| [AGENTS.md](./AGENTS.md) | **Every** Codex / Cursor / shared agent session |
+| [CLAUDE.md](./CLAUDE.md) | Claude Code (`@AGENTS.md` + pins) |
+| [DOCTRINE.md](./DOCTRINE.md) | Designing the system only — not every turn |
+| [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
+| [install.md](./install.md) | First wire-up |
 
-## Research basis (short)
+## What we took from the long architecture doc
 
-- Fable leads long-horizon patch quality; Sol leads terminal/agent loops; Grok leads $/task speed — so **implement with Grok, review with Fable/Sol**.
-- Published patterns agree on **architect ≠ implementer** and **blind review on git diff** ([fable-foreman](https://github.com/olsenbrands/fable-foreman), [master-workflow](https://github.com/luckeyfaraday/master-workflow), [fable-orchestrator](https://github.com/mar3co/fable-orchestrator)).
-- `AGENTS.md` is the cross-tool standard; Claude uses `CLAUDE.md` with `@AGENTS.md` import.
+Kept as standing law:
+
+- Unspent quota at reset = waste; abundant bucket does volume
+- Roles over models; lead/dispatch does not do legwork
+- Legwork-or-stop (never burn scarce buckets on false outages)
+- Brief schema; refill on completion; worktree isolation
+- Risk-gated cross-family review; diff not transcript; two-loop max
+
+Deferred (source system had these; you adopt later):
+
+- Full overnight land-to-prod without phone approval
+- EA board-compaction daemons / idle watchdogs
+- Machine load/memory gates and landing mutex (add when parallel volume needs them)
+- Automated usage % (providers still mostly manual)
+
+## Published peers
+
+Same ideas, heavier context: [fable-foreman](https://github.com/olsenbrands/fable-foreman), [master-workflow](https://github.com/luckeyfaraday/master-workflow), [fable-orchestrator](https://github.com/mar3co/fable-orchestrator), [cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator).
 
 ## Setup
 
 See [install.md](./install.md).
-
-## Note on the missing external prompt
-
-The chat that created this asked to trim an external orchestration prompt, but the prompt body was not attached. This policy is the refined version of that intent plus the current quota map. Open an issue with any longer prompt to compress it further into `AGENTS.md`.
