@@ -1,0 +1,15 @@
+{
+  "routes": [
+    {
+      "name": "fable",
+      "match": ["*fable*"],
+      "accounts": ["max", "premium-1", "premium-2"]
+    },
+    {
+      "name": "opus",
+      "match": ["*opus*"],
+      "accounts": ["max", "premium-1", "premium-2", "standard-1"]
+    }
+  ],
+  "notes": "Rename account keys to match teamclaude login names. After downgrade delete the fable route."
+}
