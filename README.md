@@ -1,8 +1,8 @@
 # mb-orchestration
 
-**v1 + Review D.** Tight multi-CLI policy for Magnet Baron.
+**v1 + Review D + MCP routing.** Tight multi-CLI policy for Magnet Baron.
 
-**Codex dispatches. Grok implements. Frontier reviews git diffs. Website Visual QA reviews pixels via Slack. Cursor Other Models $400 is last.**
+**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Cursor Other Models $400 is last.**
 
 ## Clone (desktop + CLI)
 
@@ -22,6 +22,7 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 |------|-----------|
 | [AGENTS.md](./AGENTS.md) | **Every** Codex / Cursor / shared agent session |
 | [CLAUDE.md](./CLAUDE.md) | Claude Code |
+| [mcp-routing.md](./mcp-routing.md) | Google MCP, product research, bulk analytics seats |
 | [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
 | [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
 | [sol-usage.md](./sol-usage.md) | Codex $200 Sol: 90% week, Sun 10 PM CT |
