@@ -2,6 +2,8 @@
 
 Grok Bot named **Website Visual QA**. Cloud computer only. Dispatch via Slack, not the Mini app, not `grok` CLI.
 
+**How the ticket reaches the Bot:** [visual-qa-slack.md](./visual-qa-slack.md).
+
 ## Allowlist (edit this block only to add a site)
 
 ### 1) Magnet Baron
