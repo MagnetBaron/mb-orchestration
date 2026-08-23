@@ -2,7 +2,7 @@
 
 Distilled from a production multi-provider architecture. Keep this out of every agent context; load only when designing or debugging the system. Day-to-day agents use `AGENTS.md` only.
 
-Specialty maps (load by domain): `mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `visual-qa.md`, `EDGE-CASES.md`.
+Specialty maps (load by domain): `mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`, `usage-metering.md`, `visual-qa.md`, `EDGE-CASES.md`.
 
 ## Economics
 
