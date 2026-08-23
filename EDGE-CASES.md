@@ -2,7 +2,7 @@
 
 Load when something breaks or the brief does not fit a clean seat. Day-to-day agents stay on `AGENTS.md`. This file is the durable fallback so the system survives outages, ambiguity, and partial work.
 
-**Authority order (highest first):** Owner spoken/written override → explicit brief fields → `AGENTS.md` → specialty file for that domain (`mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `visual-qa.md`) → `DOCTRINE.md` → this file.
+**Authority order (highest first):** Owner spoken/written override → explicit brief fields → `AGENTS.md` → specialty file for that domain (`mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`, `usage-metering.md`, `visual-qa.md`) → `DOCTRINE.md` → this file.
 
 When two specialty files conflict, the one named in the brief `must_read` wins for that job.
 
@@ -19,14 +19,18 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 |---------|----|
 | Grok Build / Heavy outage | Probe once. If still down: park volume. Do **not** move legwork to Sol, Opus, or Cursor $400. |
 | GPT Terra MCP auth expired / connector missing | Park MCP brief. Report `blocked: Google MCP unavailable on Terra`. Do not invent GSC/keyword numbers. Do not burn Sol/Opus on fetches. |
-| Codex Sol ≥ 90% weekly | Code review → Opus 4.8 if risk gate still requires frontier. Else park review. Volume still Grok. |
-| Fable missing (downgrade) | Review order starts at **Codex Sol**. Then Opus 4.8. |
-| Opus / teamclaude exhausted | Sol if under 90% and not already used on this change-set. Else park review. |
+| Codex Sol over soft cap (`usage-status`, not a hardcoded 90) | Code review → Opus 4.8, then Review E (if wired), else park to earliest reset. Volume still Grok. |
+| Fable missing (downgrade) | Review order starts at **Codex Sol**. Then Opus 4.8. Then **Review E (if wired)**, else park after 4.8. |
+| Opus / teamclaude exhausted | Sol if under 90% and not already used on this change-set. Else park review — or, **if Review E is wired**, engage it only when the brief is time-critical and `usage-status` shows all native seats spent (`fireworks-usage.md`); its `ship` on a risk class is advisory, owner lands. Unwired → park after 4.8. |
+| All native review seats quota-spent (`usage-status`, not probes) | Time-critical brief → one advisory Review E pass **if wired**; else park to the earliest reset (`usage-status --earliest-reset`) — a rested native seat beats the fallback. |
+| Cross-family item, one native family quota-spent | The remaining native family gives one pass; **Review E (if wired)** gives the independent second family. Review E unwired → one pass, then park the gate. |
+| All three reviewers erroring at once | Near-certain **local** fault (Mini network, keychain, token). Diagnose the box. Never engage Review E on outage signals — it would mask the fault or fail identically. |
+| Codex dispatcher (Terra/Luna) down | Owner at the Mini console may hand a **complete** brief straight to Grok Build for non-gate work; gate work parks. Phone still never implements; do not promote Implement/Review to Dispatch. |
 | Slack / Visual QA routine dead | Ticket stays in `#visual-qa`. Fallback: owner or iPhone Grok Bot runs the thread. Do not open Bot.app on the Mini. Do not block Grok implement on Visual QA being offline — park only the Review D step. |
 | Cursor Models drained | IDE: stop or Tab-only. Orchestration implement stays Grok Build (Heavy), not Cursor Other Models. |
 | Cursor $400 Other Models gone | Last $ closed unless owner enables on-demand. Fall back to Cursor Grok / Grok Build / teamclaude. |
 
-**Probe rule:** one live check, then fail closed. Do not retry in a loop on scarce seats.
+**Probe rule:** one live check, then fail closed. Do not retry in a loop on scarce seats. Probe failure = outage → park; it says nothing about quota. **Exhaustion** = weekly ledger %, plan UI, or a hard 429/limit on a real call — never a probe. Review E opens on exhaustion only, never on a probe result.
 
 ## Partial completion
 
@@ -34,6 +38,21 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 - MCP fetch wrote partial CSV → next MCP seat **appends or replaces at the same `output_path`**; document row counts and date range in the return summary.
 - Review returned `fix-list` → implementer does at most **two** fix loops on that change-set. Third novel defect only if genuinely new; otherwise park.
 - Review seats disagree (`ship` vs `blocked`) → **blocked wins**. Owner unblocks.
+- Fix loops return to the **issuing** review seat; if that seat is spent mid-loop, **park the loop** (novel-defect exception unchanged) — do not restart review cold on a fresh seat and relitigate settled points.
+
+## Dispatch supervision (checkpoints, not a watcher)
+
+Correction happens where Dispatch already looks — at assignment and on every completion — never as a standing agent, cron, or extra Mini process (a `DOCTRINE.md` non-goal). Owner stays the top corrector.
+
+| Signal | Caught at | Do |
+|--------|-----------|----|
+| Lane past its `effort` budget, no completion or park note | completion sweep | Mark `stalled: <branch>`. Resume from git status (partial-completion rule) or park with a reason. No second worktree. |
+| Return outside named file scope, or touched `must_not_touch` | review gate (git diff) + completion check | Reject the change-set; re-scope the brief; do not land. |
+| Past the two-fix-loop cap, no novel defect | review verdict | Park + escalate to owner. |
+| Several seats look down at once | before any reroute | Run `usage-status`. A whole-pipe drop (teamclaude = Fable+Opus; Codex = Sol+dispatch) is **one** outage — diagnose the box, do not cascade to Review E or Cursor. |
+| Gate-risk item, all review seats spent | `usage-status` at routing | Escalate to owner; do not silently park a risk item forever. |
+
+Not a meta-agent, no polling for makework. The gates in this file plus the refill law are the mechanism.
 
 ## Duplicate and collision
 
@@ -53,8 +72,8 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 
 ## Resets mid-job
 
-- Sol weekly reset (Sun 10 PM CT): in-flight Sol review may finish; **new** Sol reviews follow the post-reset 0% ledger.
-- Cursor billing month roll: Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
+- Sol weekly reset (instant per `usage-status`): in-flight Sol review may finish; **new** Sol reviews follow the post-reset 0% ledger.
+- Cursor billing month roll (date in `usage-windows.json`): Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
 - Claude 5h window: teamclaude rotates seats; do not stack all reviews on one account.
 
 ## Owner unreachable
@@ -78,6 +97,7 @@ Must park until owner:
 - Never create Shopify staff/collaborator accounts from an agent.
 - Publish, live theme switch, and SimGym stay owner/human.
 - Visual QA never holds Admin cookies.
+- Never send a diff carrying secrets, API keys, tokens, or customer PII to a third-party inference host (Review E / Fireworks). The wrapper (when wired) scans the diff first; any hit → park for a native seat.
 
 ## Effort values (brief field)
 
@@ -97,4 +117,4 @@ Parked work is a brief that stays in the queue with status `parked: <reason>`. P
 
 ## When docs go stale
 
-Model names and plan tiers change. Update `AGENTS.md` seat table and the specialty file for that meter. Do not leave agents on deleted model IDs. Pin what the owner currently pays for (today: Opus 4.8, GPT-5.6 Sol/Terra/Luna, Grok 4.6 / Build, Cursor Ultra Other Models $400).
+Model names and plan tiers change. Update `AGENTS.md` seat table and the specialty file for that meter. Do not leave agents on deleted model IDs. Pin what the owner currently pays for (today: Opus 4.8, GPT-5.6 Sol/Terra/Luna, Grok 4.6 / Build, Cursor Ultra Other Models $400). Once Review E is wired, pin its model ID in `fireworks-usage.md`. Reset windows live in `usage-windows.json`.

@@ -1,0 +1,60 @@
+{
+  "_note": "Single source of truth for usage windows, soft caps, and reset anchors. NO reset time is hardcoded in policy prose — agents and dispatch run `usage-status` (which computes the next reset from this file) and never eyeball a dashboard to judge limits. When a plan or window changes, edit ONLY this file. Each window's time is local to its own tz. Null anchors mean 'owner has not set this yet' and usage-status will say so instead of guessing.",
+  "updated": "2026-08-23",
+  "consumed_by": "usage-status.py",
+  "limit_determination_order": [
+    "1. hard machine signal: a real 429 / usage-limit error recorded by a wrapper into usage-ledger.json (authoritative: seat spent until reset)",
+    "2. computed window: usage-status rolls the anchor below forward to the next reset instant",
+    "3. owner/manual %: a number the owner notes in usage-ledger.json from the provider UI (fallback only)",
+    "LLM estimation of remaining quota is not a source — never guess from token counts."
+  ],
+  "seats": {
+    "codex-sol": {
+      "meter": "ChatGPT / Codex $200 plan (Sol review seat)",
+      "soft_cap_pct": 90,
+      "windows": [
+        { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" },
+        { "kind": "rolling", "hours": 5 }
+      ],
+      "live_signal": "hard 429 / usage-limit on a real Codex call → usage-ledger.json; else Codex plan usage UI % noted by owner",
+      "reset_note": "weekly window is the review gate; the 5h window is short-term throughput"
+    },
+    "claude-teamclaude": {
+      "meter": "Claude seats via teamclaude",
+      "soft_cap_pct": null,
+      "windows": [ { "kind": "rolling", "hours": 5 } ],
+      "live_signal": "`claude` usage / teamclaude seat status; hard limit error on a real call → usage-ledger.json",
+      "reset_note": "rolling per seat; teamclaude rotates seats inside the window"
+    },
+    "grok-heavy": {
+      "meter": "SuperGrok Heavy (grok CLI / Build / Bot)",
+      "soft_cap_pct": null,
+      "windows": [ { "kind": "weekly", "weekday": null, "time": null, "tz": "America/Chicago" } ],
+      "live_signal": "hard 429 on a real grok call → usage-ledger.json; else SuperGrok usage UI %",
+      "reset_note": "SET weekday/time once known; until then usage-status reports the anchor as unset (it will not invent a time)"
+    },
+    "cursor-other-400": {
+      "meter": "Cursor Ultra — Other Models pool",
+      "limit_usd_per_month": 400,
+      "soft_cap_pct": null,
+      "windows": [ { "kind": "monthly", "day": null, "tz": "America/Chicago" } ],
+      "live_signal": "Cursor Settings → usage dashboard $ → usage-ledger.json",
+      "reset_note": "SET billing day-of-month; resets on the Cursor billing month"
+    },
+    "cursor-models": {
+      "meter": "Cursor first-party pool (Grok 4.6 / 4.5 / Composer)",
+      "soft_cap_pct": null,
+      "windows": [ { "kind": "monthly", "day": null, "tz": "America/Chicago" } ],
+      "live_signal": "Cursor usage dashboard",
+      "reset_note": "same billing month as cursor-other-400"
+    },
+    "fireworks-review-e": {
+      "meter": "Fireworks API (metered $, Review E) — unwired",
+      "monthly_cap_usd": null,
+      "soft_cap_pct": null,
+      "windows": [ { "kind": "none" } ],
+      "live_signal": "hard 429 / usage-limit on a real call; monthly $ from provider dashboard",
+      "reset_note": "no reset window; owner sets monthly_cap_usd at wiring; over cap → park"
+    }
+  }
+}

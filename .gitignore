@@ -1,0 +1,6 @@
+# Live usage state written by wrappers/probes/owner — not policy, not committed.
+usage-ledger.json
+
+# Python cache
+__pycache__/
+*.pyc

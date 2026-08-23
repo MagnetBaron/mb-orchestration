@@ -2,7 +2,7 @@
 
 **Policy repo for Magnet Baron multi-CLI work.**
 
-**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Cursor Other Models $400 is last.**
+**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Cursor Other Models $400 is last.** Fireworks **Review E** is the unwired last-resort / independent-family review backup.
 
 ## Clone (desktop + CLI)
 
@@ -26,8 +26,11 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 | [EDGE-CASES.md](./EDGE-CASES.md) | Outages, ambiguity, partial work, owner unreachable |
 | [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
 | [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
-| [sol-usage.md](./sol-usage.md) | Codex $200 Sol: 90% week, Sun 10 PM CT |
+| [sol-usage.md](./sol-usage.md) | Codex $200 Sol: soft cap + weekly window (via `usage-status`) |
 | [cursor-usage.md](./cursor-usage.md) | Cursor Ultra pools vs $400 vs Heavy |
+| [fireworks-usage.md](./fireworks-usage.md) | Review E (Fireworks): last-resort review trigger, model pin, wrapper contract |
+| [usage-metering.md](./usage-metering.md) | Reset times + limits by script, not hardcoded or LLM-guessed |
+| [usage-windows.json](./usage-windows.json) · [usage-status.py](./usage-status.py) | Window/cap source of truth + tool: next reset, seat state |
 | [luna-close-loop.md](./luna-close-loop.md) | Luna forwards done/parked/blocked only |
 | [SETUP-BOTS.md](./SETUP-BOTS.md) | First machine: Codex hands this to Grok, Cursor, Claude |
 | [DOCTRINE.md](./DOCTRINE.md) | Designing the system only |

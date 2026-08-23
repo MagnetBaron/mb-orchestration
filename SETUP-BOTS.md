@@ -11,7 +11,7 @@ Codex is the entry point. Codex does not implement. Hand this file to Grok Build
 
 ## Grok Build — implement install
 
-Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md`.
+Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md`, `usage-metering.md`.
 
 - Confirm clones: `mb-orchestration`, `teamclaude` (MagnetBaron org).
 - Confirm `AGENTS.md` / `CLAUDE.md` at orchestration root so Codex/Cursor/Claude see them.
@@ -38,7 +38,7 @@ Once per account.
 1. **Website Visual QA + Slack** — full steps in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
 2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
 3. **Luna close-loop** — paste standing add-on from [luna-close-loop.md](./luna-close-loop.md) if you want finish reports forwarded.
-4. **Usage ledger** — optional backlog header note for Sol % and Cursor $400 remaining.
+4. **Usage metering** — set the `usage-windows.json` anchors you know (Grok weekly weekday/time, Cursor billing day) so `usage-status` computes resets; wrappers/owner write `usage-ledger.json`. See `usage-metering.md`.
 
 ## Packet for Codex to paste
 
@@ -57,6 +57,6 @@ must_not_touch: Shopify Admin, theme publish, Grok Bot.app left running, four Cl
 
 output_path: a short report in the session (clone paths, clients that see the folders, owner-only leftover including MCP connector check)
 
-done_when: both repos openable; AGENTS.md loaded; Visual QA Slack path documented; MCP routing docs present; Grok Bot.app not required on the Mini for daily dispatch
+done_when: both repos openable; AGENTS.md loaded; Visual QA Slack path documented; MCP routing docs present; Grok Bot.app not required on the Mini for daily dispatch; `usage-status.py` runs and reports seat resets
 
 effort: setup

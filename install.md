@@ -58,11 +58,11 @@ Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex 
 2. AGENTS.md live
 3. Brief schema enforced (`effort` included)
 4. Worktrees for parallel Grok jobs
-5. Risk gate + reviewer order (Fable if present → Sol → Opus)
+5. Risk gate + reviewer order (Fable if present → Sol → Opus → Review E if wired)
 6. teamclaude (login + plan-sync agent; no exclusive Fable route)
 7. Slack `#visual-qa` + Website Visual QA Bot (owner)
 8. Google MCP on Codex/Claude (owner)
-9. Usage ledger (manual % in backlog header only)
+9. Usage metering: set anchors in `usage-windows.json`; read seat state with `usage-status` (`usage-metering.md`) — script-computed resets and recorded signals, not LLM/manual-only
 10. EDGE-CASES.md known to dispatcher for outages
 
 ## 6. Optional heavy harnesses
