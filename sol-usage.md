@@ -2,7 +2,7 @@
 
 Sol is **Review B**, not the implementer and not the dispatcher. Terra/Luna stay the Codex entry. teamclaude is Claude seats and does not spend this pool.
 
-**Reset:** Sunday **10:00 PM America/Chicago**. Weekly Sol % is from the Codex / ChatGPT plan usage UI (manual note in the backlog header is fine).
+**Reset & %:** read from `usage-status` — the weekly window and `soft_cap_pct` live in `usage-windows.json` (seat `codex-sol`); do not hardcode the day/time here. A wrapper records a real 429 into `usage-ledger.json`; the owner may note the plan-UI % there as a fallback. See `usage-metering.md`.
 
 ## Cursor Sol is a different meter
 
@@ -24,13 +24,13 @@ Do not treat Cursor Sol usage as “free Codex Sol,” and do not treat Codex So
 
 ## Cap: 90% all week
 
-Allow new **Codex Sol** reviews while weekly Sol used is **under 90%**.
+Allow new **Codex Sol** reviews while weekly Sol used is **under 90%**. The 90% is `soft_cap_pct` in `usage-windows.json`; check it with `usage-status`, do not judge it by feel.
 
 - Same threshold Sun through Sat. No early-week soft cap.
-- At or over 90%: still dispatch **Grok** for volume. Code review → **Opus 4.8** if the risk gate still requires a frontier pass; otherwise park. Do not fake a “review” on Terra/Luna.
+- At or over 90%: still dispatch **Grok** for volume. Code review → **Opus 4.8**, then **Review E (Fireworks) if wired**, otherwise park. Do not fake a “review” on Terra/Luna.
 - Catalog-only product edits (no risk gate): skip Sol.
 - Owner “use Sol on this one” beats the 90% line for that ticket only.
-- After Sunday 10 PM reset: treat weekly Sol as 0% and start again.
+- After the weekly reset (`usage-status`, seat `codex-sol`): treat weekly Sol as 0% and start again.
 
 Saturday is not special for throttling. Drain real parked reviews toward 90% if the queue needs it; still no makework.
 
@@ -47,7 +47,7 @@ The $200 plan has enough Sol for full-quality reviews. When Sol is assigned:
 1. Review brief with `attack_angle` and a git diff path?
 2. Fable unavailable (or owner said Sol)?
 3. Risk gate or owner requires review?
-4. Weekly Sol % under 90%?
+4. Weekly Sol under the soft cap per `usage-status`?
 5. This change-set already had a Sol pass? If yes → stop or Opus, not a duplicate Sol.
 
 Any no → do not start Sol.

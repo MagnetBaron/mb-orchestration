@@ -1,0 +1,13 @@
+{
+  "_note": "EXAMPLE of the live-state file usage-status reads. Copy to usage-ledger.json (gitignored) and let wrappers/probes/the owner write it — never an LLM. Two ways to mark a seat spent: a `spent_until` reset instant (authoritative, e.g. written when a wrapper hits a real 429), or a `pct` the owner notes from the provider UI (compared to soft_cap_pct). Delete an entry when the seat is healthy again.",
+  "codex-sol": {
+    "pct": 92,
+    "note": "weekly UI showed 92% — over 90 soft cap; route code review to Opus 4.8",
+    "updated": "2026-08-23T09:00:00-05:00"
+  },
+  "claude-teamclaude": {
+    "spent_until": "2026-08-23T14:30:00-05:00",
+    "note": "hard limit on a real review call; next 5h window starts then",
+    "updated": "2026-08-23T09:30:00-05:00"
+  }
+}
