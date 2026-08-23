@@ -23,6 +23,7 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 | [AGENTS.md](./AGENTS.md) | **Every** Codex / Cursor / shared agent session |
 | [CLAUDE.md](./CLAUDE.md) | Claude Code |
 | [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
+| [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
 | [SETUP-BOTS.md](./SETUP-BOTS.md) | First machine: Codex hands this to Grok, Cursor, Claude |
 | [DOCTRINE.md](./DOCTRINE.md) | Designing the system only |
 | [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
@@ -33,6 +34,6 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 
 1. Clone as above.
 2. Codex opens this repo and pastes the packet in `SETUP-BOTS.md` to Grok Build, Cursor, and Claude Code.
-3. Owner creates Grok Bot **Website Visual QA** + Slack `#visual-qa` once (`visual-qa.md`). Quit the app on the worker Mini.
+3. Owner wires Slack delivery once per [visual-qa-slack.md](./visual-qa-slack.md). Quit the app on the worker Mini.
 
 Daily: Codex is still the only entry point.
