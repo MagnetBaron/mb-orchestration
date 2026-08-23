@@ -1,6 +1,19 @@
 # Install
 
-## 1. Copy policy into projects
+## 0. Get the repos onto the machine
+
+Desktop clients (GitHub Desktop, Cursor Open Folder, Claude Code, Codex) should clone from the **Magnet Baron** org so they stay write-enabled:
+
+```bash
+git clone https://github.com/MagnetBaron/mb-orchestration.git
+git clone https://github.com/MagnetBaron/teamclaude.git
+```
+
+GitHub Desktop: File → Clone repository → MagnetBaron → `mb-orchestration` and `teamclaude`.
+
+Open **mb-orchestration** as the project/workspace. Codex reads `AGENTS.md`. Claude Code reads `CLAUDE.md`. Cursor reads the same files from the folder root.
+
+## 1. Copy policy into other project folders (optional)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/AGENTS.md -o AGENTS.md
@@ -15,17 +28,22 @@ Optional global:
 mkdir -p ~/.codex ~/.claude
 cp AGENTS.md ~/.codex/AGENTS.md
 cp CLAUDE.md ~/.claude/CLAUDE.md
-# place AGENTS.md where Claude @import can resolve, or inline the table
 ```
 
-## 2. teamclaude
+## 2. teamclaude (Claude seats)
 
-1. `teamclaude login` per seat
-2. Merge `teamclaude.routes.example.json` into `~/.config/teamclaude.json`
-3. `teamclaude server` then `teamclaude run -- --model opus-4.8`
-4. After plan downgrade: delete the Fable route
+Source of truth for the proxy: https://github.com/MagnetBaron/teamclaude  
+(upstream is KarpelesLab/teamclaude; use the Magnet Baron fork for clones.)
 
-## 3. Ordered adoption (from the source checklist, cut to your reality)
+1. `npm install -g @karpeleslab/teamclaude` or run from the local `teamclaude` clone
+2. `teamclaude login` per seat (Max, premium team ×2, standard team)
+3. Merge `teamclaude.routes.example.json` from this repo into `~/.config/teamclaude.json`
+4. `teamclaude server` then `teamclaude run -- --model opus-4.8`
+5. After plan downgrade: delete the Fable route
+
+No four Claude desktop apps. CLI + proxy only after first device-auth.
+
+## 3. Ordered adoption
 
 1. **Buckets classified** — Grok abundant; Claude+Sol scarce judgment; Codex Terra/Luna dispatch; Cursor $400 last
 2. **AGENTS.md live** in repos you touch from phone/Codex
