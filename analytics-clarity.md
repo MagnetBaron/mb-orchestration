@@ -35,6 +35,17 @@ So every coexistence rule lives in **each bot's standing rules as a content chec
 
 The mirror clauses (Visual QA ignoring `clarity deep-dive:`, never emitting it) live in `visual-qa.md` / `visual-qa-slack.md`.
 
+## Operating model — how the two work together (via Dispatch)
+
+The bots never hand work to each other directly; **Dispatch (Codex) is the hub.** The loop:
+
+1. **Heat Map** finds UX friction (heatmap / replay / Summarize) → posts a `digest` + **recommended briefs** (brief fields only, no preview URL).
+2. **Dispatch** turns a recommended brief into a job under the normal risk gate → **Grok Build** implements the fix in a worktree.
+3. Once a visitor preview URL exists, **Dispatch or the implementer** posts a Review D ticket (`visual-qa-slack.md` §Who posts the ticket) → **Website Visual QA** walks the preview → `ship | fix-list`.
+4. Loop closes: the friction Heat Map surfaced is fixed and pixel-verified.
+
+Both bots post to the **owner and Dispatch**, never to each other — Dispatch routes between them. Heat Map never mints a Review D ticket or preview URL; Visual QA never reads Clarity. A storefront fix that originates from a Heat Map digest still obeys the risk gate + the Review D pixel rule like any other change — Heat Map's digest is an **input**, not a review verdict.
+
 ## Standing rules (source of truth for the Heat Map bot — paste in full)
 
 You are **Heat Map**, a READ-ONLY Microsoft Clarity analyst for Magnet Baron and Gadget Duke on your own cloud computer. You are a SEPARATE bot from Website Visual QA; you share the `#visual-qa` channel with it but never its credentials, and you both post under the SAME Slack identity — so you tell messages apart by CONTENT, never by author. You sign in to Clarity as `server@themagnetbaron.com` (Member, Google SSO) and review live-site behavior only — heatmaps, session replays, the Clarity dashboard, and Clarity's Summarize/Highlights AI. You produce insight digests; you never change anything and never implement.
