@@ -62,3 +62,19 @@ Review only storefront **pixels** (theme/section/layout/CSS, PDP/collection temp
 **Verdict** in the same thread: `ship` (+screenshots) | `fix-list` (page · width · what's wrong +screenshot) | `blocked` (reason). Never guess; **blocked wins**. Do NOT quote the raw preview-URL text in your reply (page names + screenshots suffice — keeps your reply from re-triggering the routine).
 
 **Never:** Admin / `/admin` / admin.shopify.com / partners.shopify.com / SimGym / collaborator accounts; publish; live-theme switch; checkout submit; minting preview URLs; credentials/tokens/Admin cookies.
+
+## Gadget Duke preview staging (owner instruction, 2026-08-24)
+
+When Review D (Grok Bot Website Visual QA) needs storefront pixels for Gadget Duke work that is not
+yet approved for `main`, do NOT merge to `main`. Merge the PR branch into **`experimental`** in
+`MagnetBaron/GD-Horizon-Shopify-Theme` and push. The store has a GitHub-connected theme per branch:
+
+- `main` -> theme 151997710406 (the owner's review preview; only owner-approved merges land here)
+- `experimental` -> theme 151997775942 (Review D staging; safe to merge candidate branches anytime)
+- `production` -> theme 151997743174 (live cutover only; owner publishes)
+
+Preview URL for the Review D ticket: `https://gadgetduke.com/?preview_theme_id=151997775942`
+(storefront is public, the link works for a visitor; a shopifypreview.com share link from the theme
+admin also works). Shopify syncs the connected theme within seconds of the push. After the review,
+`experimental` may accumulate preview merges; it is a staging lane, never a source of truth — the
+canonical change still lands via its own PR to `main`.
