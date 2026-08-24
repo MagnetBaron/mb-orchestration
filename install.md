@@ -46,7 +46,7 @@ No four Claude desktop apps.
 
 ## 3. Review D (Website Visual QA)
 
-Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md).
+Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md). Second bot **Heat Map** (Clarity analytics) shares `#visual-qa` — separate identity/auth, content-based coexistence with Visual QA; policy + owner setup in [analytics-clarity.md](./analytics-clarity.md).
 
 ## 4. Google MCP (for mcp-routing)
 
@@ -80,7 +80,7 @@ Provision or repair the symlinks on any machine:
 ./sync-commands.sh
 ```
 
-No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it classifies, stamps review depth, picks the seat, and routes reviews. **Entry point stays Codex** — from a non-Codex host a multi-seat task is briefed and handed to Codex, not re-homed onto an IDE/review seat.
+No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it classifies, stamps review depth, picks the seat, and routes reviews. **Entry point stays Codex** — a non-Codex host may show status and draft a brief, then hands it to Codex; it never assigns other seats or implements outside its own seat.
 
 ## 7. Optional heavy harnesses
 
