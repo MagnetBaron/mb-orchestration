@@ -1,6 +1,6 @@
 # Magnet Baron orchestration
 
-Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Failures: `EDGE-CASES.md`.
+Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Failures: `EDGE-CASES.md`.
 
 **Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`.
 
@@ -14,6 +14,7 @@ Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `
 | **MCP / review judgment** | Codex **Sol** or **Opus 4.8** | Interpret MCP outputs; Sol also Review B | Row-dump fetch loops |
 | **Cloud standing** | Grok Bot (xAI VM) | Inbox / scheduled work off the Mini | Same change-set as Build |
 | **Review D** | Grok Bot **Website Visual QA** | Storefront preview via Slack | Admin, SimGym, publish |
+| **Analytics** | Grok Bot **Heat Map** (2nd bot) | Read-only Clarity heatmaps/replays/Summarize; feeds Dispatch (`analytics-clarity.md`) | Admin, settings, member mgmt, implement, review verdicts |
 | **Review A** | Fable 5 (while included) | Hard PR / architecture | Daily typing |
 | **Review B** | GPT-5.6 Sol **on Codex** | Diff review when Fable empty | Cursor Sol ($400) |
 | **Review C** | Opus 4.8 | Claude reliability pass; MCP judgment | Default implementer |

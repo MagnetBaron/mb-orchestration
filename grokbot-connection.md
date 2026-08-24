@@ -2,6 +2,8 @@
 
 How **Grok Bot** (the xAI cloud teammate, Cursor-powered) plugs into this orchestration. Load with `visual-qa.md` / `visual-qa-slack.md` when wiring or debugging Review D. Distilled from a sourced research sweep (grok 4.6 high, 3 lanes) + a live setup pass.
 
+**Two named bots run on this now:** **Website Visual QA** (Review D — credential-free preview walks) and **Heat Map** (read-only Clarity heatmaps/replays — `analytics-clarity.md`). **Separate bot identities and separate auth**, sharing the one public `#visual-qa` channel. Slack routines fire on **public channels only** (private group DM won't trigger) and match by **CONTAINS**, not prefix. Both bots post under the **same Slack identity** (`constantine@` / "Sent using @Cursor"), so they cannot tell each other apart by author — **coexistence is content-based**: each acts only on its own token (`shopifypreview.com` + ticket shape vs a message *starting with* `clarity deep-dive:`), neither emits the other's token, both ignore quoted/threaded re-posts, and a message carrying BOTH tokens is refused by both. Full contract: `analytics-clarity.md` §group chat. Never collapse them into one bot — Visual QA's safety is that it never logs in, and Heat Map must.
+
 ## What Grok Bot is (and is not)
 - **Is:** an app-only teammate — **macOS + iOS**, plus a shared **cloud computer**. Built by/with **Cursor** (installer from `downloads.cursor.com`; sign-in is a **Cursor account**). Early beta.
 - **Is not:** the `grok` **Build CLI** (that's the Implement seat), not grok.com chat, not `api.x.ai`.

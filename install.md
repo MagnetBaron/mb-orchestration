@@ -46,7 +46,7 @@ No four Claude desktop apps.
 
 ## 3. Review D (Website Visual QA)
 
-Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md).
+Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md). Second bot **Heat Map** (Clarity analytics) shares `#visual-qa` — separate identity/auth, content-based coexistence with Visual QA; policy + owner setup in [analytics-clarity.md](./analytics-clarity.md).
 
 ## 4. Google MCP (for mcp-routing)
 
@@ -65,6 +65,23 @@ Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex 
 9. Usage metering: set anchors in `usage-windows.json`; read seat state with `usage-status` (`usage-metering.md`) — script-computed resets and recorded signals, not LLM/manual-only
 10. EDGE-CASES.md known to dispatcher for outages
 
-## 6. Optional heavy harnesses
+## 6. Slash command `/orchestrate` (Claude Code · Codex · Cursor)
+
+One canonical file, symlinked into each CLI's command dir — **edit the canonical, never the copies**.
+
+- Canonical (edit here): [`.claude/commands/orchestrate.md`](./.claude/commands/orchestrate.md)
+- Claude Code — repo `.claude/commands/` (+ `~/.claude/commands/` global). `/orchestrate <task>`
+- Codex — `~/.codex/prompts/orchestrate.md`. `/orchestrate <task>`
+- Cursor — repo `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
+
+Provision or repair the symlinks on any machine:
+
+```bash
+./sync-commands.sh
+```
+
+No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it classifies, stamps review depth, picks the seat, and routes reviews. **Entry point stays Codex** — a non-Codex host may show status and draft a brief, then hands it to Codex; it never assigns other seats or implements outside its own seat.
+
+## 7. Optional heavy harnesses
 
 Prefer this repo’s thin files until context pressure forces a plugin.

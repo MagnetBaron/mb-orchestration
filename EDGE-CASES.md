@@ -2,7 +2,7 @@
 
 Load when something breaks or the brief does not fit a clean seat. Day-to-day agents stay on `AGENTS.md`. This file is the durable fallback so the system survives outages, ambiguity, and partial work.
 
-**Authority order (highest first):** Owner spoken/written override → explicit brief fields → `AGENTS.md` → specialty file for that domain (`mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`, `usage-metering.md`, `visual-qa.md`) → `DOCTRINE.md` → this file.
+**Authority order (highest first):** Owner spoken/written override → explicit brief fields → `AGENTS.md` → specialty file for that domain (`mcp-routing.md`, `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`, `usage-metering.md`, `visual-qa.md`, `grokbot-connection.md`, `analytics-clarity.md`) → `DOCTRINE.md` → this file.
 
 When two specialty files conflict, the one named in the brief `must_read` wins for that job.
 
