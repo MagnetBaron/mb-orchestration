@@ -37,6 +37,7 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 | [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
 | [install.md](./install.md) | First wire-up |
 | [FUTURE.md](./FUTURE.md) | Humans only — multi-Mini |
+| [roles/](./roles/) | Cross-CLI role registry: capability levels (`frontier` / `sole` / `terra` / `luna`); current seats are aliases |
 
 ## Setup
 
