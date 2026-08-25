@@ -33,6 +33,24 @@
       },
       "deny_tools": ["Admin", "publish", "mcpServers", "Google MCP", "Grok Bot"],
       "prompt": "Implement only the named change in the isolated worktree. Run the requested tests, return summary/files/tests/risks, and never publish or use Google MCP when the connector is absent."
+    },
+    "seo-research": {
+      "description": "Read-only SEO research and reporting for MB and GD.",
+      "seat": "grok-build",
+      "hosts": ["claude", "grok"],
+      "claude": {
+        "model": "inherit",
+        "effort": "medium",
+        "memory": "user",
+        "skills": ["magnet-baron-skills:seo-ops"],
+        "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"],
+        "mcpServers": ["gsc-indexing", "dfs-mcp"]
+      },
+      "grok": {
+        "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
+      },
+      "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish"],
+      "prompt": "Conduct read-only, brand-separated SEO research and reporting for Magnet Baron and Gadgetduke. Confirm brand before data pulls, never publish, send, edit files, or use a wrong-brand property. Use the declared Claude connectors only when running on Claude."
     }
   }
 }

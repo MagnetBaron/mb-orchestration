@@ -8,28 +8,45 @@ ROOT = Path(__file__).resolve().parent
 DEFAULTS = {"claude": Path.home()/".claude/agents", "grok": Path.home()/".grok/agents", "codex": ROOT/"generated/codex-config.toml"}
 def load(path):
     data = json.loads(path.read_text())
-    if data.get("schema_version") != 1 or not isinstance(data.get("roles"), dict) or set(data["roles"]) != {"review-d", "heat-map", "grok-build"}:
-        raise ValueError("roles.json must contain schema_version 1 and exactly the three Phase 1 seed roles")
+    required = {"review-d", "heat-map", "grok-build"}
+    if data.get("schema_version") != 1 or not isinstance(data.get("roles"), dict) or not required.issubset(data["roles"]):
+        raise ValueError("roles.json must contain schema_version 1 and the three Phase 1 seed roles")
     for name, role in data["roles"].items():
         if not name or not role.get("description") or not role.get("seat") or not role.get("prompt"):
             raise ValueError(f"{name}: missing description, seat, or prompt")
         denied = set(role.get("deny_tools", []))
-        if "mcpServers" not in denied:
-            raise ValueError(f"{name}: mcpServers must be explicitly denied")
-        for host in ("claude", "grok", "codex"):
-            tools = role.get("tools", {}).get(host)
+        hosts = role.get("hosts", ["claude", "grok", "codex"])
+        if not isinstance(hosts, list) or not hosts or len(hosts) != len(set(hosts)) or not set(hosts).issubset({"claude", "grok", "codex"}):
+            raise ValueError(f"{name}: hosts must be a unique subset of claude, grok, codex")
+        for host in hosts:
+            host_config = role.get(host, {}) if host in role else {"tools": role.get("tools", {}).get(host)}
+            tools = host_config.get("tools")
             if not isinstance(tools, list) or not tools or len(tools) != len(set(tools)):
                 raise ValueError(f"{name}: {host} tools must be a non-empty unique list")
             if denied.intersection(tools):
                 raise ValueError(f"{name}: {host} allowlist overlaps deny_tools")
+            mcp = host_config.get("mcpServers", [])
+            if not isinstance(mcp, list) or any(not isinstance(x, str) or not x for x in mcp):
+                raise ValueError(f"{name}: {host} mcpServers must be a list of names")
+        for host in set(role) & {"claude", "grok", "codex"}:
+            if host not in hosts:
+                raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")
     return data["roles"]
 
+def host_config(role, host):
+    return role.get(host, {"tools": role.get("tools", {}).get(host)})
+
 def claude(role, name):
-    tools = ", ".join(role["tools"]["claude"])
-    return f"---\nname: mb-{name}\ndescription: {role['description']}\ntools: {tools}\nmodel: inherit\n---\n\n{role['prompt']}\n\nMechanically denied: {', '.join(role['deny_tools'])}.\n"
+    config = host_config(role, "claude")
+    lines = ["---", f"name: mb-{name}", f"description: {role['description']}", "tools: " + ", ".join(config["tools"]), f"model: {config.get('model', 'inherit')}" ]
+    for field in ("effort", "memory"):
+        if field in config: lines.append(f"{field}: {config[field]}")
+    if config.get("skills"): lines.append("skills: " + ", ".join(config["skills"]))
+    if config.get("mcpServers"): lines.append("mcpServers: [" + ", ".join(json.dumps(x) for x in config["mcpServers"]) + "]")
+    return "\n".join(lines) + f"\n---\n\n{role['prompt']}\n\nMechanically denied: {', '.join(role['deny_tools'])}.\n"
 
 def grok(role, name):
-    tools = ", ".join(role["tools"]["grok"])
+    tools = ", ".join(host_config(role, "grok")["tools"])
     return f"---\nname: mb-{name}\ndescription: {role['description']}\ntools: {tools}\n---\n\n{role['prompt']}\n\nMechanically denied: {', '.join(role['deny_tools'])}.\n"
 
 def toml_quote(s): return json.dumps(s)
@@ -58,9 +75,11 @@ def main():
     roles = load(args.root / "roles.json")
     outputs = {}
     for name, role in roles.items():
-        outputs[args.claude_dir/f"mb-{name}.md"] = claude(role, name)
-        outputs[args.grok_dir/f"mb-{name}.md"] = grok(role, name)
-    outputs[args.codex_output] = codex(roles)
+        hosts = role.get("hosts", ["claude", "grok", "codex"])
+        if "claude" in hosts: outputs[args.claude_dir/f"mb-{name}.md"] = claude(role, name)
+        if "grok" in hosts: outputs[args.grok_dir/f"mb-{name}.md"] = grok(role, name)
+    codex_roles = {name: role for name, role in roles.items() if "codex" in role.get("hosts", ["claude", "grok", "codex"])}
+    outputs[args.codex_output] = codex(codex_roles)
     if not args.check:
         for path, text in outputs.items(): write_atomic(path, text)
     print(f"validated {len(roles)} roles; {'checked' if args.check else f'wrote {len(outputs)} artifacts'}")

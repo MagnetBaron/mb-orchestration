@@ -3,7 +3,8 @@
 ## Scope
 
 This is a loader for three existing seats, not a seat allocator. The seed
-roles are Review D, Heat Map, and Grok Build. The registry maps each role to
+roles are Review D, Heat Map, Grok Build, and the added read-only SEO Research
+role. The registry maps each role to
 the existing seat name and emits host-native definitions for Claude Code and
 Grok, plus an owner-applied Codex TOML fragment. It does not change the review
 order, create credentials, add an MCP server, or edit any protected config.
@@ -15,11 +16,13 @@ schema validation without writing.
 ## Mechanical restrictions
 
 Each role has a per-host allowlist and an explicit deny list. The generator
-fails if a host tool list is missing/duplicated or if `mcpServers` is not
-explicitly denied. Claude and Grok receive frontmatter `tools` allowlists;
-Codex receives `tools` and `deny_tools` in the generated fragment. Phase 1
-declares no `mcpServers`. Grok Build is the only seed role with write tools,
-and its prompt retains isolated-worktree and no-publish boundaries.
+fails if a host tool list is missing/duplicated, a disabled host has config, or
+an MCP declaration is malformed. Claude and Grok receive frontmatter
+allowlists; Codex receives `tools` and `deny_tools` in the generated fragment.
+SEO Research is read-only on both hosts, and its Claude definition carries the
+requested `seo-ops` skill and `gsc-indexing`/`dfs-mcp` declarations. Grok gets
+no Google MCP declaration. Grok Build remains the only seed role with write
+tools, and its prompt retains isolated-worktree and no-publish boundaries.
 
 The generated roles resolve to these existing seats only:
 
@@ -28,6 +31,7 @@ The generated roles resolve to these existing seats only:
 | Review D | Grok Bot Website Visual QA |
 | Heat Map | Grok Bot Heat Map |
 | Grok Build | Grok Build |
+| SEO Research | Grok Build (existing seat), with Claude host configuration |
 
 No seat is added to any review order. The order remains Fable → Codex Sol →
 Opus 4.8 → Review E, exactly as currently documented.
@@ -85,5 +89,7 @@ MB_USAGE_LEDGER="$tmp/usage-ledger.json" MB_429_RESET="2099-01-01T00:00:00Z" \
 python3 usage-status.py --ledger "$tmp/usage-ledger.json"
 ```
 
-The write-tool seed requires the requested cross-family review before an
-owner lands the wrapper/config integration.
+The Grok Build write-tool seed and the SEO Research Claude `mcpServers`
+declaration require the requested cross-family review before an owner lands
+the wrapper/config integration. The MCP servers remain owner-applied config;
+this commit does not connect or test them live.
