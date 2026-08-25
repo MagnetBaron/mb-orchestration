@@ -1,9 +1,43 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "capability_levels": {
+    "frontier": {
+      "job": "Hard review, architecture, and land-gate judgment",
+      "providers": ["fable-5", "opus-4.8", "review-e"]
+    },
+    "sole": {
+      "job": "Scarce judgment: diff review and MCP interpretation",
+      "providers": ["codex-sol"]
+    },
+    "terra": {
+      "job": "Volume: MCP bulk, implementation, and standing bot work",
+      "providers": ["gpt-terra", "grok-build", "grok-bot-review-d", "grok-bot-heat-map"]
+    },
+    "luna": {
+      "job": "Dispatch only: queue, assign, status, and risk gate",
+      "providers": ["codex-luna"]
+    }
+  },
+  "compatibility_aliases": {
+    "seats": {
+      "Review A": "fable-5",
+      "Review B": "codex-sol",
+      "Review C": "opus-4.8",
+      "Review E": "review-e",
+      "Review D": "grok-bot-review-d",
+      "Heat Map": "grok-bot-heat-map",
+      "Grok Build": "grok-build",
+      "MCP volume": "gpt-terra",
+      "Dispatch": "codex-luna"
+    },
+    "review_order": ["fable-5", "codex-sol", "opus-4.8", "review-e"]
+  },
   "roles": {
     "review-d": {
       "description": "Review D: storefront visual QA through the existing Grok Bot seat.",
+      "level": "terra",
       "seat": "grok-bot-review-d",
+      "read_only": true,
       "tools": {
         "claude": ["Read", "Glob", "Grep"],
         "grok": ["Read", "Grep", "Glob"],
@@ -14,7 +48,9 @@
     },
     "heat-map": {
       "description": "Heat Map: read-only Clarity analytics input for Dispatch.",
+      "level": "terra",
       "seat": "grok-bot-heat-map",
+      "read_only": true,
       "tools": {
         "claude": ["Read", "Glob", "Grep"],
         "grok": ["Read", "Grep", "Glob"],
@@ -25,7 +61,9 @@
     },
     "grok-build": {
       "description": "Grok Build: implementation in an isolated worktree.",
+      "level": "terra",
       "seat": "grok-build",
+      "read_only": false,
       "tools": {
         "claude": ["Read", "Glob", "Grep"],
         "grok": ["Read", "Write", "Edit", "Grep", "Glob"],
@@ -36,7 +74,9 @@
     },
     "seo-research": {
       "description": "Read-only SEO research and reporting for MB and GD.",
+      "level": "terra",
       "seat": "grok-build",
+      "read_only": true,
       "hosts": ["claude", "grok"],
       "claude": {
         "model": "inherit",
@@ -49,8 +89,13 @@
       "grok": {
         "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
       },
+      "mcp_deny_tools": {
+        "claude": {
+          "gsc-indexing": ["request_indexing", "batch_request_indexing", "submit_sitemap", "request_url_removal"]
+        }
+      },
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish"],
-      "prompt": "Conduct read-only, brand-separated SEO research and reporting for Magnet Baron and Gadgetduke. Confirm brand before data pulls, never publish, send, edit files, or use a wrong-brand property. Use the declared Claude connectors only when running on Claude."
+      "prompt": "Conduct read-only, brand-separated SEO research and reporting for Magnet Baron and Gadgetduke. Confirm brand before data pulls. Never publish, send, or edit files. Use declared host MCP connector names when present; this registry does not create credentials or live MCP connections."
     }
   }
 }
