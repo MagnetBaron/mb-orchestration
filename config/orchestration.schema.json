@@ -73,7 +73,23 @@
             "required": ["available_on"],
             "properties": {
               "available_on": { "type": "array", "items": { "type": "string" } },
-              "mutating_tools": { "type": "array", "items": { "type": "string" } }
+              "mutating_tools": { "type": "array", "items": { "type": "string" } },
+              "status": {
+                "enum": ["active", "ready", "primed"],
+                "description": "Strap-in lifecycle. OPTIONAL and back-compatible: ABSENT = active (existing connectors are LIVE). Only 'active' is live-eligible; 'primed' (bundled/declared, not wired) and 'ready' (validated, awaiting owner activation) are inert scaffolding that is never routed, connected, launched, or probed."
+              },
+              "server": {
+                "type": "object",
+                "description": "OPTIONAL bundled MCP-server DEFINITION carried as DATA for distribution — never executed. Rides only on a non-active (primed/ready) entry. Holds NO credentials: `env_keys` names the env vars the admin sets out of band at activation.",
+                "properties": {
+                  "transport": { "enum": ["stdio", "http", "sse"] },
+                  "command": { "type": "string" },
+                  "args": { "type": "array", "items": { "type": "string" } },
+                  "url": { "type": "string" },
+                  "env_keys": { "type": "array", "items": { "type": "string" } },
+                  "note": { "type": "string" }
+                }
+              }
             }
           }
         },

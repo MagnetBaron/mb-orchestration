@@ -14,6 +14,37 @@ on all coding seats — but **read the config, do not trust this sentence** when
 
 If a connector is missing on the assigned seat (per `available_on`), park and report — do not invent data.
 
+## MCP strap-in (distribution): primed → ready → active
+
+A distributed clone carries its own MCP servers plug-and-play, admin-managed, via an optional
+`status` on each `config/connectors.json` `mcp_connectors` entry:
+
+- **absent = active** — every existing connector; LIVE and unaffected.
+- **primed** — bundled/declared for distribution but NOT wired (some MCPs aren't ready yet).
+- **ready** — validated + wireable, awaiting owner activation.
+
+Only **active** is live-eligible. A primed/ready entry may carry an optional **`server`** block
+(`transport`/`command`/`args`/`url`/`env_keys`/`note`) — the launch DESCRIPTOR, carried **as data
+only**. The lifecycle is admin-driven and out of band: the owner/admin validates a primed server,
+lifts it to `ready`, then flips it to `active` (setting the env vars named in `env_keys`) — only
+then is it routable.
+
+**Hard inert guarantee.** Priming NEVER connects, launches, probes, or activates anything:
+
+- The router refuses to grant a non-active connector to any seat — `bin/routing.py`'s
+  `connector_is_active` filters `capabilities_of`, so primed/ready never routes and `available_on`
+  is only a *declaration* of the seat it would ride on once active. Existing (active) connectors
+  route exactly as before.
+- `bin/doctor.py` (`check_connector_lifecycle`) validates the SHAPE only — status enum, a well-formed
+  server block — and *proves* the inertness (a non-active connector is granted to no seat). It reads
+  strings; it never runs `command`, opens `url`, spawns a process, or hits the network.
+- `bin/smoketest.py` asserts a primed connector validates and is inert while active connectors still route.
+- **No credentials in-repo.** A `server` block holds NO secrets: `env_keys` names the env vars the
+  admin sets out of band; values never appear in the repo.
+
+Activation (primed/ready → active, wiring a role/seat to it) is a **standing-config** change — run
+`bin/doctor.py` before it lands.
+
 ## Assignment matrix
 
 | Job | Primary seat | Why | Not |

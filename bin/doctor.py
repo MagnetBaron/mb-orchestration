@@ -146,6 +146,87 @@ def check_connectors(conns, provider_ids):
                 err(f"connector {name}: available_on unknown provider {pid!r}")
 
 
+VALID_CONNECTOR_STATUS = ("active", "ready", "primed")
+_SERVER_TRANSPORTS = ("stdio", "http", "sse")
+# Keys that would smuggle a credential VALUE into the repo — the sanctioned channel is
+# `env_keys` (env-var NAMES the admin sets out of band). Any of these on a server block fails.
+_CREDENTIAL_KEYS = {
+    "token", "secret", "secrets", "key", "keys", "api_key", "apikey", "password", "passwd",
+    "pass", "credential", "credentials", "bearer", "auth", "authorization", "access_token",
+    "refresh_token", "client_secret", "private_key", "passphrase",
+}
+
+
+def _check_server_block(name, server):
+    """SHAPE-only validation of a bundled server DEFINITION. Reads strings; never runs
+    `command`, never opens `url`. Enforces the no-credentials-in-repo rule."""
+    if not isinstance(server, dict):
+        err(f"connector {name}: server block must be an object")
+        return
+    for k in server:
+        if str(k).lower() in _CREDENTIAL_KEYS:
+            err(f"connector {name}: server block key {k!r} looks like an inline credential — "
+                "no secrets in-repo; name the env var in 'env_keys' (NAMES only) and set the value out of band")
+    transport = server.get("transport")
+    if transport not in _SERVER_TRANSPORTS:
+        err(f"connector {name}: server.transport {transport!r} not one of {_SERVER_TRANSPORTS}")
+    ek = server.get("env_keys", [])
+    if not isinstance(ek, list) or any(not isinstance(x, str) or not x for x in ek):
+        err(f"connector {name}: server.env_keys must be a list of env-var NAME strings")
+    else:
+        for x in ek:
+            if "=" in x or len(x) > 64:
+                err(f"connector {name}: server.env_keys entry {x!r} must be a bare env-var NAME (no value)")
+    if transport == "stdio":
+        cmd = server.get("command")
+        if not isinstance(cmd, str) or not cmd:
+            err(f"connector {name}: stdio server needs a non-empty 'command' string")
+        args = server.get("args", [])
+        if not isinstance(args, list) or any(not isinstance(a, str) for a in args):
+            err(f"connector {name}: server.args must be a list of strings")
+    elif transport in ("http", "sse"):
+        url = server.get("url")
+        if not isinstance(url, str) or "://" not in url:
+            err(f"connector {name}: {transport} server needs a 'url' string")
+        elif "@" in url.split("://", 1)[1].split("/", 1)[0]:
+            err(f"connector {name}: server.url must not embed userinfo credentials (user:pass@host)")
+
+
+def check_connector_lifecycle(conns, providers):
+    """Validate the MCP strap-in lifecycle (status enum + optional bundled server block) and
+    PROVE inertness: a connector that is not 'active' (i.e. primed/ready) must never be treated
+    as live — the router must not grant it to any seat. This is SHAPE + pure-logic only; it
+    NEVER opens a socket, spawns a subprocess, or hits the network (the whole point of priming)."""
+    if not conns:
+        return
+    prov = (providers or {}).get("providers", {})
+    try:
+        routing = load_module("routing_doc", HERE / "routing.py")
+    except Exception as exc:  # pragma: no cover
+        routing = None
+        err(f"connector lifecycle: cannot import routing for the inertness proof: {exc}")
+    for name, m in conns.get("mcp_connectors", {}).items():
+        status = m.get("status", "active")
+        if status not in VALID_CONNECTOR_STATUS:
+            err(f"connector {name}: status {status!r} not one of {VALID_CONNECTOR_STATUS} (absent = active)")
+        server = m.get("server")
+        if server is not None:
+            _check_server_block(name, server)
+            # a repo-carried launch spec is pre-activation scaffolding: it may ride only on a
+            # non-active entry, so it can never be mistaken for a live/wired connector.
+            if status == "active":
+                err(f"connector {name}: carries a bundled 'server' block but status is 'active' — "
+                    "a repo-carried server definition must stay primed/ready (inert) until the admin activates it")
+        # INERTNESS PROOF (pure function): a non-active connector is granted to NO seat.
+        if status != "active" and routing is not None:
+            for pid in m.get("available_on", []):
+                caps = routing.capabilities_of(pid, prov.get(pid, {}), conns)
+                if name in caps:
+                    err(f"connector {name}: status={status} but the router still grants it to seat "
+                        f"{pid!r} — a non-active connector MUST be inert (never routed). "
+                        "See bin/routing.connector_is_active.")
+
+
 def check_skills(skills, providers, conns):
     """skills.json registry hygiene (mirrors check_connectors for MCP): every skill's
     required_capability resolves to a known coarse capability (providers.json `capabilities` /
@@ -422,6 +503,7 @@ def main(argv=None):
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)
     check_connectors(conns, provider_ids)
+    check_connector_lifecycle(conns, providers)
     check_skills(skills, providers, conns)
     check_entrypoints(entry, provs, provider_ids)
     subs_ids = set((subs or {}).get("subscriptions", {}))

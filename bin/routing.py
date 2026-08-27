@@ -35,6 +35,16 @@ def usable(row):
     return row.get("tier") != "spent"
 
 
+def connector_is_active(meta):
+    """A connector is live-eligible ONLY when its status is 'active'. Status is ABSENT on
+    every existing connector, and absent defaults to 'active' — so live routing behaviour is
+    unchanged. The 'primed' (bundled/declared for distribution, not wired) and 'ready'
+    (validated + wireable, awaiting owner activation) states are INERT scaffolding: they are
+    never granted to a seat here, so the router never treats them as live. Only the owner/admin
+    flipping status to 'active' (out of band) makes a connector routable."""
+    return (meta or {}).get("status", "active") == "active"
+
+
 def route_key(row):
     """Sort key for routing ONE task: preferred seat first.
     included→metered, available→reserve, non-intake→intake, then drain the more-urgent first."""
@@ -68,6 +78,8 @@ def capabilities_of(provider_id, provider, connectors):
     """Union of coarse capabilities (providers.json) and connector access (connectors.json)."""
     caps = set(provider.get("capabilities", []))
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
+        if not connector_is_active(meta):
+            continue  # primed/ready connectors are inert scaffolding — never routed/granted
         if provider_id in (meta.get("available_on") or []):
             caps.add(cname)
             caps.add(meta.get("class", "connector"))

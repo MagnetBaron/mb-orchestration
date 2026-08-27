@@ -293,6 +293,36 @@ def c_runledger():
         return ok, f"appended={len(lines)} lines, folded status={st.get('status')}"
 
 
+def c_primed_connector_inert():
+    """A bundled/primed MCP connector VALIDATES and is INERT: it carries a well-formed server
+    DEFINITION, yet the router grants it to NO seat (not live), while an active connector still
+    routes (existing live behaviour unchanged). Pure config + pure-function checks — nothing
+    here connects, launches, or probes."""
+    spec = importlib.util.spec_from_file_location("routing_smoke", HERE / "routing.py")
+    routing = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(routing)
+    conns = json.loads((ROOT / "config" / "connectors.json").read_text())
+    prov = json.loads((ROOT / "config" / "providers.json").read_text())["providers"]
+    mcp = conns.get("mcp_connectors", {})
+    primed = {n: m for n, m in mcp.items() if m.get("status") in ("primed", "ready")}
+    if not primed:
+        return False, "no primed/ready connector present to prove inertness"
+    # inert: no primed/ready connector is granted to any of its declared seats
+    leaked = [f"{n}->{pid}" for n, m in primed.items()
+              for pid in m.get("available_on", [])
+              if n in routing.capabilities_of(pid, prov.get(pid, {}), conns)]
+    # at least one primed entry carries a well-formed bundled server DEFINITION
+    has_server = any(isinstance(m.get("server"), dict) and m["server"].get("transport") in ("stdio", "http", "sse")
+                     for m in primed.values())
+    # active connectors STILL route (absent status = active; live behaviour unchanged)
+    gh = mcp.get("github", {})
+    active_routes = bool(gh.get("available_on")) and all(
+        "github" in routing.capabilities_of(pid, prov.get(pid, {}), conns) for pid in gh["available_on"])
+    ok = not leaked and has_server and active_routes
+    return ok, (f"primed={sorted(primed)}, inert(no-leak)={not leaked}, "
+                f"server-defn-ok={has_server}, active-still-routes={active_routes}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true")
@@ -315,6 +345,7 @@ def main(argv=None):
     check("detect-capability", c_detect_capability)
     check("generate-roles (idempotent + toml)", c_generate_roles)
     check("skills wiring (resolve + fail-closed negatives)", c_skills)
+    check("primed MCP connector validates + inert (nothing wired)", c_primed_connector_inert)
     check("record-429 (429 writes, timeout ignored)", c_record_429)
     check("usage-record (snapshot + learn-windows + prune)", c_usage_record)
     check("dashboard renders", c_dashboard)
