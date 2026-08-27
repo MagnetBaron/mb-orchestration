@@ -33,10 +33,23 @@ READ_ONLY_TOOLS = {
     "grok": frozenset({"Read", "Glob", "Grep", "WebSearch", "WebFetch"}),
     "codex": frozenset({"read_file", "list_dir", "search"}),
 }
-MCP_MUTATIONS = {
-    "gsc-indexing": frozenset({"request_indexing", "batch_request_indexing", "submit_sitemap", "request_url_removal"}),
-}
 MCP_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def mcp_mutation_map():
+    """Known MCP connectors → their mutating tools, sourced from connectors.json (single source).
+    A connector ABSENT from this map is UNVETTED: a read_only role may not declare it (fail-closed,
+    H1). A connector present with an empty set is explicitly known read-safe. Both the connector name
+    and its declared `alias` (e.g. dataforseo / dfs-mcp) are registered."""
+    c = mborch.load_config("connectors.json", required=False)
+    out = {}
+    for name, meta in (c.get("mcp_connectors") or {}).items():
+        muts = set(meta.get("mutating_tools", []))
+        out[name] = muts
+        alias = meta.get("alias")
+        if alias:
+            out[alias] = muts
+    return out
 WRITE_TOOLS = frozenset({
     "Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish",
     "write_file", "search_replace", "apply_patch",
@@ -94,6 +107,7 @@ def validate_roles(roles_data: dict, mapping: dict[str, str]) -> None:
     roles = roles_data.get("roles")
     if not isinstance(roles, dict) or not REQUIRED_ROLES.issubset(roles):
         raise ValueError("roles.json must contain the seed roles")
+    mut = mcp_mutation_map()
     for name, role in roles.items():
         if not name or not isinstance(role, dict):
             raise ValueError(f"{name}: invalid role")
@@ -142,10 +156,16 @@ def validate_roles(roles_data: dict, mapping: dict[str, str]) -> None:
                 raise ValueError(f"{name}: Grok mcpServers are unsupported until a host adapter emits them")
             mcp_denials = role.get("mcp_deny_tools", {}).get(host, {})
             for server in mcp:
-                required = MCP_MUTATIONS.get(server, frozenset())
                 denied_server = set(mcp_denials.get(server, []))
-                if role["read_only"] and required and not required.issubset(denied_server):
-                    raise ValueError(f"{name}: read_only MCP server {server} lacks mutation denials")
+                if role["read_only"]:
+                    if server not in mut:
+                        raise ValueError(
+                            f"{name}: read_only MCP connector {server!r} is UNVETTED — declare it in "
+                            "connectors.json mcp_connectors (with its mutating_tools) before a read_only "
+                            "role may use it (fail-closed, H1)")
+                    required = mut[server]
+                    if required and not required.issubset(denied_server):
+                        raise ValueError(f"{name}: read_only MCP server {server} lacks mutation denials")
         for host in set(role) & set(HOSTS):
             if host not in hosts:
                 raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")

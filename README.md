@@ -7,7 +7,7 @@ independent family backs up review. Who fills each role is **config, not prose**
 the system by editing `config/`, running `bin/doctor.py`, and getting the same routing with no policy
 edits.
 
-**Codex dispatches. Grok implements. GPT Terra runs Google-MCP volume. Sol/Opus/Fable judge. Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.**
+**Codex dispatches. Grok implements. GPT Terra runs Google-MCP volume. Opus 4.8 + Sol gate (Fable = optional architecture, out of the gating order per owner ruling). Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.**
 
 ## Layout
 

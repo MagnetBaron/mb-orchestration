@@ -11,7 +11,7 @@ Its value is **independence**, not capacity: Fable + Opus 4.8 are one family (An
 
 ## Two roles (both review-only)
 
-1. **Last resort.** All native review seats (Fable, Sol, Opus 4.8) are quota-confirmed spent **and** the brief is time-critical (owner said ship, prod incident, security fix). One advisory pass. Otherwise the correct move is to **park to the earliest reset** (`usage-status --earliest-reset`) — a rested native seat beats an open-weight fallback.
+1. **Last resort.** All native GATING seats (Opus 4.8, Sol — Fable is not a gate, owner ruling) are quota-confirmed spent **and** the brief is time-critical (owner said ship, prod incident, security fix). One advisory pass. Otherwise the correct move is to **park to the earliest reset** (`usage-status --earliest-reset`) — a rested native seat beats an open-weight fallback.
 2. **Cross-family second slot.** A safety-gate-5 item needs one pass from each of two families, but one native family is **quota-spent** so only one remains (e.g. post-downgrade Sol spent, or teamclaude spent). Review E fills the **second** family slot so the gate is satisfiable instead of parking. A family merely *down* (outage) is not spent — that parks, it does not open Review E.
 
 Role 2 fires more often than role 1 and is the real reason to wire this.
@@ -27,7 +27,7 @@ Only **positive quota evidence** opens Review E. Record the state in `usage-ledg
 | Signal | Class | Effect |
 |--------|-------|--------|
 | `usage-status` shows the seat spent / soft-capped (recorded **429** or ledger %) | **QUOTA** | counts toward exhaustion |
-| Fable absent by plan (downgrade) | **QUOTA** | Fable slot is spent |
+| Fable absent by plan (downgrade) | **N/A** | Fable is NOT a gating seat (owner ruling) — its absence never opens Review E; the gate seats are Opus 4.8 + Sol |
 | Probe failure, timeout, 5xx, DNS, auth-expired, "command not found" | **OUTAGE** | **park** — says nothing about quota |
 
 - A probe result can **park** work but can **never** route it to Review E (`EDGE-CASES.md` probe rule).

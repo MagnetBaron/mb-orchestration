@@ -66,18 +66,18 @@
       "notes": "Read-only Clarity heatmaps/replays via browser. Feeds Dispatch. Never a verdict."
     },
     "fable-5": {
-      "label": "Fable 5 (Review A / architecture)", "level": "frontier", "family": "anthropic", "kind": "cli",
-      "model": "claude-fable-5", "functions": ["review", "architecture"], "capabilities": ["review", "architecture"],
-      "prowess": { "review": 95, "architecture": 95 }, "billing": "included", "review_eligible": true,
+      "label": "Fable 5 (architecture only — OUT of the gating order)", "level": "frontier", "family": "anthropic", "kind": "cli",
+      "model": "claude-fable-5", "functions": ["architecture"], "capabilities": ["architecture"],
+      "prowess": { "architecture": 80, "review": 41 }, "billing": "included", "review_eligible": false,
       "backed_by": "claude-fable-capable-seats", "detect": { "method": "capability", "grant": "fable" },
-      "notes": "Highest review prowess WHILE a live Claude seat grants it (bin/detect-capability.py). Never the daily coder."
+      "notes": "Owner ruling 2026-08-25 (Orchestration Retro): REMOVED from review_order and NOT a gating reviewer — it measured WORST on nonsense/refusal detection (BullshitBench 0.41 detect / 0.37 refuse vs Opus 4.8 0.94 / 0.00), so gating with it gated on the weakest seat. Kept only for optional architecture/breadth passes while a live seat grants Fable (bin/detect-capability.py); owner may drop it entirely. Never a sole gate; never the daily coder."
     },
     "opus-4.8": {
-      "label": "Opus 4.8 (Review C / Claude judgment; dispatch-capable)", "level": "frontier", "family": "anthropic", "kind": "cli",
+      "label": "Opus 4.8 (Review C / first gating reviewer / Claude judgment; dispatch-capable)", "level": "frontier", "family": "anthropic", "kind": "cli",
       "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
-      "prowess": { "review": 88, "mcp_judgment": 86, "dispatch": 82 }, "billing": "included", "review_eligible": true,
+      "prowess": { "review": 94, "mcp_judgment": 86, "dispatch": 82 }, "billing": "included", "review_eligible": true,
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
-      "notes": "Pinned Claude reliability/judgment pass across live Claude seats (teamclaude). CAN dispatch and CAN code — but in the reference setup entrypoints.json makes Codex the dispatcher and Grok the implementer (Opus-as-daily-coder is a preference ban that yields only when no other seat exists, e.g. a solo Claude user). NEVER the default implementer where a worker seat is live. Pin 4.8; opus-5 forbidden."
+      "notes": "FIRST in the gating order and the Anthropic-family gate seat (owner ruling 2026-08-25; BullshitBench 0.94 detect). Pinned Claude reliability/judgment pass across live Claude seats (teamclaude). CAN dispatch and CAN code — but in the reference setup entrypoints.json makes Codex the dispatcher and Grok the implementer (Opus-as-daily-coder is a preference ban that yields only when no other seat exists, e.g. a solo Claude user). NEVER the default implementer where a worker seat is live. Pin 4.8; opus-5 forbidden."
     },
     "review-e": {
       "label": "Review E (independent-family review slot)", "level": "frontier", "family": "open-weight", "kind": "api",
@@ -112,8 +112,8 @@
   "forbidden_models": {
     "opus-5": { "reason": "Owner policy: Opus 5 forbidden as a default or reviewer. Pin Opus 4.8. A LATER model (e.g. opus-5.1) is NOT auto-forbidden — the admin decides per model. doctor fails if any provider selects a listed forbidden model.", "aliases": ["claude-opus-5", "opus5"] }
   },
-  "review_order": ["fable-5", "codex-sol", "opus-4.8", "review-e"],
-  "review_order_note": "Frontier fallback order. It is consistent with prowess (fable 95 ≥ opus 88; sol placed before opus so a cross-family pair is reachable early). A stronger new frontier model slots ahead by prowess — the admin updates this list when adding one. resolve-route computes the LIVE chain from this order + usage-status tiers + Fable grants, preferring tier=available over tier=reserve so a self-imposed cap never strands a seat.",
+  "review_order": ["opus-4.8", "codex-sol", "review-e"],
+  "review_order_note": "GATING fallback order (owner ruling 2026-08-25, Orchestration Retro): Opus 4.8 first (Anthropic gate), then Codex Sol (OpenAI), then Review E (independent open-weight). Fable is REMOVED from the gating order — it measured worst on nonsense detection (BullshitBench), so it never gates; it stays a registered provider for optional architecture passes only. A stronger new frontier model slots ahead by prowess — the admin updates this list when adding one. resolve-route computes the LIVE chain from this order + usage-status tiers, preferring tier=available over tier=reserve so a self-imposed cap never strands a seat. Cross-family = one pass from two DIFFERENT families (Anthropic gate = Opus 4.8; OpenAI = Sol; open-weight = Review E).",
   "model_slot_in": {
     "_note": "CLEAN SLOT-IN for a new/updated model (Opus 5.1, Fable 5.1, a successor to Fable/Sol, a new implementer). It is ONE edit here — no code or prose changes:",
     "steps": [

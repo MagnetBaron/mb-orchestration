@@ -17,7 +17,7 @@ Unspent quota at reset is waste. Buckets are asymmetric (current providers in `c
 |-------|------------------|-----|
 | **Abundant volume** | terra | Grok Build/Bot — code, listings, non-Google research, standing Bot work |
 | **MCP volume** | terra | GPT Terra — Google MCP fetches to `output_path` |
-| **Scarce judgment** | frontier / sole | Claude (Fable while granted, else Opus 4.8); Codex Sol — verify, land-gate, hard review |
+| **Scarce judgment** | frontier / sole | Opus 4.8 (Anthropic gate) + Codex Sol — verify, land-gate, hard review; Fable = optional architecture only, out of gating |
 | **Dispatcher** | luna | Codex Terra/Luna — queue, assign, status — never implement |
 | **Last $** | terra | Cursor Other Models $400 — only after others are spent |
 | **Metered fallback** | frontier | Review E (independent family, unwired) — last-resort / cross-family second family. No reset — the drain law never applies. |
@@ -52,7 +52,7 @@ OWNER — spend, credentials, destructive ops, authority expansion
        ├─ IMPLEMENT (Grok Build) — code/listings in worktrees; never lands alone on high risk
        ├─ MCP VOLUME (GPT Terra) — Google connector fetches → output_path snapshots
        ├─ REVIEW D (Grok Bot Website Visual QA) — Slack + preview URL; app quit on Mini
-       ├─ REVIEW A–C (Fable → Sol → Opus 4.8) — git diff or MCP judgment; ship | fix-list | blocked
+       ├─ REVIEW (Opus 4.8 → Sol → Review E) — git diff or MCP judgment; ship | fix-list | blocked; Fable = optional architecture only
        └─ REVIEW E (independent family, if wired) — last-resort / cross-family 2nd family; off-box
 ```
 

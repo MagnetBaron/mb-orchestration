@@ -47,9 +47,9 @@ levels (frontier · sole · terra · luna) are the routing tiers; providers at a
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 4.8 | Row-dump fetch loops |
 | **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
 | **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
-| **Review A** | frontier | Fable 5 *(while a live Claude seat grants it — `bin/detect-capability.py`)* | Daily coding |
-| **Review B** | sole | Codex Sol (under soft cap) | Cursor Sol (different meter) |
-| **Review C** | frontier | Opus 4.8 (routed across Claude seats by teamclaude) | Default implementer |
+| **Gate 1 (Anthropic)** | frontier | Opus 4.8 (routed across Claude seats by teamclaude) | Default implementer |
+| **Gate 2 (OpenAI)** | sole | Codex Sol (under reserve line) | Cursor Sol (different meter) |
+| **Architecture only** | frontier | Fable 5 *(optional; OUT of the gating order — owner ruling)* | Any gating verdict; daily coding |
 | **Review E** | frontier | independent-family slot — Fireworks today, local open-weight later *(unwired)* | Implement, dispatch, MCP, sole gate on a risk class, any diff with secrets/PII |
 | **IDE** | terra | Cursor Grok / Composer | Other Models until last |
 | **Last $** | terra | Cursor Other Models $400 | Default anything |
@@ -105,10 +105,12 @@ the gates — from `config/` + recorded usage signals, deterministically. Levels
 Raise if: auth/money/PII/prod/irreversible · multi-service · Grok conflict/flaky tests. `user said ship` = land, not spend a frontier. **none** / **self-check** still keep the landing lock, tip-bound green test, Review D pixels, and owner publish/send gates.
 
 **Order** (single-frontier = first live seat; cross-family = one pass from **each of two families**):
-**Fable → Codex Sol → Opus 4.8 → Review E (if wired) → stop** (`config/providers.json` `review_order`).
-Fable + Opus 4.8 are **one** family (Anthropic); Sol is OpenAI; Review E is independent open-weight.
-Cross-family needs two *different* families — never two Anthropic passes. One frontier pass per
-change-set **except** the cross-family pair.
+**Opus 4.8 → Codex Sol → Review E (if wired) → stop** (`config/providers.json` `review_order`).
+Opus 4.8 is the Anthropic gate; Sol is OpenAI; Review E is independent open-weight. **Fable is NOT in the
+gating order** (owner ruling 2026-08-25 — it measured worst on nonsense detection; it stays only for
+optional architecture passes, never a gate). Fable + Opus 4.8 would be one family anyway; cross-family
+needs two *different* families — never two Anthropic passes. One frontier pass per change-set **except**
+the cross-family pair.
 
 **Exhaustion opens the next seat only on quota evidence** — `usage-status` shows the seat spent or
 soft-capped (a recorded 429 or ledger %), never a probe. Probe failure, timeout, or auth error →
@@ -137,7 +139,7 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 
 1 worktree · 1 branch · named file scope. Style-match; no drive-bys. Return: summary, files, tests run, risks. Never same change-set as Bot. Do not invent GSC/keyword numbers; consume `must_read` snapshots from MCP seats. Resume existing branch on retry; no second worktree for the same objective.
 
-## Review (Fable / Codex Sol / Opus 4.8 / Review E / Website Visual QA)
+## Review (Opus 4.8 / Codex Sol / Review E / Website Visual QA; Fable = architecture only)
 
 Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time; Review E is an off-box HTTP call, never a Mini process. Fix loops return to the issuing seat; a seat spent mid-loop → park the loop.
 

@@ -46,7 +46,7 @@ class RegistrySchemaTests(unittest.TestCase):
         self.assertEqual(tuple(reg["providers"]["capability_levels"]), gen.LEVELS)
         self.assertTrue(gen.REQUIRED_ROLES.issubset(reg["roles"]))
         self.assertEqual(reg["providers"]["review_order"],
-                         ["fable-5", "codex-sol", "opus-4.8", "review-e"])
+                         ["opus-4.8", "codex-sol", "review-e"])
 
     def test_rejects_roles_schema_version_2(self):
         data = live_roles()
@@ -145,6 +145,13 @@ class ReadOnlyRestrictionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "lacks mutation denials"):
             dump_and_load(roles=data)
 
+    def test_read_only_rejects_unvetted_mcp_connector(self):
+        # H1 fail-closed: a connector not declared in connectors.json cannot be used by a read_only role.
+        data = live_roles()
+        data["roles"]["seo-research"]["claude"]["mcpServers"] = ["gsc-indexing", "dfs-mcp", "totally-unknown-xyz"]
+        with self.assertRaisesRegex(ValueError, "UNVETTED"):
+            dump_and_load(roles=data)
+
     def test_rejects_model_pin(self):
         data = live_roles()
         data["roles"]["seo-research"]["claude"]["model"] = "fable-5"
@@ -177,7 +184,7 @@ class ArtifactTests(unittest.TestCase):
         toml_path = next(p for p in outputs if p.name == "codex.toml")
         parsed = tomllib.loads(outputs[toml_path])
         self.assertEqual(set(parsed["capability_levels"]), set(gen.LEVELS))
-        self.assertEqual(parsed["review"]["order"], ["fable-5", "codex-sol", "opus-4.8", "review-e"])
+        self.assertEqual(parsed["review"]["order"], ["opus-4.8", "codex-sol", "review-e"])
         self.assertTrue(parsed["subagents"]["roles"]["review-d"]["read_only"])
         self.assertFalse(parsed["subagents"]["roles"]["grok-build"]["read_only"])
         self.assertEqual(parsed["subagents"]["roles"]["review-d"]["level"], "terra")

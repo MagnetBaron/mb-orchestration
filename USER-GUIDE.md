@@ -21,8 +21,9 @@ OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok: Build + the two Grok Bots), ope
 | Task | Best family | Why |
 |------|-------------|-----|
 | **Bulk implementation** (code, listings, catalog volume) | **xAI — Grok Build** | Abundant volume; worktree isolation; cheap per token |
-| **Hard review / architecture / land-gate** | **Anthropic — Fable 5** (then Opus 4.8) | Strongest judgment; the reliability pass before you ship |
+| **Land-gate / hard review (first gate)** | **Anthropic — Opus 4.8** | Best measured nonsense/refusal detection (BullshitBench 0.94); the reliability pass before you ship |
 | **Second review opinion (diff)** | **OpenAI — Codex Sol** | Independent family from Anthropic — the pair a cross-family gate needs |
+| **Architecture / breadth (optional)** | **Anthropic — Fable 5** | Out of the gating order (measured weaker at detection); optional design pass only |
 | **Google-MCP volume** (Search Console, Drive, DataForSEO) | **OpenAI — GPT Terra** | Has the Google connectors; cheap tool loops |
 | **Interpreting MCP/analytics numbers** | **Anthropic Opus / OpenAI Sol** | Scarce judgment on already-fetched data (never bulk-fetch here) |
 | **Storefront pixel QA** | **xAI — Grok Bot (Visual QA)** | Credential-free preview walks; app-only cloud teammate |
@@ -37,30 +38,33 @@ So you need at least a second family in the building (OpenAI via Codex, or open-
 
 ---
 
-## 2. Fable — why it matters, and why it matters *more* without Codex
+## 2. Fable — a premium grant that is NOT your gate
 
-**Fable 5 is a premium grant.** It is included on higher Claude tiers (Max, Team Premium) and is
-**not** guaranteed on Pro or Team Standard — those default to Sonnet. Confirm what your accounts
-actually grant with `bin/detect-capability.py`; the system treats Fable as available only when a live
-Claude seat truly carries it.
+**Fable 5 is a premium grant** (included on higher Claude tiers — Max, Team Premium — not guaranteed
+on Pro/Team-Standard, which default to Sonnet). Confirm what your accounts grant with
+`bin/detect-capability.py`.
 
-Fable is the strongest reviewer. It matters **more** when you don't have Codex, because:
+**But the owner ruled Fable OUT of the gating order** (2026-08-25 retrospective): on a nonsense/refusal
+benchmark it measured *worst* of the frontier seats (BullshitBench ~0.41 detection vs Opus 4.8 ~0.94),
+so gating with it gated on the weakest seat. Today **Opus 4.8 is the first (Anthropic) gate**; Fable is
+kept only for optional architecture/breadth passes, and you may drop it entirely. Do not pay for Fable
+expecting it to be your reviewer.
 
-- Without Codex you have **no OpenAI review family** (no Sol). Your only high-end review family is
-  Anthropic (Fable + Opus). Fable's extra quality carries more weight when it's your best pass.
-- A **cross-family** gate then can't use OpenAI. Your independent second family must be **open-weight
-  (Review E / Fireworks or a local model)**. Budget for wiring Review E, or accept that money/auth/PII
-  work parks until you add a second family.
+**What actually matters without Codex** is not Fable — it's a *second family*. Without Codex you have no
+OpenAI gate (no Sol); your only gating family is Anthropic (Opus). A cross-family gate then needs an
+**independent open-weight family — Review E (Fireworks or a local model)**. So:
 
-**Rule of thumb:** *Have Codex?* Fable is a luxury upgrade over Opus for review. *No Codex?* Fable +
-a wired Review E is close to mandatory for any risk-class work.
+- *Have Codex?* You already have two gating families (Anthropic Opus + OpenAI Sol). Fable is optional.
+- *No Codex?* Wire **Review E** for the second family, or money/auth/PII work parks. Fable does **not**
+  fill that gap — it is the same family as Opus.
 
 ---
 
-## 3. Keep Fable (and your model) from silently downgrading
+## 3. Keep your model (Opus 4.8) from silently downgrading
 
-Claude will, under load or by plan change, quietly serve a smaller model — which can silently remove
-Fable or drop Opus to Sonnet mid-task. Verified levers (from `code.claude.com/docs/en/model-config`):
+Claude will, under load or by plan change, quietly serve a smaller model — dropping your **Opus 4.8
+gate to Sonnet** mid-task (the costly one), or removing the optional Fable pass. Verified levers (from
+`code.claude.com/docs/en/model-config`):
 
 - **`availableModels` allowlist — the practical control.** List the models you actually want
   (`opus-4.8`, and `fable-5` if granted). Leave `opus-5` OUT (it's forbidden here) and, if you want a
@@ -97,7 +101,7 @@ python3 bin/subscription-calculator.py \
 | If last month you… | It recommends | Because |
 |--------------------|---------------|---------|
 | coded/listed ≥1 h/day, or did storefront/analytics | SuperGrok Heavy | abundant volume + both Grok Bots ride one plan |
-| needed any frontier review | 1× Claude Max | the Fable + Opus anchor |
+| needed any frontier review | 1× Claude Max | the Opus 4.8 gate (Fable optional, architecture only) |
 | did >10 reviews/week | +1–3 Claude Team-premium seats | teamclaude rotates review load so no seat caps mid-week |
 | coded heavily but reviewed lightly | +2 Claude Pro | cheap Opus overflow + rotation headroom (no Fable) |
 | did Google-MCP bulk, or any cross-family work | Codex $200 | GPT Terra for MCP volume; Sol supplies the OpenAI review family |

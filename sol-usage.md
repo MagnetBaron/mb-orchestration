@@ -18,7 +18,7 @@ Do not treat Cursor Sol usage as “free Codex Sol,” and do not treat Codex So
 | Model | Job |
 |-------|-----|
 | Luna or Terra | Dispatch only (queue, assign, status) |
-| Sol | Git-diff review when Fable is empty or risk gate says review |
+| Sol | Git-diff review — the OpenAI-family gate (second in the order after Opus 4.8), and the cross-family second pass |
 | Grok Build | All implementation |
 | Opus 4.8 via teamclaude | Extra frontier pass if needed; not a Sol substitute for every ticket |
 
@@ -45,7 +45,7 @@ The $200 plan has enough Sol for full-quality reviews. When Sol is assigned:
 ## Dispatch check (Codex Luna/Terra before starting Sol)
 
 1. Review brief with `attack_angle` and a git diff path?
-2. Fable unavailable (or owner said Sol)?
+2. Opus 4.8 already used on this change-set, or cross-family needs the OpenAI family (or owner said Sol)?
 3. Risk gate or owner requires review?
 4. Weekly Sol under the soft cap per `usage-status`?
 5. This change-set already had a Sol pass? If yes → stop or Opus, not a duplicate Sol.

@@ -19,7 +19,7 @@ If a connector is missing on the assigned seat (per `available_on`), park and re
 | Job | Primary seat | Why | Not |
 |-----|--------------|-----|-----|
 | **Coding / repo implement** | **Grok Build** | Abundant volume; worktrees; doctrine implementer | Opus or Sol as daily coder |
-| **Code review** | Fable → Codex Sol → Opus 4.8 | Judgment on git diff | MCP not required |
+| **Code review** | Opus 4.8 → Codex Sol → Review E | Judgment on git diff (Fable out of gating) | MCP not required |
 | **General Google MCP work** (one-off Drive pull, sitemap check, small GSC query) | **Codex GPT Terra** first | Has Google MCP; cheaper than Sol/Opus for tool loops | Luna (dispatch only); Grok without connector |
 | **Bulk analytics** (GSC rows, keyword batches, trends sweeps, multi-page Drive extract) | **Codex GPT Terra** (or Luna only if owner promotes it off dispatch for that brief) | Volume MCP loops; write CSV/summary to `output_path` | Opus for row dumps; Sol unless analysis judgment is the product |
 | **Analytics judgment** (what the numbers mean, priority, strategy) | **Codex Sol** under 90% (`sol-usage.md`), else **Opus 4.8** | Scarce judgment on already-fetched data | Re-fetching bulk on Sol/Opus |
