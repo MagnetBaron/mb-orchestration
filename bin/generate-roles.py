@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-"""Validate and generate host-native role definitions from the capability-level registry."""
+"""Validate and generate host-native role definitions from the capability-level registry.
+
+Reads TWO config files:
+  * config/providers.json — capability levels, families, provider→level bindings, review_order
+                            (the single source; roles must resolve onto these providers).
+  * config/roles.json     — role definitions (a loading mechanism inside existing seats).
+
+Emits Claude and Grok agent markdown plus an owner-applied Codex TOML fragment.
+Running twice with identical inputs produces byte-identical output. `--check`
+validates without writing. It never edits a protected host config.
+"""
 from __future__ import annotations
 import argparse, json, os, re, shutil, tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent
+CONFIG = HERE.parent / "config"
 DEFAULTS = {
+    "roles": CONFIG / "roles.json",
+    "providers": CONFIG / "providers.json",
     "claude": Path.home() / ".claude/agents",
     "grok": Path.home() / ".grok/agents",
-    "codex": ROOT / "generated/codex-config.toml",
+    "codex": HERE.parent / "generated/codex-config.toml",
 }
 LEVELS = ("frontier", "sole", "terra", "luna")
 HOSTS = ("claude", "grok", "codex")
@@ -33,13 +46,37 @@ PROTECTED_CONFIGS = (
 )
 
 
-def provider_levels(levels: dict) -> dict[str, str]:
-    mapping = {}
-    for level in LEVELS:
-        for provider in levels[level]["providers"]:
-            if provider in mapping:
-                raise ValueError(f"{provider}: provider listed at more than one capability level")
-            mapping[provider] = level
+def provider_levels(providers_data: dict) -> dict[str, str]:
+    """Build provider→level from providers.json, validating the level blocks."""
+    levels = providers_data.get("capability_levels")
+    if not isinstance(levels, dict) or tuple(levels) != LEVELS:
+        raise ValueError("providers.json capability_levels must declare frontier, sole, terra, luna in that order")
+    provs = providers_data.get("providers")
+    if not isinstance(provs, dict) or not provs:
+        raise ValueError("providers.json must define a non-empty providers map")
+    mapping: dict[str, str] = {}
+    for pid, p in provs.items():
+        if not isinstance(p, dict):
+            raise ValueError(f"{pid}: provider entry must be an object")
+        if p.get("family") in (None, "") or not isinstance(p.get("functions"), list) or not p["functions"]:
+            raise ValueError(f"{pid}: provider needs a family and a non-empty functions list")
+        lvl = p.get("level")
+        if lvl not in LEVELS:
+            raise ValueError(f"{pid}: level must be one of {', '.join(LEVELS)}")
+        mapping[pid] = lvl
+    order = providers_data.get("review_order")
+    if not isinstance(order, list) or not order or len(order) != len(set(order)):
+        raise ValueError("providers.json review_order must be a unique non-empty list")
+    if any(pid not in mapping for pid in order):
+        raise ValueError("providers.json review_order entries must be defined providers")
+    # Forbidden models must not be selected as any provider's model.
+    forbidden = set()
+    for fid, meta in (providers_data.get("forbidden_models") or {}).items():
+        forbidden.add(fid)
+        forbidden.update(meta.get("aliases", []))
+    for pid, p in provs.items():
+        if p.get("model") in forbidden:
+            raise ValueError(f"{pid}: selects forbidden model {p.get('model')!r}")
     return mapping
 
 
@@ -49,40 +86,12 @@ def host_config(role: dict, host: str) -> dict:
     return {"tools": role.get("tools", {}).get(host)}
 
 
-def validate(data: dict) -> None:
-    if data.get("schema_version") != 2:
-        raise ValueError("roles.json must use schema_version 2")
-    levels = data.get("capability_levels")
-    if not isinstance(levels, dict) or tuple(levels) != LEVELS:
-        raise ValueError("capability_levels must declare frontier, sole, terra, and luna in that order")
-    for level in LEVELS:
-        spec = levels[level]
-        providers = spec.get("providers") if isinstance(spec, dict) else None
-        if not isinstance(spec, dict) or not spec.get("job"):
-            raise ValueError(f"{level}: missing job")
-        if not isinstance(providers, list) or not providers or len(providers) != len(set(providers)):
-            raise ValueError(f"{level}: providers must be a non-empty unique list")
-        if any(not isinstance(p, str) or not p for p in providers):
-            raise ValueError(f"{level}: providers must be non-empty names, not model-family requirements")
-    mapping = provider_levels(levels)
-
-    aliases = data.get("compatibility_aliases")
-    if not isinstance(aliases, dict):
-        raise ValueError("compatibility_aliases is required")
-    seats = aliases.get("seats")
-    review_order = aliases.get("review_order")
-    if not isinstance(seats, dict) or not seats:
-        raise ValueError("compatibility_aliases.seats must map current seat names to providers")
-    if any(v not in mapping for v in seats.values()):
-        raise ValueError("compatibility_aliases.seats values must be providers at a capability level")
-    if not isinstance(review_order, list) or not review_order or len(review_order) != len(set(review_order)):
-        raise ValueError("compatibility_aliases.review_order must be a unique provider list")
-    if any(name not in mapping for name in review_order):
-        raise ValueError("review_order entries must be replaceable providers, not model families")
-
-    roles = data.get("roles")
+def validate_roles(roles_data: dict, mapping: dict[str, str]) -> None:
+    if roles_data.get("schema_version") != 3:
+        raise ValueError("roles.json must use schema_version 3")
+    roles = roles_data.get("roles")
     if not isinstance(roles, dict) or not REQUIRED_ROLES.issubset(roles):
-        raise ValueError("roles.json must contain the Phase 1 seed roles")
+        raise ValueError("roles.json must contain the seed roles")
     for name, role in roles.items():
         if not name or not isinstance(role, dict):
             raise ValueError(f"{name}: invalid role")
@@ -94,7 +103,7 @@ def validate(data: dict) -> None:
         if role.get("level") not in LEVELS:
             raise ValueError(f"{name}: level must be one of {', '.join(LEVELS)}")
         if role.get("seat") not in mapping:
-            raise ValueError(f"{name}: seat must be a provider at a capability level")
+            raise ValueError(f"{name}: seat must be a provider defined in providers.json")
         if mapping[role["seat"]] != role["level"]:
             raise ValueError(f"{name}: seat {role['seat']} is a {mapping[role['seat']]} provider, not {role['level']}")
         if not isinstance(role.get("read_only"), bool):
@@ -140,10 +149,12 @@ def validate(data: dict) -> None:
                 raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")
 
 
-def load(path: Path) -> dict:
-    data = json.loads(path.read_text())
-    validate(data)
-    return data
+def load(roles_path: Path, providers_path: Path) -> dict:
+    providers_data = json.loads(Path(providers_path).read_text())
+    roles_data = json.loads(Path(roles_path).read_text())
+    mapping = provider_levels(providers_data)
+    validate_roles(roles_data, mapping)
+    return {"providers": providers_data, "roles": roles_data["roles"], "mapping": mapping}
 
 
 def restriction_lines(role: dict) -> str:
@@ -197,32 +208,29 @@ def toml_list(values) -> str:
     return "[" + ", ".join(toml_quote(x) for x in values) + "]"
 
 
-def codex(data: dict, roles: dict) -> str:
+def codex(reg: dict, roles: dict) -> str:
+    providers_data = reg["providers"]
+    mapping = reg["mapping"]
     out = [
         "# Generated role registry fragment. Owner applies this to ~/.codex/config.toml.",
         "# No new seats, credentials, or live MCP connections.",
-        "# Capability levels are durable; model and seat names are replaceable providers.",
-        "# Existing seats and review order are compatibility aliases only.",
+        "# Capability levels are durable; model and seat names are replaceable providers (config/providers.json).",
         "",
     ]
+    providers_by_level = {lvl: [pid for pid, l in mapping.items() if l == lvl] for lvl in LEVELS}
     for level in LEVELS:
-        spec = data["capability_levels"][level]
+        spec = providers_data["capability_levels"][level]
         out += [
             f"[capability_levels.{level}]",
             f"job = {toml_quote(spec['job'])}",
-            f"providers = {toml_list(spec['providers'])}",
+            f"providers = {toml_list(providers_by_level[level])}",
             "",
         ]
-    aliases = data["compatibility_aliases"]
     out += [
-        "[compatibility_aliases]",
-        f"review_order = {toml_list(aliases['review_order'])}",
+        "[review]",
+        f"order = {toml_list(providers_data['review_order'])}",
         "",
-        "[compatibility_aliases.seats]",
     ]
-    for seat, provider in aliases["seats"].items():
-        out.append(f"{toml_quote(seat)} = {toml_quote(provider)}")
-    out.append("")
     for name, role in roles.items():
         tools = host_config(role, "codex")["tools"]
         out += [
@@ -247,9 +255,9 @@ def codex(data: dict, roles: dict) -> str:
     return "\n".join(out)
 
 
-def artifacts(data: dict, claude_dir: Path, grok_dir: Path, codex_output: Path) -> dict[Path, str]:
+def artifacts(reg: dict, claude_dir: Path, grok_dir: Path, codex_output: Path) -> dict[Path, str]:
     outputs = {}
-    roles = data["roles"]
+    roles = reg["roles"]
     for name, role in roles.items():
         hosts = role.get("hosts", list(HOSTS))
         if "claude" in hosts:
@@ -260,7 +268,7 @@ def artifacts(data: dict, claude_dir: Path, grok_dir: Path, codex_output: Path) 
         name: role for name, role in roles.items()
         if "codex" in role.get("hosts", list(HOSTS))
     }
-    outputs[codex_output] = codex(data, codex_roles)
+    outputs[codex_output] = codex(reg, codex_roles)
     return outputs
 
 
@@ -277,18 +285,19 @@ def write_atomic(path: Path, text: str) -> None:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", type=Path, default=ROOT)
+    ap.add_argument("--roles", type=Path, default=DEFAULTS["roles"])
+    ap.add_argument("--providers", type=Path, default=DEFAULTS["providers"])
     ap.add_argument("--claude-dir", type=Path, default=DEFAULTS["claude"])
     ap.add_argument("--grok-dir", type=Path, default=DEFAULTS["grok"])
     ap.add_argument("--codex-output", type=Path, default=DEFAULTS["codex"])
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
-    data = load(args.root / "roles.json")
-    outputs = artifacts(data, args.claude_dir, args.grok_dir, args.codex_output)
+    reg = load(args.roles, args.providers)
+    outputs = artifacts(reg, args.claude_dir, args.grok_dir, args.codex_output)
     if not args.check:
         for path, text in outputs.items():
             write_atomic(path, text)
-    print(f"validated {len(data['roles'])} roles; {'checked' if args.check else f'wrote {len(outputs)} artifacts'}")
+    print(f"validated {len(reg['roles'])} roles; {'checked' if args.check else f'wrote {len(outputs)} artifacts'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,70 @@
+{
+  "_note": "SUBSCRIPTION INVENTORY — the ONE file a new user edits to port this system. It describes what you pay for and which providers each plan backs. Nothing here is invariant policy; it is your account reality. Change a plan → edit only this file (and usage-windows.json anchors). `grants.fable` is authoritative for Fable availability and is re-checked by bin/detect-fable.py so a silent downgrade is caught. Seats are real accounts; teamclaude rotates across the Claude seats. To hand this to a different user: replace these entries with theirs, run `bin/doctor.py`, and the whole system re-routes with no prose edits.",
+  "schema_version": 1,
+  "updated": "2026-08-27",
+  "owner": "constantine@themagnetbaron.com",
+  "subscriptions": {
+    "codex-200": {
+      "vendor": "OpenAI", "product": "ChatGPT Pro / Codex $200 plan", "monthly_usd": 200,
+      "backs_providers": ["codex-luna", "codex-terra", "codex-sol"],
+      "grants": { "fable": false },
+      "meter": "codex-sol (weekly + 5h), see usage-windows.json",
+      "notes": "One Codex plan backs dispatch (Luna), MCP volume (Terra), and the Sol review seat. These share the plan meter."
+    },
+    "grok-heavy": {
+      "vendor": "xAI", "product": "SuperGrok Heavy", "monthly_usd": null,
+      "backs_providers": ["grok-build", "grok-bot-review-d", "grok-bot-heat-map"],
+      "grants": {},
+      "meter": "grok-heavy (weekly), see usage-windows.json",
+      "notes": "Abundant volume: Grok Build CLI (implement) + two Grok Bot app identities (Review D, Heat Map). Set the weekly anchor in usage-windows.json when known."
+    },
+    "cursor-ultra": {
+      "vendor": "Cursor", "product": "Cursor Ultra", "monthly_usd": null,
+      "backs_providers": ["cursor-grok", "cursor-other-400"],
+      "grants": {},
+      "pools": { "other_models_usd_per_month": 400 },
+      "meter": "cursor-models + cursor-other-400 (monthly), see usage-windows.json",
+      "notes": "First-party Cursor Models pool (drain first for IDE work) + Other Models $400/mo (Last $). Cursor Sol is NOT Codex Sol; different meter."
+    },
+    "claude-max-200": {
+      "vendor": "Anthropic", "product": "Claude Max $200", "monthly_usd": 200,
+      "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-max",
+      "tier": "max", "grants": { "fable": true, "opus": true },
+      "meter": "claude-max (rolling 5h), see usage-windows.json",
+      "notes": "Highest-capacity Claude seat. Carries Fable + Opus 4.8. Prefer this seat for Fable-required frontier review."
+    },
+    "claude-team-125-a": {
+      "vendor": "Anthropic", "product": "Claude Team (premium seat) $125", "monthly_usd": 125,
+      "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-a",
+      "tier": "team", "grants": { "fable": true, "opus": true },
+      "meter": "claude-team-a (rolling 5h), see usage-windows.json",
+      "notes": "Team premium seat with Fable. Confirm the Fable grant with bin/detect-fable.py — Team STANDARD does not include Fable."
+    },
+    "claude-team-125-b": {
+      "vendor": "Anthropic", "product": "Claude Team (premium seat) $125", "monthly_usd": 125,
+      "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-b",
+      "tier": "team", "grants": { "fable": true, "opus": true },
+      "meter": "claude-team-b (rolling 5h), see usage-windows.json",
+      "notes": "Second Team premium seat with Fable."
+    },
+    "claude-pro-25-a": {
+      "vendor": "Anthropic", "product": "Claude Pro $25", "monthly_usd": 25,
+      "backs_providers": ["opus-4.8"], "seat_id": "claude-pro-a",
+      "tier": "pro", "grants": { "fable": false, "opus": true },
+      "meter": "claude-pro-a (rolling 5h), see usage-windows.json",
+      "notes": "Pro seat — extends Opus 4.8 capacity; NO Fable. Used to preserve the higher seats for Fable-required work."
+    },
+    "claude-pro-25-b": {
+      "vendor": "Anthropic", "product": "Claude Pro $25", "monthly_usd": 25,
+      "backs_providers": ["opus-4.8"], "seat_id": "claude-pro-b",
+      "tier": "pro", "grants": { "fable": false, "opus": true },
+      "meter": "claude-pro-b (rolling 5h), see usage-windows.json",
+      "notes": "Second Pro seat — Opus 4.8 capacity only."
+    }
+  },
+  "derived_note": "Fable-capable Claude seats: any subscription with grants.fable == true (currently Max + 2 Team = 3 seats). Opus-capable seats: grants.opus == true (all 5). resolve-route.py treats Fable as available only if at least one Fable-capable seat is live per usage-status AND detect-fable has not recorded a downgrade. This is why the review order can keep Fable first without going stale on a plan change.",
+  "portability_examples": {
+    "no-codex-user": "A user without Codex sets entrypoints.json dispatcher.provider to a Claude seat (e.g. opus-4.8) and marks that host can_dispatch:true; Fable becomes more important (USER-GUIDE.md §Fable). Remove the codex-200 entry; doctor.py will confirm no orphaned providers.",
+    "solo-pro-user": "A single Claude Pro user keeps only claude-pro-25-a (rename freely), grants.fable:false; the review order collapses to opus-4.8 → review-e (if wired) → stop; Grok/Cursor entries removed."
+  }
+}

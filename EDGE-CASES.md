@@ -20,8 +20,9 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 | Grok Build / Heavy outage | Probe once. If still down: park volume. Do **not** move legwork to Sol, Opus, or Cursor $400. |
 | GPT Terra MCP auth expired / connector missing | Park MCP brief. Report `blocked: Google MCP unavailable on Terra`. Do not invent GSC/keyword numbers. Do not burn Sol/Opus on fetches. |
 | Codex Sol over soft cap (`usage-status`, not a hardcoded 90) | Code review → Opus 4.8, then Review E (if wired), else park to earliest reset. Volume still Grok. |
-| Fable missing (downgrade) | Review order starts at **Codex Sol**. Then Opus 4.8. Then **Review E (if wired)**, else park after 4.8. |
-| Opus / teamclaude exhausted | Sol if under its soft cap (`usage-status`) and not already used on this change-set. Else park review — or, **if Review E is wired**, engage it only when the brief is time-critical and `usage-status` shows all native seats spent (`fireworks-usage.md`); its `ship` on a risk class is advisory, owner lands. Unwired → park after 4.8. |
+| Fable missing (downgrade) | `bin/detect-fable.py` records `fable-downgrade:<seat>`; `resolve-route` drops it. When NO Fable-capable seat is live, review order starts at **Codex Sol**, then Opus 4.8 (on any live Claude seat), then **Review E (if wired)**, else park after 4.8. |
+| One Claude seat capped | teamclaude rotates to another of the five seats (`usage-status` per seat). Only when ALL Claude seats are spent is the Anthropic pipe down — check per-seat before calling Fable+Opus dead. |
+| Opus / all Claude seats exhausted | Sol if under its soft cap (`usage-status`) and not already used on this change-set. Else park review — or, **if Review E is wired**, engage it only when the brief is time-critical and `usage-status` shows all native seats spent (`fireworks-usage.md`); its `ship` on a risk class is advisory, owner lands. Unwired → park after 4.8. |
 | All native review seats quota-spent (`usage-status`, not probes) | Time-critical brief → one advisory Review E pass **if wired**; else park to the earliest reset (`usage-status --earliest-reset`) — a rested native seat beats the fallback. |
 | Cross-family item, one native family quota-spent | The remaining native family gives one pass; **Review E (if wired)** gives the independent second family. Review E unwired → one pass, then park the gate. |
 | All three reviewers erroring at once | Near-certain **local** fault (Mini network, keychain, token). Diagnose the box. Never engage Review E on outage signals — it would mask the fault or fail identically. |
@@ -73,7 +74,7 @@ Not a meta-agent, no polling for makework. The gates in this file plus the refil
 ## Resets mid-job
 
 - Sol weekly reset (instant per `usage-status`): in-flight Sol review may finish; **new** Sol reviews follow the post-reset 0% ledger.
-- Cursor billing month roll (date in `usage-windows.json`): Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
+- Cursor billing month roll (date in `config/usage-windows.json`): Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
 - Claude 5h window: teamclaude rotates seats; do not stack all reviews on one account.
 
 ## Owner unreachable
@@ -117,4 +118,10 @@ Parked work is a brief that stays in the queue with status `parked: <reason>`. P
 
 ## When docs go stale
 
-Model names and plan tiers change. Update `AGENTS.md` seat table and the specialty file for that meter. Do not leave agents on deleted model IDs. Pin what the owner currently pays for (today: Opus 4.8, GPT-5.6 Sol/Terra/Luna, Grok 4.6 / Build, Cursor Ultra Other Models $400). Once Review E is wired, pin its model ID in `fireworks-usage.md`. Reset windows live in `usage-windows.json`.
+Model names and plan tiers change. **Edit `config/`, not prose** — `config/providers.json`
+(models/families/detection), `config/subscriptions.json` (plans + Fable grants),
+`config/connectors.json` (MCP/store bindings), `config/usage-windows.json` (reset anchors) — then run
+`bin/doctor.py`. The seat table in `AGENTS.md` is by-reference (roles are invariant; providers come
+from config), so it does not need editing when a provider changes. Do not leave a provider on a
+deleted model ID; `bin/doctor.py` fails if any provider selects a forbidden model (opus-5). Once
+Review E is wired, pin its model ID in `config/providers.json` (`review-e.model`) per `fireworks-usage.md`.

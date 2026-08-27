@@ -1,0 +1,99 @@
+{
+  "_note": "PROVIDER / AGENT REGISTRY — the single source of truth for who exists, what tier (capability level) they serve, what model family they belong to (for cross-family review), what jobs they may do, and how to detect them. Prose files never name a model tier or family; they point here. Adding an agent = add an entry here (see local-llm-example). Providers at a level are REPLACEABLE: swap the model/backing without touching policy. Invariant policy (bans, gates) lives in AGENTS.md/DOCTRINE.md; everything that changes with the market lives here.",
+  "schema_version": 3,
+  "updated": "2026-08-27",
+  "capability_levels": {
+    "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
+    "sole": { "job": "Scarce judgment: diff review and MCP interpretation" },
+    "terra": { "job": "Volume: MCP bulk, implementation, and standing bot work" },
+    "luna": { "job": "Dispatch only: queue, assign, status, and risk gate" }
+  },
+  "families": {
+    "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
+    "openai": { "label": "OpenAI (GPT / Codex)", "note": "Sol, Terra, Luna share the Codex pipe." },
+    "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI + the two Grok Bot app identities." },
+    "open-weight": { "label": "Open-weight (independent lab)", "note": "The first review family that is none of Anthropic/OpenAI/xAI — the reason Review E earns a seat." },
+    "cursor-pool": { "label": "Cursor harness (mixed underlying models)", "note": "A harness, not a model family; never a cross-family reviewer." }
+  },
+  "providers": {
+    "codex-luna": {
+      "label": "Codex Luna (dispatch)", "level": "luna", "family": "openai", "kind": "cli",
+      "model": "gpt-5.6-luna", "functions": ["dispatch"], "review_eligible": false,
+      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "notes": "Default dispatcher. Queue/assign/status/risk-gate only; never implements."
+    },
+    "codex-terra": {
+      "label": "Codex GPT Terra (MCP volume)", "level": "terra", "family": "openai", "kind": "cli",
+      "model": "gpt-5.6-terra", "functions": ["mcp_bulk", "dispatch"], "review_eligible": false,
+      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "notes": "Google-MCP bulk fetches to output_path. May be promoted off dispatch for a named brief."
+    },
+    "codex-sol": {
+      "label": "Codex GPT-5.6 Sol (Review B / MCP judgment)", "level": "sole", "family": "openai", "kind": "cli",
+      "model": "gpt-5.6-sol", "functions": ["review", "mcp_judgment"], "review_eligible": true,
+      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "notes": "Scarce OpenAI judgment. Soft cap in usage-windows.json (codex-sol). Not the implementer."
+    },
+    "grok-build": {
+      "label": "Grok Build CLI (implement)", "level": "terra", "family": "xai", "kind": "cli",
+      "model": "grok-4.6-build", "functions": ["implement"], "review_eligible": false,
+      "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
+      "notes": "Default implementer. 1 worktree / 1 branch / named file scope. Not Google-MCP unless a connector is present."
+    },
+    "grok-bot-review-d": {
+      "label": "Grok Bot — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "app",
+      "model": null, "functions": ["visual_qa"], "review_eligible": false,
+      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "macOS/iOS + xAI cloud computer; no CLI/API/webhook. Dispatched via Slack #visual-qa." },
+      "notes": "Credential-free preview walks only. Never Admin/publish/implement. Input to the pixel gate, not a code reviewer."
+    },
+    "grok-bot-heat-map": {
+      "label": "Grok Bot — Heat Map (Clarity analytics)", "level": "terra", "family": "xai", "kind": "app",
+      "model": null, "functions": ["analytics"], "review_eligible": false,
+      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "Second Grok Bot identity; separate auth; shares #visual-qa by content-match." },
+      "notes": "Read-only Clarity heatmaps/replays/Summarize. Feeds Dispatch. Never a review verdict, never implements."
+    },
+    "fable-5": {
+      "label": "Fable 5 (Review A / architecture)", "level": "frontier", "family": "anthropic", "kind": "cli",
+      "model": "claude-fable-5", "functions": ["review", "architecture"], "review_eligible": true,
+      "backed_by": "claude-fable-capable-seats", "detect": { "method": "capability", "grant": "fable" },
+      "notes": "Hard PR/architecture review WHILE a live Claude seat includes Fable. Availability is a subscription grant — see subscriptions.json grants.fable and bin/detect-fable.py. Never the daily coder."
+    },
+    "opus-4.8": {
+      "label": "Opus 4.8 (Review C / Claude judgment)", "level": "frontier", "family": "anthropic", "kind": "cli",
+      "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment"], "review_eligible": true,
+      "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
+      "notes": "Pinned Claude reliability/judgment pass. Routed across live Claude seats by teamclaude. NEVER the default implementer."
+    },
+    "review-e": {
+      "label": "Review E (independent-family review slot)", "level": "frontier", "family": "open-weight", "kind": "api",
+      "model": null, "functions": ["review"], "review_eligible": true,
+      "wired": false, "backing": "fireworks",
+      "backed_by": "fireworks-api", "detect": { "method": "api", "env": "FIREWORKS_API_KEY" },
+      "notes": "REPLACEABLE slot: Fireworks open-weight today, a local open-weight LLM later. Its value is independence (a third family), not capacity. Review-only; engages on QUOTA evidence, never an outage. Model id pinned by owner at wiring — see fireworks-usage.md. Never sees secrets/PII."
+    },
+    "cursor-grok": {
+      "label": "Cursor Grok 4.6 / Composer (IDE)", "level": "terra", "family": "cursor-pool", "kind": "ide",
+      "model": "grok-4.6", "functions": ["ide"], "review_eligible": false,
+      "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
+      "notes": "First-party Cursor Models pool. Drain here for IDE-shaped edits before Grok Build Heavy. Not the orchestration implementer."
+    },
+    "cursor-other-400": {
+      "label": "Cursor Other Models $400 (Last $)", "level": "terra", "family": "cursor-pool", "kind": "ide",
+      "model": null, "functions": ["ide", "last_dollar"], "review_eligible": false,
+      "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
+      "notes": "Metered $/month third-party pool. LAST resort after all native buckets. Never a default worker or a cross-family reviewer (harness, not an independent family)."
+    },
+    "local-llm-example": {
+      "label": "Local LLM (template — disabled)", "level": "frontier", "family": "open-weight", "kind": "local",
+      "model": null, "functions": ["review"], "review_eligible": false, "enabled": false,
+      "backed_by": null, "detect": { "method": "command", "cmd": "ollama" },
+      "notes": "TEMPLATE showing how to register a future local open-weight CLI/runtime (e.g. Ollama). Copy this entry, set enabled:true, give it a model + detect, and doctor/detect-agents/resolve-route pick it up with no prose edits. Keep review_eligible:false until an owner cross-family review lands it."
+    }
+  },
+  "forbidden_models": {
+    "opus-5": { "reason": "Owner policy: Opus 5 is forbidden as a default or reviewer. Pin Opus 4.8. doctor.py fails if any config or generated artifact selects opus-5.", "aliases": ["claude-opus-5", "opus5"] }
+  },
+  "review_order": ["fable-5", "codex-sol", "opus-4.8", "review-e"],
+  "review_order_note": "Frontier fallback order. single-frontier = first LIVE seat in this order. cross-family = one pass each from two DIFFERENT families (fable-5 + opus-4.8 are both anthropic — never two Anthropic passes). resolve-route.py computes the live chain from this order + usage-status + grants.",
+  "function_vocabulary": ["dispatch", "implement", "mcp_bulk", "mcp_judgment", "review", "architecture", "visual_qa", "analytics", "ide", "last_dollar"]
+}

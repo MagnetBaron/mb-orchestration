@@ -1,63 +1,115 @@
 # Magnet Baron orchestration
 
-Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Failures: `EDGE-CASES.md`.
+Day-to-day contract for every CLI agent (Codex, Claude Code, Grok Build, Cursor, and any
+agent you register). Deep doctrine: `DOCTRINE.md`. Failures: `EDGE-CASES.md`. Domain files
+load by domain: `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` ·
+`usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md`.
 
-**Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`.
+**Account state is config, not prose.** Who exists, what plan backs them, which MCP lives
+where, and when a seat resets are read from `config/` by `bin/` scripts — never hardcoded in
+these words. When something changes, edit `config/`, run `bin/doctor.py`, and the routing
+re-derives. Prose here is invariant policy only.
 
-## Seats
+- `config/providers.json` — agents/providers, capability levels, families, detection
+- `config/subscriptions.json` — the plans you pay for (the one file a new user edits)
+- `config/connectors.json` — live MCP/analytics/store/Slack bindings (no stale IDs in prose)
+- `config/entrypoints.json` — entry surfaces (user choice) + the one dispatcher
+- `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
+- `bin/usage-status.py` · `bin/resolve-route.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-fable.py` · `bin/smoketest.py`
 
-| Seat | Tool | Does | Does not |
-|------|------|------|----------|
-| **Dispatch** | Codex CLI (Terra/Luna) | Queue, assign, status, risk gate | Implement, long review, desktop app |
-| **Implement** | Grok Build CLI (`grok`) | Code, tests, Shopify volume, research *without* Google MCP | Grok Bot; Google MCP if connector missing |
-| **MCP volume** | Codex **GPT Terra** | Google MCP bulk: GSC, Drive, DataForSEO/Trends | Dispatch-only Luna; default coder |
-| **MCP / review judgment** | Codex **Sol** or **Opus 4.8** | Interpret MCP outputs; Sol also Review B | Row-dump fetch loops |
-| **Cloud standing** | Grok Bot (xAI VM) | Inbox / scheduled work off the Mini | Same change-set as Build |
-| **Review D** | Grok Bot **Website Visual QA** | Storefront preview via Slack | Admin, SimGym, publish |
-| **Analytics** | Grok Bot **Heat Map** (2nd bot) | Read-only Clarity heatmaps/replays/Summarize; feeds Dispatch (`analytics-clarity.md`) | Admin, settings, member mgmt, implement, review verdicts |
-| **Review A** | Fable 5 (while included) | Hard PR / architecture | Daily typing |
-| **Review B** | GPT-5.6 Sol **on Codex** | Diff review when Fable empty | Cursor Sol ($400) |
-| **Review C** | Opus 4.8 | Claude reliability pass; MCP judgment | Default implementer |
-| **Review E** *(fallback — unwired)* | Fireworks API, pinned open-frontier reasoning model | Last-resort diff review at confirmed quota exhaustion; 2nd family for a cross-family gate | Implement, dispatch, MCP, architecture, Visual QA, sole gate on a risk class, any diff with secrets/PII |
-| **IDE** | Cursor **Grok 4.6 / Composer** | Tab + agent on Cursor Models | Other Models until last |
-| **Last $** | Cursor Ultra **Other Models $400** | Claude/GPT/Gemini in Cursor after other buckets | Default anything |
+> `USER-GUIDE.md` is for humans choosing plans. It is NOT operational and must never be loaded into an agent's context.
 
-**Entry point is always Codex.** Luna/Terra assign; they do not implement or manage after handoff.
+**Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`. (Account facts come from `config/`; when a policy and a config fact seem to conflict, the config fact is the current reality — fix config, don't override policy in prose.)
 
-**Google MCP:** Opus and appropriate GPT models. **Not** assumed on Grok. Route per `mcp-routing.md`.
+## Entry surface vs dispatcher (you control where you work; one seat assigns)
 
-**Legwork-or-stop:** volume runs on Grok or GPT-Terra MCP lanes, or parks. Never dump legwork on Sol/Opus/Cursor $ because a probe failed. See `EDGE-CASES.md` for outages.
+Where a request is **typed** is the user's choice — any entry surface in `config/entrypoints.json`
+(Codex CLI, Claude Code, Cursor, phone). Who **assigns seats and runs the risk gate** is ONE
+config-bound dispatcher (`entrypoints.json` `dispatcher.provider`; default Codex Luna).
+
+- **Dispatcher surface** (`can_dispatch: true`) → full dispatch: classify, stamp review, brief, assign, gate, refill.
+- **Any other surface** → run status, classify + stamp + **draft a brief, then hand it to the dispatcher**. Never self-assign other seats; never implement outside your own seat; never re-home dispatch onto an IDE or review seat.
+
+A user without the default dispatcher sets `dispatcher.provider` to a provider they own and flips that surface's `can_dispatch` — the single-dispatcher invariant holds; only the holder moves.
+
+## Seats (roles are invariant; providers are config)
+
+Roles below are durable. The **current provider** for each is the binding in `config/providers.json`
+— run `bin/detect-agents.py` for what is live here, `bin/resolve-route.py` to route. Capability
+levels (frontier · sole · terra · luna) are the routing tiers; providers at a level are replaceable.
+
+| Role (invariant) | Level | Current provider(s) — see providers.json | Does not |
+|------|------|------|------|
+| **Dispatch** | luna | Codex Luna/Terra | Implement; long review; desktop app |
+| **Implement** | terra | Grok Build | Google MCP without a connector; Grok Bot change-sets |
+| **MCP volume** | terra | Codex GPT Terra | Dispatch-only Luna; default coder |
+| **MCP / review judgment** | sole/frontier | Codex Sol · Opus 4.8 | Row-dump fetch loops |
+| **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
+| **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
+| **Review A** | frontier | Fable 5 *(while a live Claude seat grants it — `bin/detect-fable.py`)* | Daily coding |
+| **Review B** | sole | Codex Sol (under soft cap) | Cursor Sol (different meter) |
+| **Review C** | frontier | Opus 4.8 (routed across Claude seats by teamclaude) | Default implementer |
+| **Review E** | frontier | independent-family slot — Fireworks today, local open-weight later *(unwired)* | Implement, dispatch, MCP, sole gate on a risk class, any diff with secrets/PII |
+| **IDE** | terra | Cursor Grok / Composer | Other Models until last |
+| **Last $** | terra | Cursor Other Models $400 | Default anything |
+
+**Claude is five seats, not one.** Max + 2 Team-premium (Fable-capable) + 2 Pro (Opus overflow, no
+Fable), rotated by teamclaude. `bin/resolve-route.py` treats **Fable as available only if a
+Fable-capable seat is live and not downgraded** (`bin/detect-fable.py`), so the review order never
+goes stale on a plan change.
+
+**Google MCP:** on whichever providers `config/connectors.json` `available_on` lists (today Opus +
+appropriate GPT). **Not** assumed on Grok. Route per `mcp-routing.md`.
+
+**Legwork-or-stop:** volume runs on Grok or a GPT-Terra MCP lane, or parks. Never dump legwork on Sol/Opus/Cursor $ because a probe failed. Outages: `EDGE-CASES.md`.
 
 **No desktop apps** after first device-auth. One implementer process on a 16 GB Mini. Grok Bot.app stays quit on the worker.
 
 ## Brief (required)
 
-`objective` · `must_read` · `must_not_touch` · `output_path` · `done_when` · `effort`  
+`objective` · `must_read` · `must_not_touch` · `output_path` · `done_when` · `effort`
 Reviews also: `attack_angle`. Missing field → no dispatch. Paths only; no pasted dumps.
 
 `effort`: `setup` | `low` | `medium` | `high` | `review`.
 
 ## Risk gate → review
 
-Two dials: **depth** (how much review) and **order** (which seat). Dispatch stamps `review:` on every brief; the risk gate only raises it, never lowers. Class is read from the diff's paths/resources, not the brief's claim; ambiguity rounds up.
+Two dials: **depth** (how much review) and **order** (which seat). Dispatch stamps `review:` on
+every brief; the risk gate only raises it, never lowers. Class is read from the diff's
+paths/resources, not the brief's claim; ambiguity rounds up.
 
-**Depth floor by task class:** stamp `review:` from the class map in `DOCTRINE.md` §Review depth — load that section when routing; it is the single source, not re-summarized here (a lossy copy over-spends frontiers and drops Review D). The risk gate only ever **raises** the floor.
+**Depth floor by task class** is defined once, machine-readable, in `config/review-depth.json`
+(explained in `DOCTRINE.md` §Review depth). **Do not eyeball it — run the router:**
 
-Levels: **none** (Grok, or skip) · **self-check** (implementer's own tests bound to `done_when`, not a second model) · **single-frontier** (first live seat) · **cross-family** (one pass each from two families).
+```
+bin/resolve-route.py --class <class> --scale routine|elevated [--risk auth,money,…] [--implement] [--pixels]
+```
+
+It returns the depth, the concrete live review chain (or a park reason), the implement seat, and
+the gates — from `config/` + recorded usage signals, deterministically. Levels: **none** · **self-check**
+· **single-frontier** · **cross-family**.
 
 Raise if: auth/money/PII/prod/irreversible · multi-service · Grok conflict/flaky tests. `user said ship` = land, not spend a frontier. **none** / **self-check** still keep the landing lock, tip-bound green test, Review D pixels, and owner publish/send gates.
 
 **Order** (single-frontier = first live seat; cross-family = one pass from **each of two families**):
-**Fable (if present) → Codex Sol → Opus 4.8 → Review E (Fireworks, if wired) → stop.**
-If Fable missing, start at Sol. Fable + Opus 4.8 are **one** family (Anthropic); Sol is OpenAI; Review E is independent open-weight. Cross-family needs two *different* families — never two Anthropic passes. One frontier pass per change-set **except** the cross-family pair.
+**Fable → Codex Sol → Opus 4.8 → Review E (if wired) → stop** (`config/providers.json` `review_order`).
+Fable + Opus 4.8 are **one** family (Anthropic); Sol is OpenAI; Review E is independent open-weight.
+Cross-family needs two *different* families — never two Anthropic passes. One frontier pass per
+change-set **except** the cross-family pair.
 
-**Exhaustion opens the next seat only on quota evidence** — `usage-status` shows the seat spent or soft-capped (a recorded 429 or ledger %), never a probe. Probe failure, timeout, or auth error → fail closed, park (`EDGE-CASES.md`). **Review E** engages only when `usage-status` shows all native review seats spent or soft-capped **and** the brief is time-critical, or as the second family when one native family is quota-spent and only one remains (never on a mere outage); never as sole gate on a risk class (its `ship` there is advisory — owner lands). Unwired → park after 4.8. Detail: `fireworks-usage.md`, `usage-metering.md`.
+**Exhaustion opens the next seat only on quota evidence** — `usage-status` shows the seat spent or
+soft-capped (a recorded 429 or ledger %), never a probe. Probe failure, timeout, or auth error →
+fail closed, park (`EDGE-CASES.md`). **Review E** engages only when `usage-status` shows all native
+review seats spent/soft-capped **and** the brief is time-critical, or as the second family when one
+native family is quota-spent and only one remains (never on a mere outage); never sole gate on a
+risk class (its `ship` there is advisory — owner lands). Unwired → park after 4.8. Detail:
+`fireworks-usage.md`.
 
 When Sol is needed for **both** code review and MCP judgment the same week: code-review risk gate wins the Sol slot; MCP judgment goes to Opus if Sol is spent or already used on that change-set.
 
-**Review D** when storefront *pixels* change. Slack `#visual-qa`.
+**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel binding in `config/connectors.json`).
 
-## Dispatch (Codex CLI)
+## Dispatch (the dispatcher surface)
 
 1. Needs **Google MCP**? → GPT Terra (bulk) or Sol/Opus (judgment only). See `mcp-routing.md`.
 2. Else default **Grok Build** for implement.
@@ -65,17 +117,23 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 4. Product copy: MCP research packet first (if needed), then Grok write.
 5. Ambiguous risk → park and ask owner (`EDGE-CASES.md`). Do not invent seats.
 6. On completion: refill or state why idle. Never implement from phone.
-7. Route reviews by `usage-status` seat state (spent / capped / next reset), never by guesswork.
+7. Route reviews with `bin/resolve-route.py` reading `bin/usage-status.py`, never by guesswork.
 8. Supervise at the checkpoints you already run, not continuously: past-budget lane with no park note → `stalled:`; return outside scope or into `must_not_touch` → reject + re-scope; two loops, no novel defect → park + escalate. Run `usage-status` before any reroute — a whole-pipe outage is one outage, diagnose don't cascade. No watcher daemon (`EDGE-CASES.md`).
 
 ## Implement (Grok Build)
 
 1 worktree · 1 branch · named file scope. Style-match; no drive-bys. Return: summary, files, tests run, risks. Never same change-set as Bot. Do not invent GSC/keyword numbers; consume `must_read` snapshots from MCP seats. Resume existing branch on retry; no second worktree for the same objective.
 
-## Review (Fable / Codex Sol / 4.8 / Fireworks Review E / Website Visual QA)
+## Review (Fable / Codex Sol / Opus 4.8 / Review E / Website Visual QA)
 
 Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time; Review E is an off-box HTTP call, never a Mini process. Fix loops return to the issuing seat; a seat spent mid-loop → park the loop.
 
+## Standing-config changes (this repo included)
+
+A change to `config/`, a cron/LaunchAgent, an MCP config, or a Bot routine is `standing-config`
+class (floor `single-frontier`, never lower). **Run `bin/doctor.py` (and `bin/smoketest.py` for a
+change touching scripts) before landing** — a broken registry mis-routes every later job.
+
 ## Hard bans
 
-- Fable/Sol/Opus as daily coder · Opus 5 default · two frontier passes from the **same family** on one branch (the cross-family gate pair — one pass each from two families — is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host
+- Fable/Sol/Opus as daily coder · **Opus 5 as default or reviewer** (pin Opus 4.8; `bin/doctor.py` fails on any config that selects it) · two frontier passes from the **same family** on one branch (the cross-family pair is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host · **hardcoding a live ID, tier, reset time, or connector location in prose instead of `config/`**.

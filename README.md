@@ -1,48 +1,71 @@
 # mb-orchestration
 
-**Policy repo for Magnet Baron multi-CLI work.**
+**Policy + tooling repo for Magnet Baron multi-CLI work.**
 
-**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Cursor Other Models $400 is last.** Fireworks **Review E** is the unwired last-resort / independent-family review backup.
+One dispatcher assigns seats; abundant volume implements; scarce judgment reviews; a metered
+independent family backs up review. Who fills each role is **config, not prose** — a new user ports
+the system by editing `config/`, running `bin/doctor.py`, and getting the same routing with no policy
+edits.
 
-## Clone (desktop + CLI)
+**Codex dispatches. Grok implements. GPT Terra runs Google-MCP volume. Sol/Opus/Fable judge. Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.**
 
-| Repo | URL | Opens as |
-|------|-----|----------|
-| **This policy** | https://github.com/MagnetBaron/mb-orchestration | Workspace — `AGENTS.md` + `CLAUDE.md` |
-| **teamclaude fork** | https://github.com/MagnetBaron/teamclaude | Multi-seat Claude proxy source |
+## Layout
+
+| Path | What |
+|------|------|
+| `AGENTS.md` | Day-to-day contract — **every** agent session |
+| `CLAUDE.md` | Claude Code loader (pins Opus 4.8, forbids Opus 5) |
+| `DOCTRINE.md` | Design doctrine — load when designing/debugging the system |
+| `EDGE-CASES.md` | Outages, ambiguity, partial work, owner unreachable |
+| `USER-GUIDE.md` | **Humans only** — plan choice, AI-family-per-task, subscription calculator. **Never loaded into agent context.** |
+| `config/` | Single source of truth (below) |
+| `bin/` | Scripts that read config and never guess (below) |
+| domain files | `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `visual-qa-slack.md` · `grokbot-connection.md` · `analytics-clarity.md` · `luna-close-loop.md` |
+| `install.md` · `SETUP-BOTS.md` · `FUTURE.md` | First wire-up, worker-machine handoff, deferred multi-Mini |
+
+### `config/` — edit these, not prose
+
+| File | Holds |
+|------|-------|
+| `providers.json` | Agents/providers, capability levels, families, detection, model pins, forbidden models |
+| `subscriptions.json` | The plans you pay for — **the one file a new user edits** |
+| `connectors.json` | Live MCP/analytics/store/Slack bindings (no stale IDs in prose) |
+| `entrypoints.json` | Entry surfaces (user choice) + the one dispatcher |
+| `usage-windows.json` | Reset anchors + soft caps per seat |
+| `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
+| `roles.json` | Role definitions that load inside seats |
+| `orchestration.schema.json` | Published JSON-Schema contract (validated by doctor) |
+
+### `bin/` — scripts
+
+| Script | Does |
+|--------|------|
+| `usage-status.py` | Script-computed seat reset/limit status (no hardcoded times, no LLM guessing) |
+| `resolve-route.py` | **Deterministic router**: task class + live state → seat + review chain + fallback |
+| `doctor.py` | Validate the whole setup (schema + referential integrity + prose hygiene) |
+| `detect-agents.py` | Auto-detect installed CLI agents; discover unregistered ones (modular add) |
+| `detect-fable.py` | Fable availability / downgrade detection; disable-auto-downgrade guidance |
+| `smoketest.py` | Walk the whole path end-to-end (the acceptance gate) |
+| `generate-roles.py` | Render host-native Claude/Grok agent files + Codex TOML from the registry |
+| `connectors.py` | Render paste-ready bot allowlists/tickets from `connectors.json` |
+| `subscription-calculator.py` | Recommend a plan stack from last month's habits (USER-GUIDE helper) |
+| `record-429.sh` | Record a real 429 into the ledger (never a timeout) |
+| `test_generate.py` | Unit tests for the role registry |
+
+## Quick start
 
 ```bash
 git clone https://github.com/MagnetBaron/mb-orchestration.git
-git clone https://github.com/MagnetBaron/teamclaude.git
+git clone https://github.com/MagnetBaron/teamclaude.git   # multi-Claude-seat rotation
+cd mb-orchestration
+python3 bin/doctor.py        # validate config integrity + prose hygiene
+python3 bin/smoketest.py     # walk the whole path (13 checks)
+python3 bin/usage-status.py  # live seat map
+./sync-commands.sh           # distribute /orchestrate to Claude Code, Codex, Cursor
 ```
 
-## Files
+Port to a different user: edit `config/subscriptions.json` (your plans), `config/entrypoints.json`
+(your dispatcher/surfaces), `config/connectors.json` (your MCP/stores), set anchors in
+`config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
-| File | Load when |
-|------|-----------|
-| [AGENTS.md](./AGENTS.md) | **Every** Codex / Cursor / shared agent session |
-| [CLAUDE.md](./CLAUDE.md) | Claude Code |
-| [mcp-routing.md](./mcp-routing.md) | Google MCP, product research, bulk analytics |
-| [EDGE-CASES.md](./EDGE-CASES.md) | Outages, ambiguity, partial work, owner unreachable |
-| [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
-| [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
-| [sol-usage.md](./sol-usage.md) | Codex $200 Sol: soft cap + weekly window (via `usage-status`) |
-| [cursor-usage.md](./cursor-usage.md) | Cursor Ultra pools vs $400 vs Heavy |
-| [fireworks-usage.md](./fireworks-usage.md) | Review E (Fireworks): last-resort review trigger, model pin, wrapper contract |
-| [usage-metering.md](./usage-metering.md) | Reset times + limits by script, not hardcoded or LLM-guessed |
-| [usage-windows.json](./usage-windows.json) · [usage-status.py](./usage-status.py) | Window/cap source of truth + tool: next reset, seat state |
-| [luna-close-loop.md](./luna-close-loop.md) | Luna forwards done/parked/blocked only |
-| [SETUP-BOTS.md](./SETUP-BOTS.md) | First machine: Codex hands this to Grok, Cursor, Claude |
-| [DOCTRINE.md](./DOCTRINE.md) | Designing the system only |
-| [teamclaude.routes.example.json](./teamclaude.routes.example.json) | teamclaude setup |
-| [install.md](./install.md) | First wire-up |
-| [FUTURE.md](./FUTURE.md) | Humans only — multi-Mini |
-| [roles/](./roles/) | Cross-CLI role registry: capability levels (`frontier` / `sole` / `terra` / `luna`); current seats are aliases |
-
-## Setup
-
-1. Clone as above.
-2. Codex opens this repo and pastes the packet in `SETUP-BOTS.md` to Grok Build, Cursor, and Claude Code.
-3. Owner wires Slack Visual QA, Google MCP on Codex/Claude seats, and optional Luna close-loop.
-
-Daily: Codex is still the only entry point. When something breaks, agents read `EDGE-CASES.md`.
+Daily: the dispatcher is the only entry point that assigns seats (default Codex; configurable). When something breaks, agents read `EDGE-CASES.md`.

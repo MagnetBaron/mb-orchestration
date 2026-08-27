@@ -1,6 +1,11 @@
-# Fireworks Review E — last-resort review fallback
+# Review E — independent-family review fallback (Fireworks today)
 
-Review E is a **metered, review-only** seat on the Fireworks API. It is **not wired** (no CLI, no key on the Mini). Until the owner wires it, any brief that would route here **parks** with `blocked: Review E unwired`. It is never an implementer, dispatcher, MCP seat, or architecture reviewer.
+Review E is the **frontier independent-family review slot** (`config/providers.json` provider
+`review-e`). It is a **replaceable backing**: Fireworks open-weight API today, a local open-weight
+LLM (or another off-family CLI) later — the slot and its rules don't change when the backing does.
+It is **metered, review-only**, and **not wired** (no key on the Mini). Until the owner wires it,
+any brief that would route here **parks** with `blocked: Review E unwired`. Never an implementer,
+dispatcher, MCP seat, or architecture reviewer.
 
 Its value is **independence**, not capacity: Fable + Opus 4.8 are one family (Anthropic), Sol is OpenAI. A Fireworks open-weight model (DeepSeek / Moonshot / Alibaba / Zhipu labs) is the first review family that is none of Anthropic / OpenAI / xAI. See `DOCTRINE.md` §Correlated failure.
 
@@ -13,7 +18,7 @@ Role 2 fires more often than role 1 and is the real reason to wire this.
 
 ## No reset — it is dollars
 
-There is no weekly window to drain. Every engagement is metered spend, so the drain law never applies here (`DOCTRINE.md` Economics). Owner sets a monthly cap at wiring time (`monthly_cap_usd` in `usage-windows.json`, e.g. **$20/mo**); over cap → park, do not silently overspend.
+There is no weekly window to drain. Every engagement is metered spend, so the drain law never applies here (`DOCTRINE.md` Economics). Owner sets a monthly cap at wiring time (`monthly_cap_usd` in `config/usage-windows.json`, e.g. **$20/mo**); over cap → park, do not silently overspend.
 
 ## Engage trigger — QUOTA opens it, OUTAGE never does
 
@@ -45,7 +50,7 @@ Any **no** → do not engage. Park.
 - Model id is account-scoped: `accounts/fireworks/models/<model>`. The serverless catalogue **rotates** — a 404 means retired; **re-pin**, do not hardcode one id forever.
 - Class: **open-frontier reasoning, 128K+ context, structured-output support, serverless tier.** Pin one exact id + one named alternate below.
 - **Ban** ≤70B instruct tiers, "Scout"-class, and "fast"/distilled variants — that is the quality cliff arriving through a default parameter.
-- Candidates to verify against the live catalogue at wiring time: DeepSeek V3.x-reasoning / R1-class, Kimi K2(-thinking), Qwen3-235B-thinking or Qwen3-Coder-480B, GLM-4.x-class.
+- Candidates seen in third-party code (NOT confirmed live — the catalogue rotates, **verify each at wiring**): `accounts/fireworks/models/deepseek-r1-0528`, `…/deepseek-v3p1`, `…/kimi-k2-instruct-0905`, `…/qwen3-coder-480b-a35b-instruct`. Families to confirm: DeepSeek R1/V3(+later), Kimi K2(-thinking), Qwen3-235B-thinking / Qwen3-Coder-480B, GLM-4.x. A 404 = retired → re-pin.
 
 ```
 PINNED  : accounts/fireworks/models/<owner fills at wiring>

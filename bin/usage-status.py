@@ -6,12 +6,12 @@ Why this exists
 Reset times must not be hardcoded in policy prose, and remaining quota must not be
 guessed by an LLM from token counts. This script is the single reader of:
 
-  * usage-windows.json   — window/cap definitions + reset anchors (the ONLY place a
-                           reset time lives). Required, same directory as this file.
-  * usage-ledger.json    — live/manual state written by wrappers (on a real 429) or
-                           the owner — never a probe/timeout, never an LLM: { "<seat>":
-                           {"spent_until": ISO8601,
-                           "pct": 0-100, "note": str, "updated": ISO8601 } }. Optional.
+  * config/usage-windows.json  — window/cap definitions + reset anchors (the ONLY place a
+                                 reset time lives). Required.
+  * config/usage-ledger.json   — live/manual state written by wrappers (on a real 429) or
+                                 the owner — never a probe/timeout, never an LLM: { "<seat>":
+                                 {"spent_until": ISO8601, "pct": 0-100, "note": str,
+                                 "updated": ISO8601 } }. Optional.
 
 It computes the NEXT reset per seat from the anchors and reports each seat's state
 from recorded signals. Dispatch/agents run this instead of eyeballing a dashboard.
@@ -19,10 +19,13 @@ from recorded signals. Dispatch/agents run this instead of eyeballing a dashboar
 No network calls. Live per-provider probes plug in by writing usage-ledger.json —
 only a real 429/limit writes spent state; a timeout writes nothing.
 
+Importable: other tools (resolve-route.py, smoketest.py) call compute() for the rows.
+
 Usage:
   usage-status.py                 human table
   usage-status.py --json          machine-readable status (for dispatch)
   usage-status.py --earliest-reset   soonest reset among seats currently spent
+  usage-status.py --seat NAME     show only one seat
   usage-status.py --ledger PATH   read an alternate ledger file
 """
 from __future__ import annotations
@@ -40,8 +43,9 @@ except Exception:  # pragma: no cover - zoneinfo is stdlib on 3.9+
     ZoneInfo = None
 
 HERE = Path(__file__).resolve().parent
-CONF_PATH = HERE / "usage-windows.json"
-DEFAULT_LEDGER = HERE / "usage-ledger.json"
+CONFIG_DIR = HERE.parent / "config"
+CONF_PATH = CONFIG_DIR / "usage-windows.json"
+DEFAULT_LEDGER = CONFIG_DIR / "usage-ledger.json"
 _WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 
 
@@ -188,8 +192,12 @@ def seat_state(name, seat, ledger, default_tz="America/Chicago"):
     return {
         "seat": name,
         "meter": seat.get("meter"),
+        "family": seat.get("family"),
+        "fable": seat.get("fable"),
+        "subscription": seat.get("subscription"),
         "soft_cap_pct": cap,
         "state": state,
+        "available": su_future is None and not str(state).startswith("SOFT-CAPPED"),
         "windows": [label for label, _ in resets],
         "next_reset": next_reset_dt.isoformat() if next_reset_dt else None,
         "reset_effective": reset_effective.isoformat() if reset_effective else None,
@@ -209,11 +217,21 @@ def load(path, required):
         sys.exit(f"usage-status: cannot parse {path}: {exc}")
 
 
+def compute(ledger_path=None):
+    """Importable entry: return (updated, rows) for all seats. No printing, no exit."""
+    conf = load(CONF_PATH, required=True)
+    ledger = load(Path(ledger_path) if ledger_path else DEFAULT_LEDGER, required=False)
+    seats = conf.get("seats", {})
+    rows = [seat_state(name, seat, ledger) for name, seat in seats.items()]
+    return conf.get("updated"), rows
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Script-computed seat reset/limit status.")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--earliest-reset", action="store_true",
                     help="print the soonest reset among currently-spent seats")
+    ap.add_argument("--seat", help="show only this seat")
     ap.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER,
                     help="path to a usage-ledger.json (default: alongside config)")
     args = ap.parse_args(argv)
@@ -222,6 +240,10 @@ def main(argv=None):
     ledger = load(args.ledger, required=False)
     seats = conf.get("seats", {})
     rows = [seat_state(name, seat, ledger) for name, seat in seats.items()]
+    if args.seat:
+        rows = [r for r in rows if r["seat"] == args.seat]
+        if not rows:
+            sys.exit(f"usage-status: no such seat {args.seat!r}")
 
     if args.earliest_reset:
         def constrained(r):
@@ -249,11 +271,13 @@ def main(argv=None):
         print(json.dumps({"updated": conf.get("updated"), "seats": rows}, indent=2))
         return 0
 
-    print(f"usage-status  (windows: usage-windows.json, updated {conf.get('updated')})")
+    print(f"usage-status  (windows: config/usage-windows.json, updated {conf.get('updated')})")
     print(f"ledger: {args.ledger if args.ledger.exists() else '(none — no live signal recorded)'}")
     print("-" * 72)
     for r in rows:
-        print(f"{r['seat']:<20} {r['state']}")
+        fable = " ·fable" if r.get("fable") else ""
+        fam = f" [{r['family']}]" if r.get("family") else ""
+        print(f"{r['seat']:<18}{fam}{fable}  {r['state']}")
         if r["reset_effective"]:
             print(f"  next reset: {r['reset_effective']}")
         for w in r["windows"]:

@@ -1,0 +1,19 @@
+{
+  "_note": "MACHINE-READABLE review-depth floor by task class — the single MACHINE source consumed by bin/resolve-route.py. DOCTRINE.md §Review depth is the human explanation and stays in sync (doctor.py checks every class id appears there). Levels ascend none < self-check < single-frontier < cross-family. Dispatch stamps the floor; the AGENTS.md risk gate only RAISES it. Class is read from touched paths/resources, not the brief's claim; ambiguity rounds up one level.",
+  "schema_version": 1,
+  "levels_order": ["none", "self-check", "single-frontier", "cross-family"],
+  "cross_family_risk_flags": ["auth", "money", "PII", "prod", "irreversible", "secrets", "untrusted-shell"],
+  "raise_flags": ["auth", "money", "PII", "prod", "irreversible", "multi-service", "grok-conflict", "flaky-tests", "secrets", "untrusted-shell"],
+  "classes": {
+    "internal-notes": { "routine": "none", "elevated": "self-check", "risk": "single-frontier", "note": "research/kit-research/analytics-read/scratch; single-frontier if secrets/PII in the note" },
+    "content-prose": { "routine": "self-check", "elevated": "self-check", "risk": "single-frontier", "note": "blog body/product copy/alt text; voice lint; owner proofread on bulk" },
+    "catalog-data": { "routine": "self-check", "elevated": "single-frontier", "risk": "cross-family", "note": "non-money title/body/metafield/SKU/tags" },
+    "money-data": { "routine": "single-frontier", "elevated": "cross-family", "risk": "cross-family", "note": "pricing/inventory counts/barcodes/PO/ACH" },
+    "seo-structural": { "routine": "self-check", "elevated": "single-frontier", "risk": "cross-family", "note": "schema/canonical/redirect/robots/sitemap; cross-family on removals/disavow" },
+    "storefront-theme": { "routine": "self-check", "elevated": "single-frontier", "risk": "cross-family", "review_d": true, "note": "Liquid/theme/CSS/PDP/collection; Review D pixels always; cross-family checkout/auth-adjacent" },
+    "repo-code": { "routine": "self-check", "elevated": "single-frontier", "risk": "cross-family", "note": "green tests are the reviewer at routine; cross-family on auth/secrets/untrusted shell" },
+    "standing-config": { "routine": "single-frontier", "elevated": "single-frontier", "risk": "cross-family", "note": "webhooks/cron/LaunchAgent/MCP config/automation/Bot routine; floor never lower — standing rules self-perpetuate; cross-family on OAuth/secrets/prod URL" },
+    "outbound-irreversible": { "routine": "single-frontier", "elevated": "cross-family", "risk": "cross-family", "owner": true, "note": "campaign send/publish/URL-removal/fulfillment label/Flow; owner gate always" },
+    "legal-hr": { "routine": "cross-family", "elevated": "cross-family", "risk": "cross-family", "human": true, "note": "human always" }
+  }
+}

@@ -4,17 +4,15 @@
 
 Codex (Terra/Luna) still dispatches. The seat that *runs* the MCP calls is assigned below.
 
-## Connector map (Magnet Baron)
+## Connector map — lives in `config/connectors.json`
 
-| Connector | Typical tools | Who has it |
-|-----------|---------------|------------|
-| Google Search Console | search analytics, sitemaps, sites | Opus, GPT (Codex) |
-| Google Drive | search, read, upload/download artifacts | Opus, GPT |
-| DataForSEO / Google Ads / Trends | volume, trends, keyword overview | Opus, GPT |
-| Shopify (MB Internal) | product/catalog when wired | Prefer Grok for volume catalog; GPT/Opus only if Grok lacks the connector for that job |
-| GitHub | repos, PRs, code | All coding seats |
+**Which seat has which connector is dynamic and must not be hardcoded here** (it goes stale the
+moment a connector moves). The single source is `config/connectors.json` `mcp_connectors.*.available_on`;
+print the current map with `bin/connectors.py`. Today that is roughly: Google Search Console / Drive /
+DataForSEO on Opus + GPT (Codex); Shopify (MB Internal) preferred on Grok for volume catalog; GitHub
+on all coding seats — but **read the config, do not trust this sentence** when routing.
 
-If a connector is missing on the assigned seat, park and report — do not invent data.
+If a connector is missing on the assigned seat (per `available_on`), park and report — do not invent data.
 
 ## Assignment matrix
 

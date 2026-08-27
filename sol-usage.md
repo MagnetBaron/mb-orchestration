@@ -2,7 +2,7 @@
 
 Sol is **Review B**, not the implementer and not the dispatcher. Terra/Luna stay the Codex entry. teamclaude is Claude seats and does not spend this pool.
 
-**Reset & %:** read from `usage-status` — the weekly window and `soft_cap_pct` live in `usage-windows.json` (seat `codex-sol`); do not hardcode the day/time here. A wrapper records a real 429 into `usage-ledger.json`; the owner may note the plan-UI % there as a fallback. See `usage-metering.md`.
+**Reset & %:** read from `usage-status` — the weekly window and `soft_cap_pct` live in `config/usage-windows.json` (seat `codex-sol`); do not hardcode the day/time here. A wrapper records a real 429 into `usage-ledger.json`; the owner may note the plan-UI % there as a fallback. See `usage-metering.md`.
 
 ## Cursor Sol is a different meter
 
@@ -24,7 +24,7 @@ Do not treat Cursor Sol usage as “free Codex Sol,” and do not treat Codex So
 
 ## Cap: 90% all week
 
-Allow new **Codex Sol** reviews while weekly Sol used is **under 90%**. The 90% is `soft_cap_pct` in `usage-windows.json`; check it with `usage-status`, do not judge it by feel.
+Allow new **Codex Sol** reviews while weekly Sol used is **under 90%**. The 90% is `soft_cap_pct` in `config/usage-windows.json`; check it with `usage-status`, do not judge it by feel.
 
 - Same threshold Sun through Sat. No early-week soft cap.
 - At or over 90%: still dispatch **Grok** for volume. Code review → **Opus 4.8**, then **Review E (Fireworks) if wired**, otherwise park. Do not fake a “review” on Terra/Luna.

@@ -1,11 +1,14 @@
 #!/bin/bash
-# Record only a provider-confirmed 429/usage-limit signal. Never call this for
-# auth failures, timeouts, or generic non-zero exits.
+# Record ONLY a provider-confirmed 429/usage-limit signal into config/usage-ledger.json.
+# Never call this for auth failures, timeouts, or generic non-zero exits (those are
+# OUTAGE, not exhaustion — EDGE-CASES.md QUOTA-vs-OUTAGE). The 5h default reset matches
+# the rolling window; pass MB_429_RESET for a different reset instant.
 set -euo pipefail
 
-seat="${1:?seat name required}"
+seat="${1:?seat name required (a seat in config/usage-windows.json)}"
 message="${2:-}"
-ledger="${MB_USAGE_LEDGER:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/usage-ledger.json}"
+default_ledger="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config" && pwd)/usage-ledger.json"
+ledger="${MB_USAGE_LEDGER:-$default_ledger}"
 reset="${MB_429_RESET:-$(date -u -v+5H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)}"
 
 if ! printf '%s' "$message" | grep -Eiq '(^|[^0-9])(429|rate.?limit|usage.?limit|quota.?exceed|too many requests)([^0-9]|$)'; then

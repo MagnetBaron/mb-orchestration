@@ -16,7 +16,7 @@ Decision (owner, this build): Review D (Website Visual QA) runs **in the Grok Bo
 - The bot is **not** an `@`-mentionable Slack handle; it reacts to ticket **content** (`shopifypreview.com` in `#visual-qa`). Tickets use the `@Website Visual QA` template text, **not** `@Cursor`.
 
 ## Slack wiring (what is real here)
-- Channel: **`#visual-qa`** (public, Magnet Baron workspace, id `C0BS66SEV0R`).
+- Channel: **`#visual-qa`** (public, Magnet Baron workspace). The channel id + workspace are a live binding in `config/connectors.json` `slack.visual_qa_channel` (`bin/connectors.py`) — not pasted here.
 - Grok Bot ↔ Slack: use the **catalog Slack plugin** inside the Grok Bot app. Do **not** point a self-registered Slack app at a custom `grokbot://` OAuth callback.
 - Separate and easily confused: the **Cursor Cloud Agents** Slack integration (`@Cursor`) is wired to the same workspace but is a **coding** agent (asks to "pick a repository"). It is NOT Review D. Keep Review D tickets free of `@Cursor` so only the Grok Bot routine fires.
 

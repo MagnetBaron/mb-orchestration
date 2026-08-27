@@ -1,0 +1,90 @@
+{
+  "_note": "LIVE CONNECTOR + BINDING REGISTRY — the single source for which MCP/analytics/store binding lives on which provider, plus the concrete live IDs (Clarity project ids, analytics login, Shopify stores/themes, Slack channel). Policy prose used to hardcode these and went stale; now prose points here and `bin/connectors.py` renders paste-ready blocks (bot allowlists, ticket templates) from this file. `available_on` is dynamic: when a connector moves seats, edit ONLY this file. This file holds NO secrets — connector NAMES and public IDs only; keys/tokens never live in the repo (see .gitignore, EDGE-CASES §Secrets).",
+  "schema_version": 1,
+  "updated": "2026-08-27",
+  "mcp_connectors": {
+    "google-search-console": {
+      "typical_tools": ["search analytics", "sitemaps", "sites"],
+      "available_on": ["opus-4.8", "codex-terra", "codex-sol"],
+      "mutating_tools": [], "class": "google-mcp"
+    },
+    "gsc-indexing": {
+      "typical_tools": ["request_indexing", "batch_request_indexing", "submit_sitemap", "request_url_removal"],
+      "available_on": ["opus-4.8"],
+      "mutating_tools": ["request_indexing", "batch_request_indexing", "submit_sitemap", "request_url_removal"],
+      "class": "google-mcp", "note": "Read-only roles MUST deny every mutating tool (enforced by generate-roles.py)."
+    },
+    "google-drive": {
+      "typical_tools": ["search", "read", "upload", "download"],
+      "available_on": ["opus-4.8", "codex-terra"], "mutating_tools": ["upload", "delete"], "class": "google-mcp"
+    },
+    "dataforseo": {
+      "alias": "dfs-mcp", "typical_tools": ["search volume", "trends", "keyword overview", "SERP"],
+      "available_on": ["opus-4.8", "codex-terra"], "mutating_tools": [], "class": "google-mcp"
+    },
+    "shopify-mb-internal": {
+      "typical_tools": ["product/catalog read+write when wired"],
+      "available_on": ["grok-build"], "prefer": "grok-build for volume catalog", "mutating_tools": ["create-product", "update-product", "set-inventory-quantities"], "class": "shopify"
+    },
+    "github": {
+      "typical_tools": ["repos", "PRs", "code"],
+      "available_on": ["grok-build", "opus-4.8", "codex-sol", "codex-terra"], "mutating_tools": ["push", "merge", "create_pull_request"], "class": "code"
+    },
+    "clarity-magnetbaron": {
+      "typical_tools": ["aggregate dashboard read", "flagged recordings"],
+      "available_on": ["opus-4.8", "codex-sol"], "mutating_tools": [], "class": "analytics-judgment",
+      "note": "MCP-judgment seats only, and only dashboard + a handful of flagged recordings. Bulk recording pulls (up to 250 rows) are a banned row-dump — park volume; Heat Map bot handles browser-only layers."
+    },
+    "clarity-gadgetduke": {
+      "typical_tools": ["aggregate dashboard read", "flagged recordings"],
+      "available_on": ["opus-4.8", "codex-sol"], "mutating_tools": [], "class": "analytics-judgment"
+    }
+  },
+  "analytics": {
+    "clarity": {
+      "vendor": "Microsoft Clarity",
+      "login_identity": "server@themagnetbaron.com",
+      "login_method": "google-sso",
+      "least_privilege": true,
+      "least_privilege_note": "server@ carries NO Google-service data/roles beyond the two Clarity invites; the bot holds a live Google session, so a broad account would be a prompt-injection blast radius.",
+      "role": "Member (Clarity has no read-only role); bot never changes settings/members/data",
+      "projects": {
+        "magnet-baron": { "id": "wpxqdpcski", "host": "themagnetbaron.com" },
+        "gadget-duke": { "id": "wpxjicd0hx", "host": "gadgetduke.com" }
+      }
+    }
+  },
+  "stores": {
+    "magnet-baron": {
+      "vendor": "Shopify",
+      "live_hosts": ["themagnetbaron.com", "www.themagnetbaron.com", "the-magnet-baron.myshopify.com"],
+      "preview_host": "*.shopifypreview.com",
+      "preview_extra": "preview_theme_id=* on an approved live host",
+      "never": ["admin.shopify.com", "/admin", "partners.shopify.com", "SimGym"]
+    },
+    "gadget-duke": {
+      "vendor": "Shopify",
+      "live_hosts": ["gadgetduke.com", "www.gadgetduke.com", "gadget-duke.myshopify.com"],
+      "preview_host": "*.shopifypreview.com",
+      "preview_extra": "preview_theme_id=* on an approved live host",
+      "never": ["admin.shopify.com", "/admin", "partners.shopify.com", "SimGym"],
+      "theme_repo": "MagnetBaron/GD-Horizon-Shopify-Theme",
+      "theme_map": {
+        "main": { "theme_id": "151997710406", "role": "owner review preview; only owner-approved merges land" },
+        "experimental": { "theme_id": "151997775942", "role": "Review D staging; safe to merge candidate branches anytime" },
+        "production": { "theme_id": "151997743174", "role": "live cutover only; owner publishes" }
+      },
+      "review_d_preview_url": "https://gadgetduke.com/?preview_theme_id=151997775942",
+      "staging_note": "experimental is a staging lane, never a source of truth; canonical change still lands via its own PR to main."
+    }
+  },
+  "slack": {
+    "visual_qa_channel": { "name": "#visual-qa", "id": "C0BS66SEV0R", "visibility": "public", "workspace": "Magnet Baron" },
+    "coexistence": "Two Grok Bot identities (Review D + Heat Map) share this ONE public channel and post under the same Slack identity; they coexist by CONTENT tokens (shopifypreview.com ticket shape vs a message starting with 'clarity deep-dive:'), never by author. Never split to a second channel or Slack-Connect it."
+  },
+  "render_targets": {
+    "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  → paste-ready Review D allowlist block",
+    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → paste-ready Slack ticket template",
+    "clarity": "bin/connectors.py --render clarity  → Heat Map project/login binding"
+  }
+}

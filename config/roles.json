@@ -1,37 +1,6 @@
 {
-  "schema_version": 2,
-  "capability_levels": {
-    "frontier": {
-      "job": "Hard review, architecture, and land-gate judgment",
-      "providers": ["fable-5", "opus-4.8", "review-e"]
-    },
-    "sole": {
-      "job": "Scarce judgment: diff review and MCP interpretation",
-      "providers": ["codex-sol"]
-    },
-    "terra": {
-      "job": "Volume: MCP bulk, implementation, and standing bot work",
-      "providers": ["gpt-terra", "grok-build", "grok-bot-review-d", "grok-bot-heat-map"]
-    },
-    "luna": {
-      "job": "Dispatch only: queue, assign, status, and risk gate",
-      "providers": ["codex-luna"]
-    }
-  },
-  "compatibility_aliases": {
-    "seats": {
-      "Review A": "fable-5",
-      "Review B": "codex-sol",
-      "Review C": "opus-4.8",
-      "Review E": "review-e",
-      "Review D": "grok-bot-review-d",
-      "Heat Map": "grok-bot-heat-map",
-      "Grok Build": "grok-build",
-      "MCP volume": "gpt-terra",
-      "Dispatch": "codex-luna"
-    },
-    "review_order": ["fable-5", "codex-sol", "opus-4.8", "review-e"]
-  },
+  "_note": "ROLE DEFINITIONS — a loading mechanism inside existing seats, NOT a seat allocator. Roles do not create seats, change the review order, or grant credentials. Capability levels, families, providers, and review_order are defined ONCE in providers.json; this file only defines roles that resolve onto those providers. bin/generate-roles.py validates a role's seat is a provider at the role's declared level (cross-checked against providers.json) and emits host-native Claude/Grok agent files + an owner-applied Codex TOML fragment. read_only forbids write tools on EVERY host, including writing agents.",
+  "schema_version": 3,
   "roles": {
     "review-d": {
       "description": "Review D: storefront visual QA through the existing Grok Bot seat.",

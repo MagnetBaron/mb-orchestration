@@ -7,72 +7,66 @@ git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
 ```
 
-GitHub Desktop: File → Clone repository → MagnetBaron → `mb-orchestration` and `teamclaude`.
-
 Open **mb-orchestration** as the workspace. Codex reads `AGENTS.md`. Claude Code reads `CLAUDE.md`.
+Then Codex follows `SETUP-BOTS.md` — dispatch only.
 
-Then Codex follows [SETUP-BOTS.md](./SETUP-BOTS.md) — dispatch only.
-
-## 1. Copy policy into other project folders (optional)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/AGENTS.md -o AGENTS.md
-curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/CLAUDE.md -o CLAUDE.md
-```
-
-Optional global:
+## 1. Validate the setup first
 
 ```bash
-mkdir -p ~/.codex ~/.claude
-cp AGENTS.md ~/.codex/AGENTS.md
-cp CLAUDE.md ~/.claude/CLAUDE.md
+cd mb-orchestration
+python3 bin/doctor.py        # config integrity + prose hygiene
+python3 bin/smoketest.py     # walk the whole path (must be 13/13)
+python3 bin/detect-agents.py # which providers are live on THIS machine
 ```
 
-## 2. teamclaude (Claude seats)
+`doctor` green means the registry is internally consistent; `smoketest` green means the routing,
+metering, fallback, and role generation all work. Do this before wiring anything else.
 
-Source: https://github.com/MagnetBaron/teamclaude
+## 2. Configure for THIS user (the portability layer)
 
-Runtime is the npm package (self-updates). The org fork holds the clone URL plus `mb/` overlay.
+Everything user-specific is in `config/` — edit these, not prose:
+
+1. `config/subscriptions.json` — the plans you pay for. Fable grants live here (`grants.fable`).
+2. `config/entrypoints.json` — your entry surfaces and the one dispatcher (`dispatcher.provider`).
+   A user without Codex points this at a provider they own and flips `can_dispatch`.
+3. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
+4. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
+5. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
+
+## 3. teamclaude (Claude seats)
+
+Source: https://github.com/KarpelesLab/teamclaude — multi-account Claude proxy with automatic
+quota-based rotation (tracks per-model caps, so a seat out of one model still serves others). The
+MagnetBaron fork adds the clone URL + `mb/` overlay.
 
 1. `npm install -g @karpeleslab/teamclaude`
 2. From the clone: `./mb/install-local.sh`
-3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat
+3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat (Max + 2 Team-premium + 2 Pro = five seats total)
 4. `teamclaude service install` and `teamclaude alias --install`
 5. `teamclaude run -- --model opus-4.8`
 
-Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit.
+Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit — and `bin/detect-fable.py` cross-checks it. No four Claude desktop apps.
 
-No four Claude desktop apps.
+## 4. Review D + Heat Map (Grok Bots)
 
-## 3. Review D (Website Visual QA)
+Policy: `visual-qa.md` / `analytics-clarity.md`. Owner creates the named bots and the one public
+`#visual-qa` channel once (binding in `config/connectors.json`). Daily handoff is Slack. Render the
+paste-ready allowlist/ticket with `bin/connectors.py --render …`. Delivery details: `visual-qa-slack.md`.
 
-Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md). Second bot **Heat Map** (Clarity analytics) shares `#visual-qa` — separate identity/auth, content-based coexistence with Visual QA; policy + owner setup in [analytics-clarity.md](./analytics-clarity.md).
+## 5. Google MCP
 
-## 4. Google MCP (for mcp-routing)
-
-Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex GPT** and **Claude/Opus** seats so bulk analytics and product research briefs can run. Grok is not assumed to have these connectors.
-
-## 5. Ordered adoption
-
-1. Buckets classified — Grok abundant; GPT Terra for Google MCP volume; Claude+Sol scarce; Codex Terra/Luna dispatch; Cursor $400 last
-2. AGENTS.md live
-3. Brief schema enforced (`effort` included)
-4. Worktrees for parallel Grok jobs
-5. Risk gate + reviewer order (Fable if present → Sol → Opus → Review E if wired)
-6. teamclaude (login + plan-sync agent; no exclusive Fable route)
-7. Slack `#visual-qa` + Website Visual QA Bot (owner)
-8. Google MCP on Codex/Claude (owner)
-9. Usage metering: set anchors in `usage-windows.json`; read seat state with `usage-status` (`usage-metering.md`) — script-computed resets and recorded signals, not LLM/manual-only
-10. EDGE-CASES.md known to dispatcher for outages
+Owner connects Search Console, Drive, and DataForSEO (or equivalent) on the providers listed in
+`config/connectors.json` `mcp_connectors.*.available_on` (today Codex GPT + Claude/Opus). Grok is not
+assumed to have these. Route per `mcp-routing.md`.
 
 ## 6. Slash command `/orchestrate` (Claude Code · Codex · Cursor)
 
 One canonical file, symlinked into each CLI's command dir — **edit the canonical, never the copies**.
 
-- Canonical (edit here): [`.claude/commands/orchestrate.md`](./.claude/commands/orchestrate.md)
+- Canonical (edit here): `.claude/commands/orchestrate.md`
 - Claude Code — repo `.claude/commands/` (+ `~/.claude/commands/` global). `/orchestrate <task>`
 - Codex — `~/.codex/prompts/orchestrate.md`. `/orchestrate <task>`
-- Cursor — repo `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
+- Cursor — `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
 
 Provision or repair the symlinks on any machine:
 
@@ -80,8 +74,19 @@ Provision or repair the symlinks on any machine:
 ./sync-commands.sh
 ```
 
-No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it classifies, stamps review depth, picks the seat, and routes reviews. **Entry point stays Codex** — a non-Codex host may show status and draft a brief, then hands it to Codex; it never assigns other seats or implements outside its own seat.
+No-arg `/orchestrate` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
+stamps depth (`bin/resolve-route.py`), and routes. **Only the dispatcher surface assigns seats** — a
+non-dispatcher host shows status and drafts a brief, then hands it to the dispatcher.
 
-## 7. Optional heavy harnesses
+## 7. Ordered adoption
 
-Prefer this repo’s thin files until context pressure forces a plugin.
+1. `bin/doctor.py` + `bin/smoketest.py` green
+2. `config/` filled for this user; `AGENTS.md` live
+3. Brief schema enforced (`effort` included)
+4. Worktrees for parallel Grok jobs
+5. Risk gate + `bin/resolve-route.py` for the review chain
+6. teamclaude (login + plan-sync agent; no exclusive Fable route)
+7. Slack `#visual-qa` + Website Visual QA / Heat Map bots (owner)
+8. Google MCP on the providers `connectors.json` lists (owner)
+9. Usage metering: anchors in `config/usage-windows.json`; read state with `bin/usage-status.py`
+10. `EDGE-CASES.md` known to the dispatcher for outages

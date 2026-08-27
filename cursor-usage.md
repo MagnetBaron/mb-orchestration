@@ -2,7 +2,7 @@
 
 This is the allocation map for **Cursor Ultra** as it sits next to SuperGrok Heavy. Two different companies’ meters. Do not treat “Grok in Cursor” as the same bucket as `grok` CLI / Grok Bot.
 
-Cursor Models size is “generous,” not a published dollar figure. Other Models on Ultra is **$400 / billing month** (reset date in `usage-windows.json`, `cursor-other-400`). A `$` seat has no `%` cap, so when the $400 is spent the owner marks it in `usage-ledger.json` with `spent_until` = next billing reset (copied from the Cursor dashboard). Agents route off `usage-status`, not a live dashboard glance.
+Cursor Models size is “generous,” not a published dollar figure. Other Models on Ultra is **$400 / billing month** (reset date in `config/usage-windows.json`, `cursor-other-400`). A `$` seat has no `%` cap, so when the $400 is spent the owner marks it in `usage-ledger.json` with `spent_until` = next billing reset (copied from the Cursor dashboard). Agents route off `usage-status`, not a live dashboard glance.
 
 ## Same model family, not the same seat
 

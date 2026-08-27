@@ -1,5 +1,9 @@
 # Live usage state written by wrappers/probes/owner — not policy, not committed.
-usage-ledger.json
+config/usage-ledger.json
+config/usage-ledger.json.lock
+
+# Generated host-native role artifacts (rendered by bin/generate-roles.py).
+generated/
 
 # Python cache
 __pycache__/
