@@ -61,6 +61,54 @@ PROTECTED_CONFIGS = (
 )
 
 
+def skills_registry() -> dict:
+    """Vetted skills registry from skills.json (single source), keyed by `plugin:skill` id.
+    A skill ABSENT from this map is UNVETTED: a role may not bind it (fail-closed — the same H1
+    rule connectors.json enforces for MCP). Returns the raw per-skill metadata map."""
+    s = mborch.load_config("skills.json", required=False)
+    reg = s.get("skills") if isinstance(s, dict) else None
+    return reg if isinstance(reg, dict) else {}
+
+
+def plugin_source_dir(plugin: str) -> Path:
+    """Resolve a plugin name to its on-disk source dir via the repo marketplace
+    (.claude-plugin/marketplace.json), falling back to plugins/<plugin>. This is what makes an
+    in-repo `plugin:skill` id HOST-DISCOVERABLE rather than a dangling reference."""
+    mkt = mborch.REPO / ".claude-plugin" / "marketplace.json"
+    if mkt.exists():
+        try:
+            data = json.loads(mkt.read_text())
+        except Exception:
+            data = {}
+        for entry in data.get("plugins", []):
+            if isinstance(entry, dict) and entry.get("name") == plugin:
+                src = str(entry.get("source") or "").lstrip("./").rstrip("/")
+                if src:
+                    return mborch.REPO / src
+    return mborch.REPO / "plugins" / plugin
+
+
+def skill_md_path(skill_id: str) -> Path:
+    """The in-repo SKILL.md a `plugin:skill` id resolves to (plugins/<plugin>/skills/<skill>/SKILL.md)."""
+    plugin, _, name = skill_id.partition(":")
+    return plugin_source_dir(plugin) / "skills" / name / "SKILL.md"
+
+
+def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) -> bool:
+    """A seat satisfies `cap` if it is a coarse capability tag for that seat in providers.json
+    `capabilities`, OR an MCP/store connector name in connectors.json whose `available_on` lists the
+    seat (the router checks BOTH — coarse tag here, connector name there). None = no capability gate."""
+    if cap is None:
+        return True
+    prov = (providers_data.get("providers") or {}).get(seat, {})
+    if cap in (prov.get("capabilities") or []):
+        return True
+    conn = (connectors.get("mcp_connectors") or {}).get(cap)
+    if isinstance(conn, dict) and seat in (conn.get("available_on") or []):
+        return True
+    return False
+
+
 def provider_levels(providers_data: dict) -> dict[str, str]:
     """Build provider→level from providers.json, validating the level blocks."""
     levels = providers_data.get("capability_levels")
@@ -98,13 +146,15 @@ def host_config(role: dict, host: str) -> dict:
     return {"tools": role.get("tools", {}).get(host)}
 
 
-def validate_roles(roles_data: dict, mapping: dict[str, str]) -> None:
+def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: dict) -> None:
     if roles_data.get("schema_version") != 3:
         raise ValueError("roles.json must use schema_version 3")
     roles = roles_data.get("roles")
     if not isinstance(roles, dict) or not REQUIRED_ROLES.issubset(roles):
         raise ValueError("roles.json must contain the seed roles")
     mut = mcp_mutation_map()
+    skills_reg = skills_registry()
+    connectors = mborch.load_config("connectors.json", required=False) or {}
     for name, role in roles.items():
         if not name or not isinstance(role, dict):
             raise ValueError(f"{name}: invalid role")
@@ -163,6 +213,31 @@ def validate_roles(roles_data: dict, mapping: dict[str, str]) -> None:
                     required = mut[server]
                     if required and not required.issubset(denied_server):
                         raise ValueError(f"{name}: read_only MCP server {server} lacks mutation denials")
+            skills_declared = config.get("skills", [])
+            if not isinstance(skills_declared, list) or any(not isinstance(x, str) or not x for x in skills_declared):
+                raise ValueError(f"{name}: {host} skills must be a list of plugin:skill ids")
+            for sid in skills_declared:
+                meta = skills_reg.get(sid)
+                if not isinstance(meta, dict):
+                    raise ValueError(
+                        f"{name}: {host} binds skill {sid!r} that is NOT in the skills registry "
+                        "(config/skills.json) — register it before a role may bind it (fail-closed)")
+                if not skill_md_path(sid).exists():
+                    raise ValueError(
+                        f"{name}: {host} binds skill {sid!r} but its SKILL.md is missing at "
+                        f"{skill_md_path(sid)} — the in-repo plugin skill is unresolvable (fail-closed)")
+                if host not in (meta.get("hosts") or []):
+                    raise ValueError(
+                        f"{name}: {host} binds skill {sid!r}, which the registry does not offer on host {host}")
+                if meta.get("kind") == "write" and role["read_only"]:
+                    raise ValueError(
+                        f"{name}: read_only role may not bind write-skill {sid!r} "
+                        "(a write skill reaching a read-only seat — fail-closed)")
+                cap = meta.get("required_capability")
+                if not seat_has_capability(role["seat"], cap, providers_data, connectors):
+                    raise ValueError(
+                        f"{name}: seat {role['seat']!r} lacks capability {cap!r} required by skill {sid!r} "
+                        "(providers.json capabilities / connectors.json available_on) — fail-closed")
         for host in set(role) & set(HOSTS):
             if host not in hosts:
                 raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")
@@ -172,7 +247,7 @@ def load(roles_path: Path, providers_path: Path) -> dict:
     providers_data = json.loads(Path(providers_path).read_text())
     roles_data = json.loads(Path(roles_path).read_text())
     mapping = provider_levels(providers_data)
-    validate_roles(roles_data, mapping)
+    validate_roles(roles_data, mapping, providers_data)
     return {"providers": providers_data, "roles": roles_data["roles"], "mapping": mapping}
 
 

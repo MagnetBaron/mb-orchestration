@@ -225,6 +225,58 @@ def c_run_brief():
         return ok, f"dry-run plan={dry}, fail-closed={closed}, side-effect-free={side_effect_free}"
 
 
+def c_skills():
+    """Skills wiring: the bound plugin skills resolve + render into the claude agents, and
+    generate-roles FAILS CLOSED on each negative — an unregistered skill, a write-skill on a
+    read_only role, and a seat missing the skill's required capability."""
+    spec = importlib.util.spec_from_file_location("gen_skills_smoke", HERE / "generate-roles.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    roles_path = ROOT / "config" / "roles.json"
+    prov_path = ROOT / "config" / "providers.json"
+    live = json.loads(roles_path.read_text())
+
+    def loads_with(mutate):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = json.loads(json.dumps(live))
+            mutate(data)
+            rp = Path(tmp) / "roles.json"
+            rp.write_text(json.dumps(data))
+            try:
+                gen.load(rp, prov_path)
+                return None
+            except Exception as exc:
+                return str(exc)
+
+    # positive: live registry resolves and the three binding roles render their skill line
+    reg = gen.load(roles_path, prov_path)
+    outs = gen.artifacts(reg, Path("/smoke/claude"), Path("/smoke/grok"), Path("/smoke/codex.toml"))
+
+    def claude_text(role_name):
+        p = next((q for q in outs if q.name == f"mb-{role_name}.md" and "claude" in q.parts), None)
+        return outs.get(p, "")
+
+    rendered = all(f"skills: magnet-baron-skills:{skill}" in claude_text(role)
+                   for role, skill in [("shopify-theme-build", "shopify-theme"),
+                                       ("web-build", "web-coding"),
+                                       ("mobile-app-build", "mobile-app")])
+    bound = {"shopify-theme-build", "web-build", "mobile-app-build"}.issubset(reg["roles"])
+
+    # negative 1: an unregistered skill bound to a role → ERROR
+    e1 = loads_with(lambda d: d["roles"]["web-build"]["claude"]["skills"].append("magnet-baron-skills:does-not-exist"))
+    n1 = e1 is not None and "registry" in e1
+    # negative 2: a kind:write skill reaching a read_only role (seo-research) → ERROR
+    e2 = loads_with(lambda d: d["roles"]["seo-research"]["claude"].update({"skills": ["magnet-baron-skills:web-coding"]}))
+    n2 = e2 is not None and "write-skill" in e2
+    # negative 3: a seat lacking the skill's required_capability (terra seat off shopify-mb-internal) → ERROR
+    e3 = loads_with(lambda d: d["roles"]["shopify-theme-build"].update({"seat": "codex-terra"}))
+    n3 = e3 is not None and "lacks capability" in e3
+
+    ok = rendered and bound and n1 and n2 and n3
+    return ok, (f"render+bind={rendered and bound}, unregistered→err={n1}, "
+                f"write-on-readonly→err={n2}, missing-capability→err={n3}")
+
+
 def c_runledger():
     """Append-only run-ledger: events append to the file and the fold recovers lane state."""
     spec = importlib.util.spec_from_file_location("runledger_smoke", HERE / "runledger.py")
@@ -262,6 +314,7 @@ def main(argv=None):
     check("detect-agents", c_detect_agents)
     check("detect-capability", c_detect_capability)
     check("generate-roles (idempotent + toml)", c_generate_roles)
+    check("skills wiring (resolve + fail-closed negatives)", c_skills)
     check("record-429 (429 writes, timeout ignored)", c_record_429)
     check("usage-record (snapshot + learn-windows + prune)", c_usage_record)
     check("dashboard renders", c_dashboard)

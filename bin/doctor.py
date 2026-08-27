@@ -146,6 +146,42 @@ def check_connectors(conns, provider_ids):
                 err(f"connector {name}: available_on unknown provider {pid!r}")
 
 
+def check_skills(skills, providers, conns):
+    """skills.json registry hygiene (mirrors check_connectors for MCP): every skill's
+    required_capability resolves to a known coarse capability (providers.json `capabilities` /
+    `capability_catalog`) or a known connector (connectors.json `mcp_connectors`); hosts are valid;
+    and each skill's in-repo SKILL.md resolves through the repo marketplace (host-discoverable).
+    The FAIL-CLOSED binding enforcement itself (unregistered skill, write-skill on a read_only role,
+    seat missing a required_capability) runs in generate-roles.load via check_roles_and_windows_run."""
+    if not skills:
+        return
+    provs = (providers or {}).get("providers", {})
+    coarse = {k for k in (providers or {}).get("capability_catalog", {}) if k != "_note"}
+    for p in provs.values():
+        coarse.update(p.get("capabilities", []) or [])
+    connector_names = set((conns or {}).get("mcp_connectors", {}))
+    try:
+        gen = load_module("gen_roles_skills", HERE / "generate-roles.py")
+    except Exception as exc:
+        gen = None
+        warn(f"skills.json: cannot load generate-roles for SKILL.md resolution: {exc}")
+    for sid, meta in skills.get("skills", {}).items():
+        if not isinstance(meta, dict):
+            err(f"skill {sid!r}: entry must be an object")
+            continue
+        if meta.get("kind") not in ("read", "write"):
+            err(f"skill {sid!r}: kind must be 'read' or 'write', got {meta.get('kind')!r}")
+        cap = meta.get("required_capability")
+        if cap is not None and cap not in coarse and cap not in connector_names:
+            err(f"skill {sid!r}: required_capability {cap!r} is neither a providers.json capability "
+                "nor a connectors.json connector — unresolvable capability gate")
+        hosts = meta.get("hosts")
+        if not isinstance(hosts, list) or not hosts or any(h not in ("claude", "grok", "codex") for h in hosts):
+            err(f"skill {sid!r}: hosts must be a non-empty subset of claude, grok, codex")
+        if gen is not None and not gen.skill_md_path(sid).exists():
+            err(f"skill {sid!r}: SKILL.md not found at {gen.skill_md_path(sid)} — in-repo plugin skill unresolvable")
+
+
 def check_entrypoints(entry, provs, provider_ids):
     if not entry:
         return
@@ -371,10 +407,12 @@ def main(argv=None):
     depth = load_json("review-depth.json")
     monitoring = load_json("monitoring.json", required=False)
     seat_exec = load_json("seat-exec.json", required=False)
+    skills = load_json("skills.json", required=False)
 
     schema_validate({"providers": providers, "subscriptions": subs, "connectors": conns,
                      "entrypoints": entry, "usage_windows": windows, "roles": roles,
-                     "review_depth": depth, "monitoring": monitoring, "seat_exec": seat_exec})
+                     "review_depth": depth, "monitoring": monitoring, "seat_exec": seat_exec,
+                     "skills": skills})
 
     if monitoring is not None:
         rd = monitoring.get("retention_days")
@@ -384,6 +422,7 @@ def main(argv=None):
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)
     check_connectors(conns, provider_ids)
+    check_skills(skills, providers, conns)
     check_entrypoints(entry, provs, provider_ids)
     subs_ids = set((subs or {}).get("subscriptions", {}))
     check_windows(windows, subs_ids, fable_from_subs)

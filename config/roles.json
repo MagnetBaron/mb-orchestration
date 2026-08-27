@@ -65,6 +65,57 @@
       },
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish"],
       "prompt": "Conduct read-only, brand-separated SEO research and reporting for Magnet Baron and Gadgetduke. Confirm brand before data pulls. Never publish, send, or edit files. Use declared host MCP connector names when present; this registry does not create credentials or live MCP connections."
+    },
+    "shopify-theme-build": {
+      "description": "Grok Build implementing Shopify theme change-sets with the shopify-theme skill.",
+      "level": "terra",
+      "seat": "grok-build",
+      "read_only": false,
+      "hosts": ["claude", "grok"],
+      "claude": {
+        "model": "inherit",
+        "skills": ["magnet-baron-skills:shopify-theme"],
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep"]
+      },
+      "grok": {
+        "tools": ["Read", "Write", "Edit", "Grep", "Glob"]
+      },
+      "deny_tools": ["Admin", "publish", "mcpServers", "Google MCP", "Grok Bot"],
+      "prompt": "Implement only the named Shopify theme change in the isolated worktree, following the shopify-theme skill and the existing Sense-based patterns; do not import generic boilerplate. This role REQUIRES a seat with Shopify access (config/connectors.json shopify-mb-internal.available_on) — the skills registry fails the gate on a seat that lacks it. Run the requested tests; return summary/files/tests/risks. Pair with Review D whenever storefront pixels change. Never publish, enter Shopify Admin, or use Google MCP."
+    },
+    "web-build": {
+      "description": "Grok Build implementing web-app change-sets with the web-coding skill.",
+      "level": "terra",
+      "seat": "grok-build",
+      "read_only": false,
+      "hosts": ["claude", "grok"],
+      "claude": {
+        "model": "inherit",
+        "skills": ["magnet-baron-skills:web-coding"],
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep"]
+      },
+      "grok": {
+        "tools": ["Read", "Write", "Edit", "Grep", "Glob"]
+      },
+      "deny_tools": ["Admin", "publish", "mcpServers", "Google MCP", "Grok Bot"],
+      "prompt": "Implement only the named web-app change in the isolated worktree, following the web-coding skill: a clean, minimal, well-tested, style-matched diff. Run the requested tests; return summary/files/tests/risks. Never publish or use Google MCP when the connector is absent."
+    },
+    "mobile-app-build": {
+      "description": "Grok Build implementing mobile-app change-sets with the mobile-app skill.",
+      "level": "terra",
+      "seat": "grok-build",
+      "read_only": false,
+      "hosts": ["claude", "grok"],
+      "claude": {
+        "model": "inherit",
+        "skills": ["magnet-baron-skills:mobile-app"],
+        "tools": ["Read", "Write", "Edit", "Glob", "Grep"]
+      },
+      "grok": {
+        "tools": ["Read", "Write", "Edit", "Grep", "Glob"]
+      },
+      "deny_tools": ["Admin", "publish", "mcpServers", "Google MCP", "Grok Bot"],
+      "prompt": "Implement only the named mobile-app change in the isolated worktree, following the mobile-app skill and the target platform's conventions (lifecycle, permissions, store constraints). Run the requested tests; return summary/files/tests/risks. Never publish or use Google MCP when the connector is absent."
     }
   }
 }

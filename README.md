@@ -35,6 +35,7 @@ edits.
 | `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
 | `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources |
 | `roles.json` | Role definitions that load inside seats |
+| `skills.json` | Registry that vets which in-repo plugin skills (`plugins/magnet-baron-skills/`, via `.claude-plugin/marketplace.json`) a role may bind — kind, required capability, hosts; fail-closed in `generate-roles.py` |
 | `orchestration.schema.json` | Published JSON-Schema contract (validated by doctor) |
 | `examples/{solo-pro,two-sub,agency}/` | Per-user layers proving 1→N scale — `MB_CONFIG_DIR=config/examples/<x> python3 bin/doctor.py` |
 

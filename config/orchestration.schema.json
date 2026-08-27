@@ -168,6 +168,26 @@
         }
       }
     },
+    "skills": {
+      "type": "object",
+      "required": ["schema_version", "skills"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "skills": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["description", "kind", "required_capability", "hosts"],
+            "properties": {
+              "description": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["read", "write"] },
+              "required_capability": { "type": ["string", "null"] },
+              "hosts": { "type": "array", "minItems": 1, "items": { "enum": ["claude", "grok", "codex"] } }
+            }
+          }
+        }
+      }
+    },
     "seat_exec": {
       "type": "object",
       "required": ["schema_version", "recipes"],
