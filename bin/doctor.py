@@ -206,6 +206,72 @@ def check_review_depth(depth):
                 err(f"review-depth class {cid}: {col}={spec.get(col)!r} not a valid level")
 
 
+def check_seat_exec(seat_exec, provs, provider_ids):
+    """seat-exec.json recipes must not drift from the registry: every recipe keys a known
+    provider; the never_metered_host marker matches providers.json `billing` (the secrets/PII
+    executor guard, as data); and `bin` matches `kind` (CLI seats have a bin, app/api/local
+    seats do not). Consumed by bin/run-brief.py."""
+    if not seat_exec:
+        return
+    recipes = seat_exec.get("recipes", {})
+    if not recipes:
+        err("seat-exec.json: no recipes defined")
+        return
+    valid_reads = {"brief", "git-diff", "preview-url", "analytics", "none"}
+    for pid, r in recipes.items():
+        if pid not in provider_ids:
+            err(f"seat-exec recipe {pid!r}: not a known provider (config/providers.json)")
+            continue
+        p = provs.get(pid, {})
+        kind, billing = p.get("kind"), p.get("billing", "included")
+        nmh = r.get("never_metered_host")
+        if not isinstance(nmh, bool):
+            err(f"seat-exec recipe {pid!r}: never_metered_host must be a boolean")
+        elif billing == "metered" and nmh is not False:
+            err(f"seat-exec recipe {pid!r}: provider billing=metered → never_metered_host must be false "
+                "(the executor must never shell a metered inference host — secrets/PII ban)")
+        elif billing == "included" and nmh is not True:
+            err(f"seat-exec recipe {pid!r}: provider billing=included → never_metered_host must be true")
+        bin_ = r.get("bin")
+        if kind in ("cli", "ide") and not (isinstance(bin_, str) and bin_):
+            err(f"seat-exec recipe {pid!r}: provider kind={kind} needs a CLI bin (non-empty string)")
+        if kind in ("app", "api", "local") and bin_ is not None:
+            err(f"seat-exec recipe {pid!r}: provider kind={kind} has no CLI → bin must be null")
+        if r.get("reads") not in valid_reads:
+            err(f"seat-exec recipe {pid!r}: reads={r.get('reads')!r} not in {sorted(valid_reads)}")
+        if not isinstance(r.get("args_template"), list):
+            err(f"seat-exec recipe {pid!r}: args_template must be a list")
+        if not isinstance(r.get("worktree"), bool):
+            err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
+
+
+def check_runledger():
+    """The stateful spine must import and its pure fold must round-trip deterministically —
+    a broken ledger silently loses run-state (fix-loop cap, starvation guard become vibes)."""
+    try:
+        rl = load_module("runledger_doc", HERE / "runledger.py")
+    except Exception as exc:
+        err(f"runledger cannot import: {exc}")
+        return
+    try:
+        evs = [
+            rl.make_event("lane-doctor", "created", "2026-01-01T00:00:00+00:00"),
+            rl.make_event("lane-doctor", "classified", "2026-01-01T00:00:01+00:00",
+                          **{"class": "repo-code", "review_depth": "single-frontier"}),
+            rl.make_event("lane-doctor", "review-verdict", "2026-01-01T00:00:02+00:00",
+                          seat="opus-4.8", verdict="fix-list"),
+            rl.make_event("lane-doctor", "review-verdict", "2026-01-01T00:00:03+00:00",
+                          seat="opus-4.8", verdict="ship"),
+        ]
+        st = rl.fold(evs)
+        ok = (st["status"] == "review-passed" and st["class"] == "repo-code"
+              and st["fix_loops"] == 1 and st["event_count"] == 4 and st["terminal"] is False)
+        if not ok:
+            err(f"runledger fold round-trip wrong: {st}")
+    except Exception as exc:
+        err(f"runledger fold raised: {exc}")
+
+
 def check_roles_and_windows_run(providers_path, roles_path):
     try:
         gen = load_module("gen_roles", HERE / "generate-roles.py")

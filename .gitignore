@@ -11,3 +11,6 @@ generated/
 # Python cache
 __pycache__/
 *.pyc
+
+# Working notes / handoffs — not distributed
+scratchpad/

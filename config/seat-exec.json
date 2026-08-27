@@ -1,0 +1,69 @@
+{
+  "_note": "PER-SEAT CLI INVOCATION RECIPES as DATA. Consumed by bin/run-brief.py (the DRY-RUN planner). The LIVE executor that would shell these is GATED and NOT built (see pipeline-graph.md). Keyed by PROVIDER id (config/providers.json) so a resolved seat maps straight to how it is invoked. `bin` is the CLI binary (also providers.json detect.cmd; null for app/api/local seats that have no CLI). `args_template` tokens render from the brief with {placeholders}. `reads` = what the seat consumes (code seats read the git diff; Visual QA reads the preview URL — AGENTS.md §Review). `never_metered_host` is the hard invariant AS DATA: true = a subscription CLI (included) the executor may shell; false = a metered third-party inference host that must NEVER be handed a diff/brief (secrets/PII ban, EDGE-CASES.md) — included capacity or owner-land only. bin/doctor.py ties never_metered_host to providers.json `billing` and `bin` to `kind`, so this file can never drift from the registry. Nothing here is policy — providers/families/order/economics live in providers.json + usage-windows.json.",
+  "schema_version": 1,
+  "placeholders": {
+    "{brief_path}": "path to the 6-field brief file (paths only, no pasted dumps — AGENTS.md §Brief)",
+    "{worktree}": "isolated worktree dir for an implement lane (1 lane = 1 worktree = 1 branch — DOCTRINE §Concurrency)",
+    "{branch}": "the lane's branch (review reads its git diff)",
+    "{repo}": "repo root for a review seat that reads the diff in place",
+    "{output_path}": "brief output_path (MCP snapshot / result)",
+    "{preview_url}": "visitor preview URL a Visual QA seat walks"
+  },
+  "recipes": {
+    "grok-build": {
+      "bin": "grok", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "reads": "brief", "worktree": true, "never_metered_host": true,
+      "note": "Default implementer. 1 worktree / 1 branch / named file scope; resume existing branch on retry."
+    },
+    "codex-terra": {
+      "bin": "codex", "args_template": ["exec", "--cd", "{worktree}", "--brief", "{brief_path}"],
+      "reads": "brief", "worktree": true, "never_metered_host": true,
+      "note": "Google-MCP bulk fetches → output_path snapshot; implement runs against the snapshot."
+    },
+    "codex-luna": {
+      "bin": "codex", "args_template": ["exec", "--cd", "{repo}", "coordinate", "--brief", "{brief_path}"],
+      "reads": "brief", "worktree": false, "never_metered_host": true,
+      "note": "Lightweight MCP/queue coordination helper. Never implements repo code; never a verdict."
+    },
+    "codex-sol": {
+      "bin": "codex", "args_template": ["exec", "--cd", "{repo}", "review", "--diff", "{branch}"],
+      "reads": "git-diff", "worktree": false, "never_metered_host": true,
+      "note": "OpenAI review family (cross-family gate #2). Verdict ship|fix-list|blocked; blocked wins."
+    },
+    "opus-4.8": {
+      "bin": "claude", "args_template": ["-p", "review the git diff on {branch}; verdict ship|fix-list|blocked"],
+      "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
+      "note": "Anthropic gate (gate #1). MUST run on ANOTHER live Claude seat via teamclaude — NEVER the dispatcher account (the dispatcher preserves its quota by delegating, not reviewing on its own account)."
+    },
+    "fable-5": {
+      "bin": "claude", "args_template": ["-p", "architecture pass on the git diff on {branch}"],
+      "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
+      "note": "Architecture only — OUT of the gating order (owner ruling 2026-08-25). Never a gating verdict; never the daily coder. Runs on another Claude seat, never the dispatcher account."
+    },
+    "cursor-grok": {
+      "bin": "cursor-agent", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "reads": "brief", "worktree": true, "never_metered_host": true,
+      "note": "First-party Cursor Models pool (included). IDE edits; drain before metered Cursor."
+    },
+    "cursor-other-400": {
+      "bin": "cursor-agent", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "reads": "brief", "worktree": true, "never_metered_host": false,
+      "note": "Metered $ 'Last $' pool. never_metered_host:false → the executor will NOT shell it; drains LAST, only when no included capacity remains (minimize API $)."
+    },
+    "grok-bot-review-d": {
+      "bin": null, "args_template": [],
+      "reads": "preview-url", "worktree": false, "never_metered_host": true,
+      "note": "App/Slack Visual QA — no CLI. Reads a visitor preview URL (not a diff). Ticket to #visual-qa; reached out-of-band, never shelled. Bot.app stays quit on the worker Mini."
+    },
+    "grok-bot-heat-map": {
+      "bin": null, "args_template": [],
+      "reads": "analytics", "worktree": false, "never_metered_host": true,
+      "note": "App analytics input (Clarity heatmaps/replays). No CLI; feeds dispatch, never a verdict."
+    },
+    "review-e": {
+      "bin": null, "args_template": [],
+      "reads": "git-diff", "worktree": false, "never_metered_host": false,
+      "note": "Metered independent-family review slot (off-box HTTP; unwired). never_metered_host:false → the executor NEVER hands it a diff/brief; its wrapper scans for secrets/PII first and it stays behind the owner-land guard. Never a Mini process."
+    }
+  }
+}
