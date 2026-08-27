@@ -70,12 +70,24 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 
 ## Implement (Grok Build)
 
-1 worktree · 1 branch · named file scope. Style-match; no drive-bys. Return: summary, files, tests run, risks. Never same change-set as Bot. Do not invent GSC/keyword numbers; consume `must_read` snapshots from MCP seats. Resume existing branch on retry; no second worktree for the same objective.
+1 worktree · 1 branch · named file scope. Style-match; no drive-bys. Return: summary, files, tests run, risks. Never same change-set as Bot. Do not invent GSC/keyword numbers; consume `must_read` snapshots from MCP seats. Resume existing branch on retry; no second worktree for the same objective. **Skills reach this seat as `must_read` paths:** when a brief names a `.claude/skills/<name>/SKILL.md`, read it before implementing — Grok does not auto-load skills. Index: `.claude/skills/REGISTRY.md`.
 
 ## Review (Fable / Codex Sol / 4.8 / Fireworks Review E / Website Visual QA)
 
 Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time; Review E is an off-box HTTP call, never a Mini process. Fix loops return to the issuing seat; a seat spent mid-loop → park the loop.
 
+## Skills
+
+On-demand procedures in `.claude/skills/` (this repo) and `mb-shopify-theme/.claude/skills/`. Registry: `.claude/skills/REGISTRY.md` (single source — do not re-list skills here). **Durable = committed to the repo, never `~/.claude`.** Each skill is a thin wrapper over the single-source `.md`, so its content survives even where the skill mechanism is not read.
+
+**Reachability by seat** (the point: Grok is the bulk coder and does not read skills):
+- **Claude Code · Codex CLI (0.147+) · Cursor (2.4+)** auto-load a skill when the task matches its description; all three scan `.claude/skills/`.
+- **Grok Build / Grok Bot** do **not** auto-load. Dispatch names the relevant `.claude/skills/<name>/SKILL.md` in the brief's `must_read`; Grok reads it before implementing. `REGISTRY.md` maps trigger → path as the self-serve index. A skill is just another `must_read` path.
+
+**Three layers, side by side** (namespaced, no collision): brand-specific MB skills (`mb-*`, proprietary/private) · MB public-distributable skills (generic, MIT — publishable) · adopted third-party + built-in skills (installed from their marketplaces; catalogued in `REGISTRY.md`).
+
+**Gate:** a skill is standing config → single-frontier floor to land; cross-family for one that executes prod/auth (`mb-shopify-release`, MCP changes) or for any third-party enable (+ `/security-review`). `DOCTRINE.md` §Review depth is the source. Packaging + open sourcing: `requests/skills-integration.md`.
+
 ## Hard bans
 
-- Fable/Sol/Opus as daily coder · Opus 5 default · two frontier passes from the **same family** on one branch (the cross-family gate pair — one pass each from two families — is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host
+- Fable/Sol/Opus as daily coder · Opus 5 default · two frontier passes from the **same family** on one branch (the cross-family gate pair — one pass each from two families — is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host · personal `~/.claude/skills` as the durable skill store (skills live in the repo) · enabling a third-party skill without cross-family + `/security-review`
