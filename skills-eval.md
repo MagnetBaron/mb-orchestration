@@ -43,7 +43,7 @@ Sources: [Agent Skills overview](https://platform.claude.com/docs/en/agents-and-
 
 One-liner: **CLAUDE.md = always-on facts · Skills = on-demand procedures · MCP = live tools · Plugins = how you ship skills · Subagents = isolated execution.**
 
-**Multi-CLI caveat (MB-critical).** `SKILL.md` is a Claude Code / agentskills.io construct. Cursor adopts the standard; **Codex CLI and Grok Build do not automatically consume `.claude/skills/`.** One skill library will not serve every seat in the orchestration. Skills land on the Claude and Cursor seats; Codex/Grok keep reading the repo `.md` contract. Plan the library as *Claude-seat leverage*, not a fleet-wide replacement for the markdown doctrine.
+**Multi-CLI caveat (MB-critical).** `SKILL.md` is now a cross-tool open standard: **Claude Code, Cursor (v2.4+, Jan 2026), and Codex CLI (0.147.0+, Aug 2026) all consume it** — Codex and Cursor scan `.claude/skills/` too — so one repo-committed library serves three of your seats, dispatch included. The exception is **Grok Build / Grok Bot**, your default implementer and cloud seat, which reads `AGENTS.md` + repo `.md`, not skills. Author skills as thin wrappers over the single-source `.md` so every seat converges. Full matrix + design rule in §7.3.
 
 ---
 
@@ -148,13 +148,15 @@ Personal `~/.claude/skills/` is experiments only — it does **not** reach cloud
 1. `liquid-skills` (3 official Liquid skills) + `liquid-lsp`.
 2. Shopify Dev MCP, scoped to `validate_theme` + schema introspection.
 3. `dart-lang/skills` + `flutter/agent-plugins` (only when Flutter work starts).
+4. `mcp-builder` (official) — for building/refactoring MCP servers, incl. the internal ShopifyMCP.
 
-**Phase 2 — build MB-proprietary (the real leverage; route to Grok Build):**
+**Phase 2 — build MB-proprietary (the real leverage; author on Grok Build, consumed by Claude/Codex/Cursor):**
 1. `mb-theme-safety` ⭐ (highest ROI — prevents multi-day wedge losses).
 2. `mb-shopify-release` ⭐ (owner-fired; prod = live).
 3. `mb-theme-conventions` (layered on `liquid-skills`).
 4. `doctrine-sync` / `vault-index` ⭐ (turns the doctrine pile into a navigable brain).
 5. `theme-preflight`, then `vault-search`, `capture-note`, `decision-log`.
+6. `mb-mcp-hardening` (secure the internal ShopifyMCP; cross-family review). Rest of the coding-task surface (§7.2) is pull-based.
 
 **Phase 3 — selective / conditional:**
 - `evanca/flutter-ai-rules` (state-mgmt slice) · `obra/superpowers` (TDD/debugging/worktrees slice) · `trailofbits/skills` (audit passes) — each behind the Lane 3 security gate.
@@ -163,6 +165,71 @@ Personal `~/.claude/skills/` is experiments only — it does **not** reach cloud
 **Skip:** the AI Toolkit umbrella (take its parts) · a Flow-authoring skill (Sidekick owns it) · Hydrogen/Functions/checkout · all 3–4★ community Shopify kits · external code-review/security/init skills (built-ins own them) · skills that duplicate the GitHub/Shopify Admin MCPs.
 
 **Packaging decision:** start Phase 2 as repo-local `.claude/skills/` in `mb-shopify-theme` (cloud-safe); promote cross-repo skills into a private `mb-claude-plugins` marketplace once more than one repo needs them.
+
+---
+
+## 7. Follow-ups — MCP servers, full coding-task map, cross-agent portability
+
+### 7.1 Building and securing MCP servers (this was under-covered in the first pass)
+
+**Build → adopt `mcp-builder`** (official, `anthropics/skills`). Full lifecycle: tool-design planning, TypeScript (MCP SDK) or Python (FastMCP) implementation, MCP Inspector testing, and evals. Install `/plugin install mcp-server-dev@claude-plugins-official` or `npx skills add https://github.com/anthropics/skills --skill mcp-builder`. Directly relevant — you run an internal `MagnetBaron-Internal-ShopifyMCP`; this is the skill for extending or refactoring it.
+
+**Secure → build `mb-mcp-hardening`** (no single public skill covers this; the guidance is canonical 2026 material). Checklist the skill encodes, applied to the internal ShopifyMCP:
+- **AuthN/Z:** OAuth 2.1 + mandatory PKCE; validate token *audience* (accept only tokens minted for you); never pass a client token through to upstream APIs (confused-deputy).
+- **Tool poisoning / prompt injection:** treat tool descriptions + parameter schemas as an attack surface (OWASP Agentic Top 10 ASI01 / tool-poisoning); pin and review tool metadata; a tool description must not carry instructions.
+- **Least privilege:** scope every credential to exactly what a tool needs (read-only roles unless a write tool needs it); no personal standing creds.
+- **Input + egress:** allow-list and validate every tool input; block SSRF egress to private IP ranges.
+- **Irreversible actions:** require human confirmation (maps to your owner publish/send/spend gates).
+- **Runtime:** log every tool call (user / client / server / args / downstream / result) for traceability.
+
+This maps onto your existing hard bans (no secrets/PII to third-party inference) and the risk gate: an MCP change is *standing config* → single-frontier floor, raised to **cross-family** on OAuth/secrets/prod URL. Sources: [mcp-builder SKILL.md](https://github.com/anthropics/skills/blob/main/skills/mcp-builder/SKILL.md) · [MCP: build with Agent Skills](https://modelcontextprotocol.io/docs/2026-07-28/develop/build-with-agent-skills) · [CSA Agentic MCP Security](https://labs.cloudsecurityalliance.org/agentic/agentic-mcp-security-best-practices-v1/) · [Checkmarx MCP security 2026](https://checkmarx.com/learn/mcp-security-risks-real-world-incidents-and-security-controls/).
+
+### 7.2 Your full coding-task surface → skill map
+
+Derived from both repos. "in packet" = already in §2–§3. Do **not** build all at once — skill count is a budget (§0); build pull-based when a task recurs.
+
+| Coding task (evidence in repo) | Skill | Verdict |
+|---|---|---|
+| Build / extend MCP servers (internal ShopifyMCP) | `mcp-builder` | **adopt** |
+| Secure / harden MCP servers | `mb-mcp-hardening` | **build** |
+| Theme codemods — programmatic section/block insert + relocate (`scripts/mb-add-*.mjs`, `mb-relocate-upsell.mjs`, `mb-row-above-reviews.mjs`) | `mb-theme-codemod` (idempotent, limit-safe transforms) | **build** |
+| CSS bundle rebuild (`rebuild-css-bundle.sh`, `CSS_BUNDLE_NOTES.md`) | `mb-css-bundle` | **build (small)** |
+| Performance audits (`PERF_NOTES.md`; DataForSEO `on_page_lighthouse`) | `mb-perf-audit` (Lighthouse via MCP → prioritized fixes) | **build** |
+| Technical SEO / structured data (soft-404 noindex fix, `strip_only`, JSON-LD) | `mb-seo-structured-data` | **build** |
+| i18n / locale files (`locales/`) | `mb-i18n` | **build (small)** |
+| Third-party app integration (Judge.me, Omnisend, Stoq — `JUDGEME_NOTES.md`) | `mb-integrations` | **build** |
+| Theme limits / wedge diagnosis | `mb-theme-safety` ⭐ | **build (in packet)** |
+| Release / backport / settings reconcile | `mb-shopify-release` ⭐ | **build (in packet)** |
+| Theme conventions | `mb-theme-conventions` | **build (in packet)** |
+| Pre-push validation | `theme-preflight` | **build (in packet)** |
+| Usage metering (`usage-status.py`, `record-429.sh`) | `mb-usage-status` (run + interpret; never LLM-estimate) | **build (small)** |
+| teamclaude routing (`sync-commands.sh`, routes JSON, `mb/sync-plan`) | `mb-teamclaude` | **build (small)** |
+| Roles registry (Python + tests: `roles/generate.py`) | general Python + `superpowers` TDD | **adopt (covered)** |
+| Visual QA handoff (`visual-qa*.md`, Slack) | `mb-visual-qa-handoff` | **build (small)** |
+| Analytics interpretation (Clarity / GSC / DataForSEO) | retrieval skill over `analytics-clarity.md` (judgment, not automation) | **build (small)** |
+| Code review / security review / simplify / init | Claude Code built-ins | **skip — owned** |
+
+### 7.3 Are skills portable between agents? (mostly yes now — one exception, and it's your implementer)
+
+`SKILL.md` became a genuine cross-tool open standard in 2026. Portability by seat:
+
+| Seat (`AGENTS.md`) | Tool | Consumes skills? | How |
+|---|---|---|---|
+| Review C / MCP judgment | **Claude Code** | ✅ | `.claude/skills/`, plugins |
+| IDE | **Cursor** | ✅ | Skills since **v2.4** (Jan 2026); scans `.claude/skills/` |
+| Dispatch / Review B / MCP volume | **Codex CLI** | ✅ (new) | Skills since **0.147.0** (Aug 7 2026); scans `.codex/skills/` **and** `.claude/skills/`; can import Cursor skills |
+| **Implement (default)** | **Grok Build** | ❌ (none surfaced) | reads `AGENTS.md` + repo `.md` |
+| Cloud standing / Review D | **Grok Bot** | ❌ | Slack + repo `.md` |
+
+One repo-committed library (`.claude/skills/`) now serves **Claude, Cursor, and Codex** — three seats, dispatch included. The exception is **Grok**, your default implementer and cloud seat.
+
+**Design rule (the important part):** author each skill as a **thin wrapper over the single-source repo `.md`**, not a fork of that knowledge. Then skill-aware seats (Claude/Cursor/Codex) load it progressively; Grok reads the same `.md` directly; one source, all seats converge — your single-source discipline, intact. Corollaries:
+- **Instruction files stay per-tool.** Codex→`AGENTS.md`, Claude→`CLAUDE.md`, Cursor→`.cursor/rules`. Keep always-on *routing rules* in `AGENTS.md` (the all-seats contract), not in a skill.
+- **Cross-surface skills use only the 6 portable frontmatter fields** (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`). Reserve Claude-Code-only frontmatter (`context`, `paths`, `hooks`, `disable-model-invocation`) for Claude-only skills — it errors on other surfaces.
+- **Grok authors, skill-aware seats consume.** Routing a skill *build* to Grok is fine (writing `SKILL.md` + scripts is implement work); Grok just won't *use* the result at runtime — Claude/Codex/Cursor will.
+- **Cloud/routine reach:** repo `.claude/skills/` clones into cloud sessions; personal `~/.claude/skills/` does not. Commit skills to the repo.
+
+Sources: [Cursor 2.4 / Codex skill portability](https://www.digitalapplied.com/blog/codex-cli-cross-harness-skill-portability-lock-in) · [cross-agent skills 2026](https://mcp.directory/blog/cross-agent-skills-cursor-codex-cline-antigravity-gemini-mastra-portability) · [agent instruction files](https://codex.danielvaughan.com/2026/05/27/agent-instruction-files-agents-md-claude-md-cross-tool-portability-codex-cli/).
 
 ---
 
