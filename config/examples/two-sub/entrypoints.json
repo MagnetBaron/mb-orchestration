@@ -1,0 +1,15 @@
+{
+  "_note": "TWO-SUB: Codex dispatches; Grok implements. When Grok is spent, the dispatch (Codex) plan codes — resolve-route's intake-codes-last-resort.",
+  "schema_version": 1,
+  "dispatcher": { "provider": "codex-luna", "level": "luna", "fallback": ["codex-terra"], "rule": "one dispatcher; a phone never implements" },
+  "entry_surfaces": {
+    "codex-cli": { "host": "codex", "provider": "codex-luna", "can_dispatch": true, "default": true, "note": "dispatch + Sol review; codes as last resort" },
+    "grok-cli": { "host": "grok", "provider": "grok-build", "can_dispatch": false, "note": "implement only" }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "Grok drafts nothing — it implements the dispatched brief",
+    "entry_is_free": "type from Codex or Grok; only Codex dispatches",
+    "portability": "adding Claude later gives a second review family so cross-family gates stop parking"
+  }
+}

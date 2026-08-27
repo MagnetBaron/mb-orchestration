@@ -1,0 +1,17 @@
+{
+  "_note": "EXAMPLE per-user layer — an AGENCY with MORE seats than the reference (Codex + Grok + Cursor + Max + 4 Team + 2 Pro = 7 Claude seats). Validate: `MB_CONFIG_DIR=config/examples/agency python3 bin/doctor.py`. Demonstrates upward scale: teamclaude rotates 7 Claude seats; add more by adding entries here + usage-windows and running doctor. Nothing in code or prose changes.",
+  "schema_version": 1,
+  "owner": "agency@example.com",
+  "subscriptions": {
+    "codex-200": { "vendor": "OpenAI", "product": "Codex $200", "monthly_usd": 200, "backs_providers": ["codex-luna", "codex-terra", "codex-sol"], "grants": { "fable": false } },
+    "grok-heavy": { "vendor": "xAI", "product": "SuperGrok Heavy", "monthly_usd": null, "backs_providers": ["grok-build", "grok-bot-review-d", "grok-bot-heat-map"], "grants": {} },
+    "cursor-ultra": { "vendor": "Cursor", "product": "Cursor Ultra", "monthly_usd": null, "backs_providers": ["cursor-grok", "cursor-other-400"], "grants": {} },
+    "claude-max-200": { "vendor": "Anthropic", "product": "Claude Max $200", "monthly_usd": 200, "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-max", "tier": "max", "grants": { "fable": true, "opus": true } },
+    "claude-team-a": { "vendor": "Anthropic", "product": "Claude Team premium $125", "monthly_usd": 125, "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-a", "tier": "team", "grants": { "fable": true, "opus": true } },
+    "claude-team-b": { "vendor": "Anthropic", "product": "Claude Team premium $125", "monthly_usd": 125, "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-b", "tier": "team", "grants": { "fable": true, "opus": true } },
+    "claude-team-c": { "vendor": "Anthropic", "product": "Claude Team premium $125", "monthly_usd": 125, "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-c", "tier": "team", "grants": { "fable": true, "opus": true } },
+    "claude-team-d": { "vendor": "Anthropic", "product": "Claude Team premium $125", "monthly_usd": 125, "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-d", "tier": "team", "grants": { "fable": true, "opus": true } },
+    "claude-pro-a": { "vendor": "Anthropic", "product": "Claude Pro $25", "monthly_usd": 25, "backs_providers": ["opus-4.8"], "seat_id": "claude-pro-a", "tier": "pro", "grants": { "fable": false, "opus": true } },
+    "claude-pro-b": { "vendor": "Anthropic", "product": "Claude Pro $25", "monthly_usd": 25, "backs_providers": ["opus-4.8"], "seat_id": "claude-pro-b", "tier": "pro", "grants": { "fable": false, "opus": true } }
+  }
+}

@@ -12,7 +12,7 @@ So: **the only place a reset time lives is `config/usage-windows.json`**, and **
 | File | Role | Written by |
 |------|------|-----------|
 | `config/usage-windows.json` | Source of truth: each seat's window kind, reset anchor, soft cap, `$` cap | Owner (rarely — only when a plan/window changes) |
-| `config/usage-ledger.json` | Live state: `spent_until` / `pct` per seat + `fable-downgrade:<seat>` markers. Gitignored | `bin/record-429.sh` (on a real 429), `bin/detect-fable.py`, or the owner — **never a probe/timeout, never an LLM** |
+| `config/usage-ledger.json` | Live state: `spent_until` / `pct` per seat + `fable-downgrade:<seat>` markers. Gitignored | `bin/record-429.sh` (on a real 429), `bin/detect-capability.py`, or the owner — **never a probe/timeout, never an LLM** |
 | `config/usage-ledger.example.json` | Format reference | committed |
 | `bin/usage-status.py` | Reads both, computes the next reset, prints state | — |
 
@@ -42,7 +42,7 @@ python3 bin/resolve-route.py --class <c> --scale <s>  # deterministic route usin
 - **Dispatch** runs `usage-status` (via `resolve-route`) before routing a review, instead of judging limits by hand.
 - "**Park to the earliest reset**" (`EDGE-CASES.md`) = `usage-status --earliest-reset`, not a remembered time.
 - **Review E** engages only when `usage-status` shows every native review seat spent (plus the other triggers in `fireworks-usage.md`).
-- **Fable downgrades**: `bin/detect-fable.py` writes a `fable-downgrade:<seat>` marker that `resolve-route` honors immediately (drops the seat from Fable-capable) — no prose edit needed.
+- **Fable downgrades**: `bin/detect-capability.py` writes a `fable-downgrade:<seat>` marker that `resolve-route` honors immediately (drops the seat from Fable-capable) — no prose edit needed.
 
 ## Rules
 

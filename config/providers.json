@@ -1,6 +1,6 @@
 {
-  "_note": "PROVIDER / AGENT REGISTRY — the single source of truth for who exists, what tier (capability level) they serve, what model family they belong to (for cross-family review), what jobs they may do, and how to detect them. Prose files never name a model tier or family; they point here. Adding an agent = add an entry here (see local-llm-example). Providers at a level are REPLACEABLE: swap the model/backing without touching policy. Invariant policy (bans, gates) lives in AGENTS.md/DOCTRINE.md; everything that changes with the market lives here.",
-  "schema_version": 3,
+  "_note": "PROVIDER / AGENT REGISTRY — the single source for who exists, their capability LEVEL (durable routing tier), model FAMILY (cross-family review), BILLING (included vs metered $), CAPABILITIES (what they can access — browser, connectors, etc.), PROWESS (strength per function, so assignment tracks capability not habit), and how to DETECT them. Adding or upgrading a model is ONE clean edit here bound to a level (see model_slot_in). Providers at a level are REPLACEABLE. Invariant policy lives in AGENTS.md/DOCTRINE.md; everything that moves with the market lives here.",
+  "schema_version": 4,
   "updated": "2026-08-27",
   "capability_levels": {
     "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
@@ -12,88 +12,117 @@
     "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
     "openai": { "label": "OpenAI (GPT / Codex)", "note": "Sol, Terra, Luna share the Codex pipe." },
     "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI + the two Grok Bot app identities." },
-    "open-weight": { "label": "Open-weight (independent lab)", "note": "The first review family that is none of Anthropic/OpenAI/xAI — the reason Review E earns a seat." },
+    "open-weight": { "label": "Open-weight (independent lab)", "note": "The first review family that is none of Anthropic/OpenAI/xAI." },
     "cursor-pool": { "label": "Cursor harness (mixed underlying models)", "note": "A harness, not a model family; never a cross-family reviewer." }
+  },
+  "capability_catalog": {
+    "code": "Write/edit code in a repo", "review": "Judge a git diff", "architecture": "Design/plan review",
+    "dispatch": "Queue/assign/risk-gate", "mcp_bulk": "High-volume connector fetches", "mcp_judgment": "Interpret fetched data",
+    "browser": "Drive a real browser (Chrome) — preview walks, dashboards", "visual_qa": "Storefront pixel review",
+    "analytics": "Read analytics UIs (Clarity heatmaps/replays)", "ide": "In-editor agent",
+    "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. The router checks BOTH: a coarse tag here, a connector name there. This is how 'which AI has Clarity/Chrome/GSC access' is system-determined, not guessed."
   },
   "providers": {
     "codex-luna": {
       "label": "Codex Luna (dispatch)", "level": "luna", "family": "openai", "kind": "cli",
-      "model": "gpt-5.6-luna", "functions": ["dispatch"], "review_eligible": false,
+      "model": "gpt-5.6-luna", "functions": ["dispatch"], "capabilities": ["dispatch"],
+      "prowess": { "dispatch": 85 }, "billing": "included", "review_eligible": false,
       "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
       "notes": "Default dispatcher. Queue/assign/status/risk-gate only; never implements."
     },
     "codex-terra": {
       "label": "Codex GPT Terra (MCP volume)", "level": "terra", "family": "openai", "kind": "cli",
-      "model": "gpt-5.6-terra", "functions": ["mcp_bulk", "dispatch"], "review_eligible": false,
+      "model": "gpt-5.6-terra", "functions": ["mcp_bulk", "dispatch"], "capabilities": ["mcp_bulk", "dispatch"],
+      "prowess": { "mcp_bulk": 82 }, "billing": "included", "review_eligible": false,
       "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
-      "notes": "Google-MCP bulk fetches to output_path. May be promoted off dispatch for a named brief."
+      "notes": "Google-MCP bulk fetches to output_path."
     },
     "codex-sol": {
       "label": "Codex GPT-5.6 Sol (Review B / MCP judgment)", "level": "sole", "family": "openai", "kind": "cli",
-      "model": "gpt-5.6-sol", "functions": ["review", "mcp_judgment"], "review_eligible": true,
+      "model": "gpt-5.6-sol", "functions": ["review", "mcp_judgment"], "capabilities": ["review", "mcp_judgment"],
+      "prowess": { "review": 85, "mcp_judgment": 84 }, "billing": "included", "review_eligible": true,
       "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
-      "notes": "Scarce OpenAI judgment. Soft cap in usage-windows.json (codex-sol). Not the implementer."
+      "notes": "Scarce OpenAI judgment. On the intake plan → reserve tier, but yields (never stranded)."
     },
     "grok-build": {
       "label": "Grok Build CLI (implement)", "level": "terra", "family": "xai", "kind": "cli",
-      "model": "grok-4.6-build", "functions": ["implement"], "review_eligible": false,
+      "model": "grok-4.6-build", "functions": ["implement"], "capabilities": ["code"],
+      "prowess": { "implement": 82 }, "billing": "included", "review_eligible": false,
       "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
-      "notes": "Default implementer. 1 worktree / 1 branch / named file scope. Not Google-MCP unless a connector is present."
+      "notes": "Default implementer. 1 worktree / 1 branch / named file scope."
     },
     "grok-bot-review-d": {
       "label": "Grok Bot — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "app",
-      "model": null, "functions": ["visual_qa"], "review_eligible": false,
-      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "macOS/iOS + xAI cloud computer; no CLI/API/webhook. Dispatched via Slack #visual-qa." },
-      "notes": "Credential-free preview walks only. Never Admin/publish/implement. Input to the pixel gate, not a code reviewer."
+      "model": null, "functions": ["visual_qa"], "capabilities": ["browser", "visual_qa"],
+      "prowess": { "visual_qa": 80 }, "billing": "included", "review_eligible": false,
+      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "macOS/iOS + xAI cloud computer; no CLI/API. Slack #visual-qa." },
+      "notes": "Credential-free preview walks (has browser/Chrome access). Never Admin/publish/implement."
     },
     "grok-bot-heat-map": {
       "label": "Grok Bot — Heat Map (Clarity analytics)", "level": "terra", "family": "xai", "kind": "app",
-      "model": null, "functions": ["analytics"], "review_eligible": false,
+      "model": null, "functions": ["analytics"], "capabilities": ["browser", "analytics"],
+      "prowess": { "analytics": 78 }, "billing": "included", "review_eligible": false,
       "backed_by": "grok-heavy", "detect": { "method": "app", "note": "Second Grok Bot identity; separate auth; shares #visual-qa by content-match." },
-      "notes": "Read-only Clarity heatmaps/replays/Summarize. Feeds Dispatch. Never a review verdict, never implements."
+      "notes": "Read-only Clarity heatmaps/replays via browser. Feeds Dispatch. Never a verdict."
     },
     "fable-5": {
       "label": "Fable 5 (Review A / architecture)", "level": "frontier", "family": "anthropic", "kind": "cli",
-      "model": "claude-fable-5", "functions": ["review", "architecture"], "review_eligible": true,
+      "model": "claude-fable-5", "functions": ["review", "architecture"], "capabilities": ["review", "architecture"],
+      "prowess": { "review": 95, "architecture": 95 }, "billing": "included", "review_eligible": true,
       "backed_by": "claude-fable-capable-seats", "detect": { "method": "capability", "grant": "fable" },
-      "notes": "Hard PR/architecture review WHILE a live Claude seat includes Fable. Availability is a subscription grant — see subscriptions.json grants.fable and bin/detect-fable.py. Never the daily coder."
+      "notes": "Highest review prowess WHILE a live Claude seat grants it (bin/detect-capability.py). Never the daily coder."
     },
     "opus-4.8": {
-      "label": "Opus 4.8 (Review C / Claude judgment)", "level": "frontier", "family": "anthropic", "kind": "cli",
-      "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment"], "review_eligible": true,
+      "label": "Opus 4.8 (Review C / Claude judgment; dispatch-capable)", "level": "frontier", "family": "anthropic", "kind": "cli",
+      "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
+      "prowess": { "review": 88, "mcp_judgment": 86, "dispatch": 82 }, "billing": "included", "review_eligible": true,
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
-      "notes": "Pinned Claude reliability/judgment pass. Routed across live Claude seats by teamclaude. NEVER the default implementer."
+      "notes": "Pinned Claude reliability/judgment pass across live Claude seats (teamclaude). CAN dispatch and CAN code — but in the reference setup entrypoints.json makes Codex the dispatcher and Grok the implementer (Opus-as-daily-coder is a preference ban that yields only when no other seat exists, e.g. a solo Claude user). NEVER the default implementer where a worker seat is live. Pin 4.8; opus-5 forbidden."
     },
     "review-e": {
       "label": "Review E (independent-family review slot)", "level": "frontier", "family": "open-weight", "kind": "api",
-      "model": null, "functions": ["review"], "review_eligible": true,
+      "model": null, "functions": ["review"], "capabilities": ["review"],
+      "prowess": { "review": 78 }, "billing": "metered", "review_eligible": true,
       "wired": false, "backing": "fireworks",
       "backed_by": "fireworks-api", "detect": { "method": "api", "env": "FIREWORKS_API_KEY" },
-      "notes": "REPLACEABLE slot: Fireworks open-weight today, a local open-weight LLM later. Its value is independence (a third family), not capacity. Review-only; engages on QUOTA evidence, never an outage. Model id pinned by owner at wiring — see fireworks-usage.md. Never sees secrets/PII."
+      "notes": "REPLACEABLE independent-family slot: Fireworks today, a local open-weight LLM later. Metered $ → drain LAST. Value is independence, not capacity. Never sees secrets/PII."
     },
     "cursor-grok": {
       "label": "Cursor Grok 4.6 / Composer (IDE)", "level": "terra", "family": "cursor-pool", "kind": "ide",
-      "model": "grok-4.6", "functions": ["ide"], "review_eligible": false,
+      "model": "grok-4.6", "functions": ["ide"], "capabilities": ["code", "ide"],
+      "prowess": { "ide": 78 }, "billing": "included", "review_eligible": false,
       "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
-      "notes": "First-party Cursor Models pool. Drain here for IDE-shaped edits before Grok Build Heavy. Not the orchestration implementer."
+      "notes": "First-party Cursor Models pool (included). Drain for IDE edits before Grok Build Heavy."
     },
     "cursor-other-400": {
       "label": "Cursor Other Models $400 (Last $)", "level": "terra", "family": "cursor-pool", "kind": "ide",
-      "model": null, "functions": ["ide", "last_dollar"], "review_eligible": false,
+      "model": null, "functions": ["ide", "last_dollar"], "capabilities": ["code", "ide"],
+      "prowess": { "ide": 80 }, "billing": "metered", "review_eligible": false,
       "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
-      "notes": "Metered $/month third-party pool. LAST resort after all native buckets. Never a default worker or a cross-family reviewer (harness, not an independent family)."
+      "notes": "Metered $/month third-party pool → drain LAST. Never a default worker or cross-family reviewer."
     },
     "local-llm-example": {
       "label": "Local LLM (template — disabled)", "level": "frontier", "family": "open-weight", "kind": "local",
-      "model": null, "functions": ["review"], "review_eligible": false, "enabled": false,
+      "model": null, "functions": ["review"], "capabilities": ["review"], "prowess": { "review": 60 },
+      "billing": "included", "review_eligible": false, "enabled": false,
       "backed_by": null, "detect": { "method": "command", "cmd": "ollama" },
-      "notes": "TEMPLATE showing how to register a future local open-weight CLI/runtime (e.g. Ollama). Copy this entry, set enabled:true, give it a model + detect, and doctor/detect-agents/resolve-route pick it up with no prose edits. Keep review_eligible:false until an owner cross-family review lands it."
+      "notes": "TEMPLATE for registering a future local open-weight CLI/runtime. Copy, set enabled:true + model + detect + prowess, run bin/doctor.py. Keep review_eligible:false until an owner cross-family review lands it."
     }
   },
   "forbidden_models": {
-    "opus-5": { "reason": "Owner policy: Opus 5 is forbidden as a default or reviewer. Pin Opus 4.8. doctor.py fails if any config or generated artifact selects opus-5.", "aliases": ["claude-opus-5", "opus5"] }
+    "opus-5": { "reason": "Owner policy: Opus 5 forbidden as a default or reviewer. Pin Opus 4.8. A LATER model (e.g. opus-5.1) is NOT auto-forbidden — the admin decides per model. doctor fails if any provider selects a listed forbidden model.", "aliases": ["claude-opus-5", "opus5"] }
   },
   "review_order": ["fable-5", "codex-sol", "opus-4.8", "review-e"],
-  "review_order_note": "Frontier fallback order. single-frontier = first LIVE seat in this order. cross-family = one pass each from two DIFFERENT families (fable-5 + opus-4.8 are both anthropic — never two Anthropic passes). resolve-route.py computes the live chain from this order + usage-status + grants.",
+  "review_order_note": "Frontier fallback order. It is consistent with prowess (fable 95 ≥ opus 88; sol placed before opus so a cross-family pair is reachable early). A stronger new frontier model slots ahead by prowess — the admin updates this list when adding one. resolve-route computes the LIVE chain from this order + usage-status tiers + Fable grants, preferring tier=available over tier=reserve so a self-imposed cap never strands a seat.",
+  "model_slot_in": {
+    "_note": "CLEAN SLOT-IN for a new/updated model (Opus 5.1, Fable 5.1, a successor to Fable/Sol, a new implementer). It is ONE edit here — no code or prose changes:",
+    "steps": [
+      "1. Add a provider entry: id, level (the durable slot it fills), family, kind, model (the new id), functions, capabilities, prowess, billing, detect.",
+      "2. To replace an incumbent, set `supersedes: <old-id>` and remove/disable the old entry; keep the SAME level so routing is unchanged.",
+      "3. If it should join review, add it to review_order at the position its prowess earns and set review_eligible:true.",
+      "4. Run bin/doctor.py (validates level/family/forbidden/order) and bin/smoketest.py. Done — the router and recommendations pick it up."
+    ],
+    "supersedes_note": "A provider may declare `supersedes` naming the id it replaces; doctor warns if both an entry and its superseded id remain enabled."
+  },
   "function_vocabulary": ["dispatch", "implement", "mcp_bulk", "mcp_judgment", "review", "architecture", "visual_qa", "analytics", "ide", "last_dollar"]
 }

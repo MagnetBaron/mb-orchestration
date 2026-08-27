@@ -7,7 +7,11 @@ set -euo pipefail
 
 seat="${1:?seat name required (a seat in config/usage-windows.json)}"
 message="${2:-}"
-default_ledger="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config" && pwd)/usage-ledger.json"
+if [ -n "${MB_CONFIG_DIR:-}" ]; then
+  default_ledger="${MB_CONFIG_DIR%/}/usage-ledger.json"
+else
+  default_ledger="$(cd "$(dirname "${BASH_SOURCE[0]}")/../config" && pwd)/usage-ledger.json"
+fi
 ledger="${MB_USAGE_LEDGER:-$default_ledger}"
 reset="${MB_429_RESET:-$(date -u -v+5H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)}"
 

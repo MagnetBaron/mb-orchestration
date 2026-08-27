@@ -15,7 +15,8 @@ re-derives. Prose here is invariant policy only.
 - `config/connectors.json` — live MCP/analytics/store/Slack bindings (no stale IDs in prose)
 - `config/entrypoints.json` — entry surfaces (user choice) + the one dispatcher
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
-- `bin/usage-status.py` · `bin/resolve-route.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-fable.py` · `bin/smoketest.py`
+- `bin/usage-status.py` · `bin/resolve-route.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/dashboard.py` · `bin/smoketest.py`
+- Config layers by `$MB_CONFIG_DIR` then `config/` — the reference `config/` is ONE example; a user points `MB_CONFIG_DIR` at their own subscriptions/entrypoints/windows (`config/examples/` shows 1→N).
 
 > `USER-GUIDE.md` is for humans choosing plans. It is NOT operational and must never be loaded into an agent's context.
 
@@ -46,7 +47,7 @@ levels (frontier · sole · terra · luna) are the routing tiers; providers at a
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 4.8 | Row-dump fetch loops |
 | **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
 | **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
-| **Review A** | frontier | Fable 5 *(while a live Claude seat grants it — `bin/detect-fable.py`)* | Daily coding |
+| **Review A** | frontier | Fable 5 *(while a live Claude seat grants it — `bin/detect-capability.py`)* | Daily coding |
 | **Review B** | sole | Codex Sol (under soft cap) | Cursor Sol (different meter) |
 | **Review C** | frontier | Opus 4.8 (routed across Claude seats by teamclaude) | Default implementer |
 | **Review E** | frontier | independent-family slot — Fireworks today, local open-weight later *(unwired)* | Implement, dispatch, MCP, sole gate on a risk class, any diff with secrets/PII |
@@ -55,7 +56,7 @@ levels (frontier · sole · terra · luna) are the routing tiers; providers at a
 
 **Claude is five seats, not one.** Max + 2 Team-premium (Fable-capable) + 2 Pro (Opus overflow, no
 Fable), rotated by teamclaude. `bin/resolve-route.py` treats **Fable as available only if a
-Fable-capable seat is live and not downgraded** (`bin/detect-fable.py`), so the review order never
+Fable-capable seat is live and not downgraded** (`bin/detect-capability.py`), so the review order never
 goes stale on a plan change.
 
 **Google MCP:** on whichever providers `config/connectors.json` `available_on` lists (today Opus +
@@ -64,6 +65,18 @@ appropriate GPT). **Not** assumed on Grok. Route per `mcp-routing.md`.
 **Legwork-or-stop:** volume runs on Grok or a GPT-Terra MCP lane, or parks. Never dump legwork on Sol/Opus/Cursor $ because a probe failed. Outages: `EDGE-CASES.md`.
 
 **No desktop apps** after first device-auth. One implementer process on a 16 GB Mini. Grok Bot.app stays quit on the worker.
+
+## Usage economics (never strand)
+
+Per-seat policy lives in `config/usage-windows.json` (`drain`, `reserve_pct`, `intake`, `billing`);
+`bin/drain-plan.py` computes the live plan. Rules the router already enforces:
+
+- **Never strand.** A soft cap / reserve is a *priority demotion that yields*, not a stop. A `reserve`-tier seat is still USABLE. The system parks only for genuine exhaustion (a recorded 429) or an unsatisfiable safety gate — **never** because a self-imposed cap sat on real quota.
+- **Dispatch codes last.** If every worker seat is spent, the intake/dispatch seat implements (a 2-subscription setup routes coding to dispatch by design). Reserves exist to protect dispatch's *own* headroom, sized to what it needs + margin (`bin/drain-plan.py --reserve`), never to block it from coding.
+- **Minimize API $.** `included` (subscription) seats before `metered` ($). Metered pools (Cursor Other Models, Review E) drain LAST — only when no included capacity remains.
+- **Use before lost.** Drain soon-to-reset weekly/monthly quota before it resets to waste; rolling windows refill, so they wait.
+- **No mid-turn swaps.** Pick a seat with enough runway to finish the task (`resolve-route --task-seconds N`); bring a just-reset account in at the NEXT task boundary.
+- **Capability-aware.** An implement/review seat must actually have the needed capability (browser/connector/family) — derived from `config/providers.json` + `config/connectors.json`, not assumed.
 
 ## Brief (required)
 
@@ -136,4 +149,4 @@ change touching scripts) before landing** — a broken registry mis-routes every
 
 ## Hard bans
 
-- Fable/Sol/Opus as daily coder · **Opus 5 as default or reviewer** (pin Opus 4.8; `bin/doctor.py` fails on any config that selects it) · two frontier passes from the **same family** on one branch (the cross-family pair is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host · **hardcoding a live ID, tier, reset time, or connector location in prose instead of `config/`**.
+- Fable/Sol/Opus as daily coder · **Opus 5 as default or reviewer** (pin Opus 4.8; `bin/doctor.py` fails on any config that selects it) · two frontier passes from the **same family** on one branch (the cross-family pair is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host · **hardcoding a live ID, tier, reset time, or connector location in prose instead of `config/`** · **parking or stopping work while a usable (reserve/intake) seat still has real quota** (a self-imposed cap is never a stop) · **draining a metered $ seat while included subscription capacity is available** · **swapping the serving account mid-turn** (pick a seat with runway; rotate at the next task boundary).

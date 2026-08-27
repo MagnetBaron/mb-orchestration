@@ -1,0 +1,17 @@
+{
+  "_note": "AGENCY: Codex dispatches; multiple people type from Codex/Claude/Cursor; one dispatcher. Add surfaces per person, keep ONE dispatcher.",
+  "schema_version": 1,
+  "dispatcher": { "provider": "codex-luna", "level": "luna", "fallback": ["codex-terra"], "rule": "one dispatcher; a phone never implements" },
+  "entry_surfaces": {
+    "codex-cli": { "host": "codex", "provider": "codex-luna", "can_dispatch": true, "default": true },
+    "claude-code": { "host": "claude", "provider": "opus-4.8", "can_dispatch": false, "drafts_and_hands_to_dispatcher": true },
+    "cursor": { "host": "cursor", "provider": "cursor-grok", "can_dispatch": false, "drafts_and_hands_to_dispatcher": true },
+    "phone": { "host": "mobile", "provider": null, "can_dispatch": false, "never_implements": true }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "classify + draft brief, hand to the dispatcher",
+    "entry_is_free": "each teammate types from their own surface",
+    "portability": "more people → more entry_surfaces; more load → more Claude Team seats (add to subscriptions + usage-windows)"
+  }
+}

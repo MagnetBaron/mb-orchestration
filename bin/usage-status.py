@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
 """usage-status — durable, script-computed seat reset/limit status for mb-orchestration.
 
-Why this exists
----------------
-Reset times must not be hardcoded in policy prose, and remaining quota must not be
-guessed by an LLM from token counts. This script is the single reader of:
+Reset times are computed from config/usage-windows.json (the ONLY place a reset lives);
+live state comes from config/usage-ledger.json (written by wrappers on a real 429, or the
+owner — never a probe/timeout, never an LLM). No network calls.
 
-  * config/usage-windows.json  — window/cap definitions + reset anchors (the ONLY place a
-                                 reset time lives). Required.
-  * config/usage-ledger.json   — live/manual state written by wrappers (on a real 429) or
-                                 the owner — never a probe/timeout, never an LLM: { "<seat>":
-                                 {"spent_until": ISO8601, "pct": 0-100, "note": str,
-                                 "updated": ISO8601 } }. Optional.
+Seat state is a TRI-STATE tier so a self-imposed cap never strands real capacity:
+  * available — preferred; drain here first
+  * reserve   — over its reserve line (soft cap) OR an intake seat holding headroom;
+                still USABLE as a last resort (never park while a reserve seat has quota)
+  * spent     — a real 429/limit recorded; genuinely exhausted until reset
 
-It computes the NEXT reset per seat from the anchors and reports each seat's state
-from recorded signals. Dispatch/agents run this instead of eyeballing a dashboard.
-
-No network calls. Live per-provider probes plug in by writing usage-ledger.json —
-only a real 429/limit writes spent state; a timeout writes nothing.
-
-Importable: other tools (resolve-route.py, smoketest.py) call compute() for the rows.
+Importable: resolve-route.py, drain-plan.py, dashboard.py call compute() for the rows.
 
 Usage:
   usage-status.py                 human table
-  usage-status.py --json          machine-readable status (for dispatch)
-  usage-status.py --earliest-reset   soonest reset among seats currently spent
-  usage-status.py --seat NAME     show only one seat
-  usage-status.py --ledger PATH   read an alternate ledger file
+  usage-status.py --json          machine-readable status
+  usage-status.py --earliest-reset   soonest reset among spent/reserve seats
+  usage-status.py --seat NAME     one seat
 """
 from __future__ import annotations
 
@@ -37,19 +28,19 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mborch  # noqa: E402
+
 try:
     from zoneinfo import ZoneInfo
-except Exception:  # pragma: no cover - zoneinfo is stdlib on 3.9+
+except Exception:  # pragma: no cover
     ZoneInfo = None
 
-HERE = Path(__file__).resolve().parent
-CONFIG_DIR = HERE.parent / "config"
-CONF_PATH = CONFIG_DIR / "usage-windows.json"
-DEFAULT_LEDGER = CONFIG_DIR / "usage-ledger.json"
 _WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+DEFAULT_TZ = "America/Chicago"
 
 
-def _now(tz: str | None) -> datetime:
+def _now(tz):
     if ZoneInfo and tz:
         try:
             return datetime.now(ZoneInfo(tz))
@@ -58,7 +49,7 @@ def _now(tz: str | None) -> datetime:
     return datetime.now().astimezone()
 
 
-def _tzinfo(tz: str | None):
+def _tzinfo(tz):
     if ZoneInfo and tz:
         try:
             return ZoneInfo(tz)
@@ -93,8 +84,7 @@ def next_monthly(day, tz):
 
     def build(y, m, d):
         d = min(int(d), calendar.monthrange(y, m)[1])
-        return now.replace(year=y, month=m, day=d, hour=0, minute=0,
-                           second=0, microsecond=0)
+        return now.replace(year=y, month=m, day=d, hour=0, minute=0, second=0, microsecond=0)
 
     cand = build(year, month, day)
     if cand <= now:
@@ -106,14 +96,13 @@ def next_monthly(day, tz):
 
 
 def reset_for_window(win, default_tz):
-    """Return (label, concrete_datetime_or_None) for one window definition."""
     kind = win.get("kind")
     tz = win.get("tz", default_tz)
     if kind == "weekly":
         dt = next_weekly(win.get("weekday"), win.get("time"), tz)
         if dt:
             return f"weekly → {dt:%a %Y-%m-%d %H:%M %Z}", dt
-        return "weekly → anchor unset (set weekday/time in usage-windows.json)", None
+        return "weekly → anchor unset (set weekday/time in usage-windows.json, or learn it via usage-record.py)", None
     if kind == "monthly":
         dt = next_monthly(win.get("day"), tz)
         if dt:
@@ -137,7 +126,6 @@ def parse_iso(value):
 
 
 def to_number(value):
-    """Coerce int/float/numeric-string to float; bool and junk → None."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -148,8 +136,7 @@ def to_number(value):
         return None
 
 
-def to_aware(dt, tzname="America/Chicago"):
-    """Attach a tz to a naive datetime so comparisons/min are by real instant."""
+def to_aware(dt, tzname=DEFAULT_TZ):
     if dt is None:
         return None
     if dt.tzinfo is not None:
@@ -158,36 +145,70 @@ def to_aware(dt, tzname="America/Chicago"):
     return dt.replace(tzinfo=tz) if tz else dt.astimezone()
 
 
-def seat_state(name, seat, ledger, default_tz="America/Chicago"):
-    windows = seat.get("windows", [])
+def _apply_observed(windows, observed):
+    """Fill NULL anchors from a learned observed-window (never overrides an owner-set anchor)."""
+    if not observed:
+        return windows, False
+    used = False
+    out = []
+    for w in windows:
+        w = dict(w)
+        if w.get("kind") == "weekly" and not w.get("weekday") and observed.get("kind") == "weekly" and observed.get("weekday"):
+            w["weekday"], w["time"] = observed.get("weekday"), observed.get("time")
+            used = True
+        elif w.get("kind") == "monthly" and not w.get("day") and observed.get("kind") == "monthly" and observed.get("day"):
+            w["day"] = observed.get("day")
+            used = True
+        out.append(w)
+    return out, used
+
+
+def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
+    windows, learned = _apply_observed(seat.get("windows", []), observed)
     resets = [reset_for_window(w, default_tz) for w in windows]
     concrete = [dt for _, dt in resets if dt is not None]
     next_reset_dt = min(concrete) if concrete else None
 
     entry = ledger.get(name) if isinstance(ledger, dict) else None
-    if not isinstance(entry, dict):  # null / string / malformed entry → treat as no signal
+    if not isinstance(entry, dict):
         entry = {}
     now_ref = to_aware(_now(default_tz), default_tz)
     spent_until = to_aware(parse_iso(entry.get("spent_until")), default_tz)
     pct = to_number(entry.get("pct"))
-    cap = seat.get("soft_cap_pct")
+    # reserve line: reserve_pct (new) or legacy soft_cap_pct
+    reserve_pct = seat.get("reserve_pct", seat.get("soft_cap_pct"))
+    drain = seat.get("drain", "full")
+    intake = bool(seat.get("intake"))
+    billing = seat.get("billing", "included")
 
-    # A spent_until only counts while it is in the FUTURE; a past one must NOT shadow a
-    # still-over-cap pct (a wrapper 429 expires, but the weekly % can still be capped).
     su_future = spent_until if (spent_until is not None and spent_until > now_ref) else None
+    over_reserve = (pct is not None and reserve_pct is not None and pct >= reserve_pct)
+    # A drain:reserve seat holds headroom by policy even without a pct signal. `intake` is
+    # just a label (used for reserve sizing) — it does NOT demote a seat on its own, so a
+    # solo user's single (intake) seat stays 'available' and codes normally.
+    holds_reserve = (drain == "reserve")
+
     if su_future is not None:
+        tier = "spent"
+    elif over_reserve or holds_reserve:
+        tier = "reserve"
+    else:
+        tier = "available"
+
+    if tier == "spent":
         state = "SPENT"
-    elif pct is not None and cap is not None and pct >= cap:
-        state = f"SOFT-CAPPED ({pct:g}%≥{cap}%)"
+    elif tier == "reserve":
+        why = f"{pct:g}%≥{reserve_pct}%" if over_reserve else "reserve policy"
+        state = f"RESERVE ({why}) — usable as last resort"
     elif pct is not None:
         state = f"available ({pct:g}%)"
     else:
         state = "available (no signal recorded)"
 
-    # Effective reset: a spent seat recovers at its recorded spent_until (that instant
-    # IS the reset, and works even for rolling windows with no computed anchor);
-    # otherwise fall back to the computed window reset.
     reset_effective = su_future if su_future is not None else next_reset_dt
+    runway_seconds = None
+    if reset_effective is not None:
+        runway_seconds = max(0, int((to_aware(reset_effective, default_tz) - now_ref).total_seconds()))
 
     return {
         "seat": name,
@@ -195,51 +216,52 @@ def seat_state(name, seat, ledger, default_tz="America/Chicago"):
         "family": seat.get("family"),
         "fable": seat.get("fable"),
         "subscription": seat.get("subscription"),
-        "soft_cap_pct": cap,
+        "reserve_pct": reserve_pct,
+        "drain": drain,
+        "intake": intake,
+        "billing": billing,
+        "tier": tier,
+        "usable": tier != "spent",
+        "available": tier == "available",
         "state": state,
-        "available": su_future is None and not str(state).startswith("SOFT-CAPPED"),
+        "pct": pct,
         "windows": [label for label, _ in resets],
+        "window_kinds": [w.get("kind") for w in windows],
+        "windows_learned": learned,
         "next_reset": next_reset_dt.isoformat() if next_reset_dt else None,
         "reset_effective": reset_effective.isoformat() if reset_effective else None,
+        "runway_seconds": runway_seconds,
         "live_signal": seat.get("live_signal"),
         "ledger": entry or None,
     }
 
 
-def load(path, required):
-    if not path.exists():
-        if required:
-            sys.exit(f"usage-status: missing required config {path}")
-        return {}
-    try:
-        return json.loads(path.read_text())
-    except Exception as exc:  # pragma: no cover
-        sys.exit(f"usage-status: cannot parse {path}: {exc}")
-
-
 def compute(ledger_path=None):
-    """Importable entry: return (updated, rows) for all seats. No printing, no exit."""
-    conf = load(CONF_PATH, required=True)
-    ledger = load(Path(ledger_path) if ledger_path else DEFAULT_LEDGER, required=False)
+    """Importable: return (updated, rows). No printing, no exit."""
+    conf = mborch.load_config("usage-windows.json", required=True)
+    lp = Path(ledger_path) if ledger_path else mborch.ledger_path()
+    ledger = json.loads(lp.read_text()) if lp.exists() else {}
+    observed = mborch.observed_windows()
     seats = conf.get("seats", {})
-    rows = [seat_state(name, seat, ledger) for name, seat in seats.items()]
+    rows = [seat_state(name, seat, ledger, observed=observed.get(name)) for name, seat in seats.items()]
     return conf.get("updated"), rows
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Script-computed seat reset/limit status.")
-    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--json", action="store_true")
     ap.add_argument("--earliest-reset", action="store_true",
-                    help="print the soonest reset among currently-spent seats")
+                    help="soonest reset among currently spent/reserve seats")
     ap.add_argument("--seat", help="show only this seat")
-    ap.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER,
-                    help="path to a usage-ledger.json (default: alongside config)")
+    ap.add_argument("--ledger", type=Path, default=None)
     args = ap.parse_args(argv)
 
-    conf = load(CONF_PATH, required=True)
-    ledger = load(args.ledger, required=False)
+    conf = mborch.load_config("usage-windows.json", required=True)
+    lp = args.ledger if args.ledger else mborch.ledger_path()
+    ledger = json.loads(Path(lp).read_text()) if Path(lp).exists() else {}
+    observed = mborch.observed_windows()
     seats = conf.get("seats", {})
-    rows = [seat_state(name, seat, ledger) for name, seat in seats.items()]
+    rows = [seat_state(name, seat, ledger, observed=observed.get(name)) for name, seat in seats.items()]
     if args.seat:
         rows = [r for r in rows if r["seat"] == args.seat]
         if not rows:
@@ -247,24 +269,24 @@ def main(argv=None):
 
     if args.earliest_reset:
         def constrained(r):
-            return r["state"].startswith("SPENT") or "SOFT-CAPPED" in r["state"]
+            return r["tier"] in ("spent", "reserve")
         cand = []
         for r in rows:
             if not constrained(r):
                 continue
             inst = to_aware(parse_iso(r["reset_effective"]))
             if inst is not None:
-                cand.append((r, inst))  # compare real instants, not ISO strings
+                cand.append((r, inst))
         stuck = [r["seat"] for r in rows
                  if constrained(r) and to_aware(parse_iso(r["reset_effective"])) is None]
         if not cand and not stuck:
-            print("no seat is currently marked spent or capped")
+            print("no seat is currently marked spent or reserve")
             return 0
         if cand:
             soonest, inst = min(cand, key=lambda ri: ri[1])
             print(f"{soonest['seat']}  next reset {inst.isoformat()}")
         if stuck:
-            print("spent/capped but reset unknown (rolling/unset): " + ", ".join(stuck))
+            print("spent/reserve but reset unknown (rolling/unset): " + ", ".join(stuck))
         return 0
 
     if args.json:
@@ -272,19 +294,18 @@ def main(argv=None):
         return 0
 
     print(f"usage-status  (windows: config/usage-windows.json, updated {conf.get('updated')})")
-    print(f"ledger: {args.ledger if args.ledger.exists() else '(none — no live signal recorded)'}")
+    print(f"ledger: {lp if Path(lp).exists() else '(none — no live signal recorded)'}")
     print("-" * 72)
     for r in rows:
         fable = " ·fable" if r.get("fable") else ""
         fam = f" [{r['family']}]" if r.get("family") else ""
-        print(f"{r['seat']:<18}{fam}{fable}  {r['state']}")
+        bill = " $metered" if r.get("billing") == "metered" else ""
+        print(f"{r['seat']:<18}{fam}{fable}{bill}  {r['state']}")
         if r["reset_effective"]:
             print(f"  next reset: {r['reset_effective']}")
-        for w in r["windows"]:
-            print(f"  window: {w}")
     print("-" * 72)
-    print("limits come from recorded 429/ledger signals + computed windows above, "
-          "never from LLM token estimation.")
+    print("tiers: available → reserve (usable last resort) → spent. limits from recorded "
+          "429/ledger + computed windows, never LLM token estimation.")
     return 0
 
 

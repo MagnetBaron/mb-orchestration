@@ -1,0 +1,15 @@
+{
+  "_note": "SOLO: no Codex, so the Claude seat is the dispatcher. Single-dispatcher invariant unchanged; only the holder moves. Using a frontier model to dispatch is expensive but it is the only seat — an accepted constraint of a 1-subscription setup.",
+  "schema_version": 1,
+  "dispatcher": { "provider": "opus-4.8", "level": "frontier", "fallback": [], "rule": "one dispatcher; a phone never implements" },
+  "entry_surfaces": {
+    "claude-code": { "host": "claude", "provider": "opus-4.8", "can_dispatch": true, "default": true,
+      "note": "dispatches, codes, and reviews — the whole engine on one seat" }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "n/a — single surface",
+    "entry_is_free": "one surface here",
+    "portability": "adding Codex later: set dispatcher.provider to codex-luna and add a codex-cli surface"
+  }
+}

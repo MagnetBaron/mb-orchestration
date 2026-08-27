@@ -2,6 +2,9 @@
 config/usage-ledger.json
 config/usage-ledger.json.lock
 
+# Runtime data: usage history, learned windows, generated dashboard. Not committed.
+data/
+
 # Generated host-native role artifacts (rendered by bin/generate-roles.py).
 generated/
 

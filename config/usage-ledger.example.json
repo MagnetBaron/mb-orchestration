@@ -11,7 +11,7 @@
     "updated": "2026-08-27T09:30:00-05:00"
   },
   "fable-downgrade:claude-team-b": {
-    "note": "EXAMPLE downgrade marker written by bin/detect-fable.py when a seat that should carry Fable no longer does; resolve-route drops that seat from Fable-capable until cleared",
+    "note": "EXAMPLE downgrade marker written by bin/detect-capability.py when a seat that should carry Fable no longer does; resolve-route drops that seat from Fable-capable until cleared (an upgrade clears it)",
     "grant_lost": "fable",
     "updated": "2026-08-27T09:45:00-05:00"
   }

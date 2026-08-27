@@ -33,23 +33,28 @@ edits.
 | `entrypoints.json` | Entry surfaces (user choice) + the one dispatcher |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
 | `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
+| `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources |
 | `roles.json` | Role definitions that load inside seats |
 | `orchestration.schema.json` | Published JSON-Schema contract (validated by doctor) |
+| `examples/{solo-pro,two-sub,agency}/` | Per-user layers proving 1→N scale — `MB_CONFIG_DIR=config/examples/<x> python3 bin/doctor.py` |
 
 ### `bin/` — scripts
 
 | Script | Does |
 |--------|------|
-| `usage-status.py` | Script-computed seat reset/limit status (no hardcoded times, no LLM guessing) |
-| `resolve-route.py` | **Deterministic router**: task class + live state → seat + review chain + fallback |
+| `usage-status.py` | Script-computed seat reset/limit status; tri-state tier (available/reserve/spent) |
+| `resolve-route.py` | **Deterministic router**: class + live state → seat + review chain; never-strand, minimize-$, no mid-turn swaps |
+| `drain-plan.py` | Use-it-or-lose-it drain order + reserve sizing (maximize subscription value) |
 | `doctor.py` | Validate the whole setup (schema + referential integrity + prose hygiene) |
-| `detect-agents.py` | Auto-detect installed CLI agents; discover unregistered ones (modular add) |
-| `detect-fable.py` | Fable availability / downgrade detection; disable-auto-downgrade guidance |
-| `smoketest.py` | Walk the whole path end-to-end (the acceptance gate) |
+| `detect-agents.py` | Auto-detect installed CLI agents; discover/register unregistered ones (modular) |
+| `detect-capability.py` | Bidirectional (downgrade+upgrade) capability detection; disable-auto-downgrade levers |
+| `usage-record.py` | Gather usage history (retained, default 1yr); learn reset windows; prune |
+| `dashboard.py` | Self-contained HTML telemetry dashboard (usage, drain order, health score) |
+| `subscription-calculator.py` | Recommend a plan from habits or `--from-history` utilization |
 | `generate-roles.py` | Render host-native Claude/Grok agent files + Codex TOML from the registry |
 | `connectors.py` | Render paste-ready bot allowlists/tickets from `connectors.json` |
-| `subscription-calculator.py` | Recommend a plan stack from last month's habits (USER-GUIDE helper) |
 | `record-429.sh` | Record a real 429 into the ledger (never a timeout) |
+| `mborch.py` · `routing.py` | Shared: layered config resolution (`MB_CONFIG_DIR`) · drain/allocation scoring |
 | `test_generate.py` | Unit tests for the role registry |
 
 ## Quick start

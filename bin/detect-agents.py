@@ -16,8 +16,8 @@ from __future__ import annotations
 import argparse, json, os, shutil, subprocess, sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CONFIG = HERE.parent / "config"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mborch  # noqa: E402
 
 # Binaries that are plausibly CLI coding/agent tools worth registering if found.
 KNOWN_AGENT_BINARIES = {
@@ -38,10 +38,7 @@ KNOWN_AGENT_BINARIES = {
 
 
 def load_providers():
-    path = CONFIG / "providers.json"
-    if not path.exists():
-        sys.exit(f"detect-agents: missing {path}")
-    return json.loads(path.read_text())
+    return mborch.load_config("providers.json", required=True)
 
 
 def npm_global_has(pkg: str) -> bool:

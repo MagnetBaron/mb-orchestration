@@ -8,7 +8,7 @@
       "type": "object",
       "required": ["schema_version", "capability_levels", "families", "providers", "review_order"],
       "properties": {
-        "schema_version": { "const": 3 },
+        "schema_version": { "const": 4 },
         "capability_levels": {
           "type": "object",
           "required": ["frontier", "sole", "terra", "luna"],
@@ -105,7 +105,7 @@
       "type": "object",
       "required": ["schema_version", "consumed_by", "seats"],
       "properties": {
-        "schema_version": { "const": 2 },
+        "schema_version": { "const": 3 },
         "consumed_by": { "type": "string" },
         "seats": {
           "type": "object", "minProperties": 1,
@@ -124,6 +124,26 @@
             }
           }
         }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "required": ["schema_version", "retention_days"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "retention_days": { "type": "integer", "minimum": 0 },
+        "reserve_defaults": { "type": "object" },
+        "cost_policy": { "type": "object" },
+        "sources": { "type": "object" }
+      }
+    },
+    "review_depth": {
+      "type": "object",
+      "required": ["schema_version", "levels_order", "classes"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "levels_order": { "type": "array", "items": { "type": "string" }, "minItems": 4 },
+        "classes": { "type": "object", "minProperties": 1 }
       }
     },
     "roles": {

@@ -1,0 +1,31 @@
+{
+  "_note": "MONITORING + DRAIN-ECONOMICS POLICY. Controls the usage history store (bin/usage-record.py), retention (user-controlled, default 1 year), the reserve sizing defaults, the cost policy (maximize subscription tokens, minimize API $), the data sources to gather from, and window auto-learning. Nothing here is per-account layout — it is policy that scales to any number of subscriptions.",
+  "schema_version": 1,
+  "updated": "2026-08-27",
+  "retention_days": 365,
+  "retention_note": "History older than this is pruned by bin/usage-record.py --prune (or on each --snapshot). Set to 0 to keep forever (not recommended — infinite log growth). This is the user's control over how long usage data is kept.",
+  "history_path": "usage-history.jsonl",
+  "reserve_defaults": {
+    "intake_reserve_pct": 15,
+    "margin_factor": 1.5,
+    "note": "Reserve for an intake/dispatch seat = observed dispatch consumption over a window × margin_factor, floored at intake_reserve_pct. A reserve NEVER prevents coding — it only lowers priority (never-strand): if every worker seat is spent, the intake seat codes. bin/drain-plan.py --reserve computes a live recommendation from history."
+  },
+  "cost_policy": {
+    "prefer": "included",
+    "note": "Maximize subscription (included) token usage; drain metered $ seats (Cursor Other Models, Review E) LAST — only when no included capacity remains. This maximizes subscription value and minimizes API billing."
+  },
+  "sources": {
+    "recorded-429": { "enabled": true, "note": "config/usage-ledger.json spent_until markers (authoritative exhaustion)" },
+    "owner-manual": { "enabled": true, "note": "owner-entered % from provider dashboards: bin/usage-record.py --owner seat=pct" },
+    "teamclaude": { "enabled": false, "cmd": "teamclaude status --json", "note": "per-seat Claude usage; wire on the worker Mini (KarpelesLab/teamclaude)" },
+    "ccusage": { "enabled": false, "cmd": "ccusage --json", "note": "token cost/usage across CLIs (ryoppippi/ccusage)" }
+  },
+  "window_learning": {
+    "enabled": true,
+    "note": "bin/usage-record.py --learn-windows infers a reset anchor from an observed spent→available transition and writes data/observed-windows.json; usage-status uses an observed anchor when the configured anchor is null. It NEVER overwrites an owner-set anchor. This keeps refresh windows auto-updating instead of stale."
+  },
+  "scheduling": {
+    "no_mid_turn_swaps": true,
+    "note": "Pick a seat with enough runway (time-to-reset) to finish the current task; bring a just-reset account in at the NEXT task boundary, never mid-turn. resolve-route --task-seconds N flags seats that would reset before N elapses."
+  }
+}

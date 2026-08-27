@@ -45,7 +45,7 @@ MagnetBaron fork adds the clone URL + `mb/` overlay.
 4. `teamclaude service install` and `teamclaude alias --install`
 5. `teamclaude run -- --model opus-4.8`
 
-Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit — and `bin/detect-fable.py` cross-checks it. No four Claude desktop apps.
+Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit — and `bin/detect-capability.py` cross-checks it. No four Claude desktop apps.
 
 ## 4. Review D + Heat Map (Grok Bots)
 

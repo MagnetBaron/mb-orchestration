@@ -28,6 +28,22 @@ so aggregate Claude capacity ≫ any single account and Fable survives one seat 
 
 **Legwork-or-stop:** volume runs on Grok, or on GPT Terra when Google MCP is required, or parks with a note. Never silently move legwork onto Sol/Opus/Cursor $ because a probe failed. Verify outages with one live check, then fail closed (`EDGE-CASES.md`).
 
+## Reserve, never-strand, and cost (drain economics)
+
+Per-seat drain policy (`config/usage-windows.json`: `drain`, `reserve_pct`, `intake`, `billing`) turns the
+above into an executable order (`bin/drain-plan.py`, `bin/resolve-route.py`):
+
+- **A reserve is a priority tier, not a wall.** The intake/dispatch seat holds headroom so dispatch never starves — but that headroom **yields** the moment nothing else is live. There is no state where usable quota exists and the engine stops for a *self-imposed* cap. Genuine exhaustion (a recorded 429) and an unsatisfiable safety gate are the only stops. `soft_cap` semantics are subsumed: a cap lowers priority, never removes availability.
+- **Dispatch codes last, but it codes.** Reserves protect dispatch's own throughput sized to observed consumption × margin; when every worker is spent, the intake seat implements. With one or two subscriptions the dispatch account is also the coder — by design, not by exception.
+- **Subscription tokens before API dollars.** `included` capacity is drained before any `metered` seat (Cursor Other Models, Review E). Metered spend is a last resort, and its use while included capacity is available is a defect the dashboard scores.
+- **Use it before you lose it.** Weekly/monthly buckets near reset with capacity unused are drained first; rolling windows refill and can wait. This is the reset-aware placement below, made concrete.
+- **Turn-boundary rotation.** Seats are chosen with runway to finish the task; a freshly reset account is brought in at the next boundary, never mid-turn.
+
+Capabilities (browser/connector/family) and model **prowess** are data (`config/providers.json` +
+`config/connectors.json`): the router assigns by what a seat *can do* and how strong it is, not by
+habit. A new or upgraded model (Opus 5.1, Fable 5.1, a Fable/Sol successor) slots in by binding to a
+capability level — one config edit (`providers.json` §model_slot_in), no code or prose change.
+
 ## Roles (not models) — and entry vs dispatch
 
 ```

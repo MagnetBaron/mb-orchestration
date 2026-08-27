@@ -20,6 +20,9 @@ import argparse, importlib.util, json, re, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import mborch  # noqa: E402
+
 ROOT = HERE.parent
 CONFIG = ROOT / "config"
 LEVELS = ("frontier", "sole", "terra", "luna")
@@ -51,28 +54,27 @@ def load_module(name, path):
     return mod
 
 
-def load_json(name):
-    path = CONFIG / name
+def load_json(name, required=True):
+    path = mborch.find_config(name)
     if not path.exists():
-        err(f"missing config file: config/{name}")
+        if required:
+            err(f"missing config file: {name} (looked in {[str(d) for d in mborch.config_dirs()]})")
         return None
     try:
         return json.loads(path.read_text())
     except Exception as exc:
-        err(f"config/{name}: JSON parse error: {exc}")
+        err(f"{name}: JSON parse error: {exc}")
         return None
 
 
-def schema_validate(defs, providers, subs, conns, entry, windows, roles):
+def schema_validate(datas):
     try:
         import jsonschema  # type: ignore
     except Exception:
         info("jsonschema not installed — relying on built-in structural checks (schema file is the published contract).")
         return
-    schema = json.loads((CONFIG / "orchestration.schema.json").read_text())
-    pairs = [("providers", providers), ("subscriptions", subs), ("connectors", conns),
-             ("entrypoints", entry), ("usage_windows", windows), ("roles", roles)]
-    for key, data in pairs:
+    schema = json.loads(mborch.find_config("orchestration.schema.json").read_text())
+    for key, data in datas.items():
         if data is None:
             continue
         sub = dict(schema)
@@ -106,6 +108,14 @@ def check_providers(providers):
             err(f"provider {pid}: empty functions")
         if p.get("model") in forbidden:
             err(f"provider {pid}: selects FORBIDDEN model {p.get('model')!r} (opus-5 is banned; pin opus-4.8)")
+        if p.get("billing") not in (None, "included", "metered"):
+            err(f"provider {pid}: billing must be 'included' or 'metered', got {p.get('billing')!r}")
+        sup = p.get("supersedes")
+        if sup is not None:
+            if sup not in provs:
+                err(f"provider {pid}: supersedes unknown provider {sup!r}")
+            elif provs[sup].get("enabled", True):
+                warn(f"provider {pid} supersedes {sup!r}, but {sup} is still enabled — disable/remove the incumbent (clean slot-in)")
         review_fns[pid] = p.get("functions", [])
     order = providers.get("review_order", [])
     for pid in order:
@@ -167,6 +177,15 @@ def check_windows(windows, subs_ids, fable_from_subs):
         for win in w.get("windows", []):
             if win.get("kind") not in ("weekly", "monthly", "rolling", "none"):
                 err(f"usage-window seat {seat}: bad window kind {win.get('kind')!r}")
+        drain = w.get("drain", "full")
+        if drain not in ("full", "reserve"):
+            err(f"usage-window seat {seat}: drain must be 'full' or 'reserve', got {drain!r}")
+        billing = w.get("billing", "included")
+        if billing not in ("included", "metered"):
+            err(f"usage-window seat {seat}: billing must be 'included' or 'metered', got {billing!r}")
+        rp = w.get("reserve_pct", w.get("soft_cap_pct"))
+        if rp is not None and not (isinstance(rp, (int, float)) and 0 <= rp <= 100):
+            err(f"usage-window seat {seat}: reserve_pct must be 0-100 or null, got {rp!r}")
         if w.get("fable"):
             fable_from_windows.add(seat)
     # Fable declarations must agree between subscriptions and windows (drift = latent downgrade bug)
@@ -262,8 +281,16 @@ def main(argv=None):
     windows = load_json("usage-windows.json")
     roles = load_json("roles.json")
     depth = load_json("review-depth.json")
+    monitoring = load_json("monitoring.json", required=False)
 
-    schema_validate(None, providers, subs, conns, entry, windows, roles)
+    schema_validate({"providers": providers, "subscriptions": subs, "connectors": conns,
+                     "entrypoints": entry, "usage_windows": windows, "roles": roles,
+                     "review_depth": depth, "monitoring": monitoring})
+
+    if monitoring is not None:
+        rd = monitoring.get("retention_days")
+        if not isinstance(rd, int) or rd < 0:
+            err(f"monitoring.retention_days must be a non-negative integer, got {rd!r}")
 
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)

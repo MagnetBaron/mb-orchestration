@@ -11,14 +11,16 @@ Running twice with identical inputs produces byte-identical output. `--check`
 validates without writing. It never edits a protected host config.
 """
 from __future__ import annotations
-import argparse, json, os, re, shutil, tempfile
+import argparse, json, os, re, shutil, sys, tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mborch  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
-CONFIG = HERE.parent / "config"
 DEFAULTS = {
-    "roles": CONFIG / "roles.json",
-    "providers": CONFIG / "providers.json",
+    "roles": mborch.find_config("roles.json"),
+    "providers": mborch.find_config("providers.json"),
     "claude": Path.home() / ".claude/agents",
     "grok": Path.home() / ".grok/agents",
     "codex": HERE.parent / "generated/codex-config.toml",

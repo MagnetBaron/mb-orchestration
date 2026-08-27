@@ -18,15 +18,12 @@ from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CONFIG = HERE.parent / "config"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mborch  # noqa: E402
 
 
 def load():
-    path = CONFIG / "connectors.json"
-    if not path.exists():
-        sys.exit(f"connectors: missing {path}")
-    return json.loads(path.read_text())
+    return mborch.load_config("connectors.json", required=True)
 
 
 def render_allowlist(c):

@@ -41,7 +41,7 @@ So you need at least a second family in the building (OpenAI via Codex, or open-
 
 **Fable 5 is a premium grant.** It is included on higher Claude tiers (Max, Team Premium) and is
 **not** guaranteed on Pro or Team Standard — those default to Sonnet. Confirm what your accounts
-actually grant with `bin/detect-fable.py`; the system treats Fable as available only when a live
+actually grant with `bin/detect-capability.py`; the system treats Fable as available only when a live
 Claude seat truly carries it.
 
 Fable is the strongest reviewer. It matters **more** when you don't have Codex, because:
@@ -73,11 +73,11 @@ Fable or drop Opus to Sonnet mid-task. Verified levers (from `code.claude.com/do
 - The silent **Opus→Sonnet quota downgrade has no first-class opt-out** (Anthropic issue
   claude-code#3434, closed). The `availableModels` allowlist is the workaround.
 - **teamclaude** (§5) handles this across accounts: it blocks `*fable*` automatically when no seat can
-  serve it and unblocks when one can, so you don't hand-edit routes. `bin/detect-fable.py` records a
+  serve it and unblocks when one can, so you don't hand-edit routes. `bin/detect-capability.py` records a
   downgrade so the router re-routes immediately.
 
 **Recommendation:** pin `opus-4.8` via `availableModels`, never `opus-5`; if Fable is central to your
-review, disable model-switching-on-flag and check `bin/detect-fable.py` weekly.
+review, disable model-switching-on-flag and check `bin/detect-capability.py` weekly.
 
 ---
 
@@ -167,8 +167,67 @@ points, and habits:
 6. `python3 bin/detect-agents.py` to see which agents are live; register any new CLI with
    `bin/detect-agents.py --register-template <cmd>` and paste the entry into `config/providers.json`.
 
+Keep your own config outside the repo if you like: point **`MB_CONFIG_DIR`** at a folder holding your
+`subscriptions.json` / `entrypoints.json` / `usage-windows.json` / `monitoring.json`; the shared
+registry (providers, review-depth, roles, connectors) is inherited from the repo. Worked layers for a
+solo Pro user, a two-subscription setup, and a larger agency are in `config/examples/` — copy the one
+closest to you. **The reference `config/` is just one example of a complicated setup, not the target.**
+
 No policy prose changes. The routing re-derives from their config. That is the durability guarantee:
 the system flexes with technology and subscription changes because those live in data, not in words.
+
+---
+
+## 9. Controlling how hard each account drains
+
+Each seat in `usage-windows.json` carries a drain policy — this is how you set "drain some accounts
+hard, protect the intake account":
+
+- **`"drain": "full"`** — drain freely (your worker/admin/server accounts, Grok Build). Most seats.
+- **`"drain": "reserve"` + `"reserve_pct": N`** — hold headroom. Put this on your **intake/dispatch**
+  account (or Cursor, if that's your intake) so it always has room to do its job.
+- **`"intake": true`** — labels the dispatch seat so `bin/drain-plan.py --reserve` sizes its reserve
+  from what dispatch actually consumed × a margin (`monitoring.json` → `reserve_defaults`).
+- **`"billing": "metered"`** — marks a $-API pool (Cursor Other Models, Review E) so it drains LAST.
+
+**The reserve never blocks coding.** It only *lowers priority*. If every other account is spent, the
+reserved dispatch account codes anyway — there is no state where quota is available and the system
+stalls on a self-imposed cap. With one or two subscriptions the dispatch account is expected to code.
+Run `bin/drain-plan.py` to see the live "use this before it's lost" order (soon-to-reset weekly/monthly
+quota first, included before metered, reserves last-but-usable).
+
+## 10. The usage dashboard, history, and retention
+
+- **Dashboard:** `python3 bin/dashboard.py` writes a self-contained `data/dashboard.html` — open it on
+  this computer to see per-account usage, reset windows, the live drain order, your subscription stack
+  and cost, and a health score (never-strand guarantee, waste-at-reset, metered-$ discipline, Fable
+  availability). `--demo` seeds sample data for a preview.
+- **History:** `python3 bin/usage-record.py --snapshot` captures the current state into
+  `data/usage-history.jsonl`. Schedule it (e.g. hourly via cron/LaunchAgent) so the dashboard and the
+  plan-change advice have real data. Sources beyond your own notes (teamclaude, ccusage) wire in
+  `monitoring.json`; `--owner codex-sol=88` records a % you read off a provider dashboard.
+- **Learned windows:** `usage-record.py --learn-windows` infers reset anchors from observed resets, so
+  your refresh windows stay current automatically (it never overrides an anchor you set by hand).
+- **Retention (your control):** `monitoring.json` → `retention_days` (default **365**) bounds how long
+  history is kept; `usage-record.py --prune` (and every `--snapshot`) drops older records so the log
+  never grows without limit. Set it to your comfort; `0` keeps everything (not recommended).
+- **Plan-change advice from real use:** `bin/subscription-calculator.py --from-history` compares what
+  you *pay for* against what you *used* — flagging under-used plans to drop and frequently-capped ones
+  to grow.
+
+## 11. Keeping model choice current as models change
+
+Capabilities and model strength are data, so newer/older models slot in cleanly:
+
+- Assignment is by **capability + prowess** (`providers.json`), not habit — the router sends browser
+  work to a browser-capable seat, review to the highest-prowess reviewer live, etc.
+- **A new model is one edit.** To adopt Opus 5.1, Fable 5.1, or a successor to Fable/Sol, add a provider
+  entry bound to its capability *level* (see `providers.json` → `model_slot_in`), optionally
+  `supersedes` the incumbent, run `bin/doctor.py`. Opus 5 stays forbidden; a later model is allowed
+  unless you forbid it. Pin `opus-4.8` via `availableModels` and consider disabling auto-downgrade (§3).
+- **Upgrades are detected too, not just downgrades.** `bin/detect-capability.py` surfaces a seat that
+  *regained* Fable (adopt it: `--record-upgrade <seat>`) and a `supersedes` model waiting to replace an
+  incumbent — the mirror of downgrade detection.
 
 ---
 

@@ -20,6 +20,11 @@ Prices are indicative monthly USD for sizing only; verify current pricing before
 """
 from __future__ import annotations
 import argparse, json, sys
+from collections import defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import mborch  # noqa: E402
 
 PRICES = {
     "codex-200": 200, "grok-heavy": 300, "cursor-ultra": 200,
@@ -101,8 +106,62 @@ def parse_habits(args):
     }
 
 
+def from_history():
+    """Utilization-based advice: compare what you PAY for against what you USED last period."""
+    monitoring = mborch.load_config("monitoring.json", required=False)
+    history = mborch.read_history(monitoring)
+    subs = mborch.load_config("subscriptions.json", required=False).get("subscriptions", {})
+    windows = mborch.load_config("usage-windows.json", required=False).get("seats", {})
+    # seat → subscription
+    seat_sub = {seat: w.get("subscription") for seat, w in windows.items()}
+    stats = defaultdict(lambda: {"samples": 0, "sum": 0.0, "max": 0.0, "spent": 0, "billing": "included"})
+    for h in history:
+        seat = h.get("seat")
+        pct = h.get("pct")
+        if seat is None:
+            continue
+        st = stats[seat]
+        st["billing"] = h.get("billing", st["billing"])
+        if isinstance(pct, (int, float)):
+            st["samples"] += 1
+            st["sum"] += pct
+            st["max"] = max(st["max"], pct)
+        if h.get("tier") == "spent":
+            st["spent"] += 1
+    recs, util = [], []
+    # per-subscription utilization
+    sub_used = defaultdict(lambda: {"avg": 0.0, "max": 0.0, "spent": 0, "seats": 0})
+    for seat, st in stats.items():
+        sub = seat_sub.get(seat)
+        avg = (st["sum"] / st["samples"]) if st["samples"] else 0.0
+        util.append({"seat": seat, "subscription": sub, "avg_pct": round(avg, 1), "max_pct": round(st["max"], 1),
+                     "times_spent": st["spent"], "billing": st["billing"]})
+        if sub:
+            u = sub_used[sub]
+            u["avg"] = max(u["avg"], avg)
+            u["max"] = max(u["max"], st["max"])
+            u["spent"] += st["spent"]
+            u["seats"] += 1
+    for sid, s in subs.items():
+        cost = s.get("monthly_usd") or 0
+        u = sub_used.get(sid, {"avg": 0.0, "max": 0.0, "spent": 0})
+        if not history:
+            continue
+        if u["max"] < 20 and cost >= 100:
+            recs.append(f"DOWNGRADE candidate: {sid} ({s.get('product')}, ${cost}/mo) peaked at {u['max']:.0f}% — under-used; a smaller plan may suffice.")
+        elif u["spent"] >= 3 or u["max"] >= 95:
+            recs.append(f"ADD capacity near {sid} ({s.get('product')}): its seats hit the cap {u['spent']}x — you are losing throughput; add a seat/plan of the same family.")
+    metered_used = [x for x in util if x["billing"] == "metered" and x["max_pct"] > 0]
+    if metered_used:
+        recs.append(f"Metered $ in use ({', '.join(x['seat'] for x in metered_used)}) — a matching INCLUDED subscription would cut API billing.")
+    if not history:
+        recs.append("No usage history yet — schedule bin/usage-record.py --snapshot (e.g. hourly) so this can compare paid vs used.")
+    return {"utilization": sorted(util, key=lambda x: -x["avg_pct"]), "recommendations": recs}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Recommend a subscription stack from last month's habits.")
+    ap.add_argument("--from-history", action="store_true", help="utilization-based advice from data/usage-history.jsonl")
     ap.add_argument("--implement-hours-per-day", type=float, default=0)
     ap.add_argument("--reviews-per-week", type=int, default=0)
     ap.add_argument("--mcp-bulk-per-week", type=int, default=0)
@@ -114,6 +173,24 @@ def main(argv=None):
     ap.add_argument("--from-json", help="load habits from a JSON file (keys = long flag names with underscores)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+
+    if args.from_history:
+        result = from_history()
+        if args.json:
+            print(json.dumps(result, indent=2))
+            return 0
+        print("subscription-calculator — utilization from usage history (paid vs used)")
+        print("=" * 72)
+        print(f"{'seat':<18}{'avg%':>7}{'max%':>7}{'spent':>7}  billing")
+        for x in result["utilization"]:
+            print(f"{x['seat']:<18}{x['avg_pct']:>7}{x['max_pct']:>7}{x['times_spent']:>7}  {x['billing']}")
+        print("-" * 72)
+        print("recommendations:")
+        for r in result["recommendations"]:
+            print(f"  · {r}")
+        print("=" * 72)
+        print("Indicative — verify current pricing/tiers before changing plans.")
+        return 0
 
     h = parse_habits(args)
     stack, reasons, monthly = recommend(h)

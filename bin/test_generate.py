@@ -42,7 +42,7 @@ def dump_and_load(roles=None, providers=None):
 class RegistrySchemaTests(unittest.TestCase):
     def test_live_registry_loads(self):
         reg = gen.load(LIVE_ROLES, LIVE_PROV)
-        self.assertEqual(reg["providers"]["schema_version"], 3)
+        self.assertEqual(reg["providers"]["schema_version"], 4)
         self.assertEqual(tuple(reg["providers"]["capability_levels"]), gen.LEVELS)
         self.assertTrue(gen.REQUIRED_ROLES.issubset(reg["roles"]))
         self.assertEqual(reg["providers"]["review_order"],

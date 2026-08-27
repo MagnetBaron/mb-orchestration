@@ -1,0 +1,26 @@
+{
+  "_note": "TWO-SUB: Codex (dispatch, reserve) + Grok (worker, drain full). Codex codes when Grok is spent.",
+  "schema_version": 3,
+  "updated": "2026-08-27",
+  "consumed_by": "bin/usage-status.py",
+  "seats": {
+    "codex-sol": {
+      "meter": "Codex $200 (Sol review)", "subscription": "codex-200", "family": "openai",
+      "reserve_pct": 90, "drain": "reserve", "billing": "included",
+      "windows": [ { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" }, { "kind": "rolling", "hours": 5 } ],
+      "live_signal": "hard 429 → usage-ledger.json", "reset_note": "review-preservation reserve; yields when it's the only reviewer"
+    },
+    "codex-plan": {
+      "meter": "Codex $200 plan (Luna dispatch + Terra MCP)", "subscription": "codex-200", "family": "openai",
+      "reserve_pct": null, "drain": "reserve", "intake": true, "billing": "included",
+      "windows": [ { "kind": "rolling", "hours": 5 }, { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" } ],
+      "live_signal": "hard 429 → usage-ledger.json", "reset_note": "intake — reserves headroom, codes when Grok is spent"
+    },
+    "grok-heavy": {
+      "meter": "SuperGrok Heavy", "subscription": "grok-heavy", "family": "xai",
+      "reserve_pct": null, "drain": "full", "billing": "included",
+      "windows": [ { "kind": "weekly", "weekday": null, "time": null, "tz": "America/Chicago" } ],
+      "live_signal": "hard 429 → usage-ledger.json", "reset_note": "the worker — fine to fully drain"
+    }
+  }
+}
