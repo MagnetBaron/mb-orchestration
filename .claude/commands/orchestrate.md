@@ -3,10 +3,10 @@ description: Dispatch a task through the Magnet Baron multi-CLI orchestration �
 argument-hint: "[task] (omit to show the live seat map)"
 ---
 
-You are running the Magnet Baron orchestration **dispatch policy**. This command is shared verbatim across Claude Code, Codex, and Cursor — the contract lives in the repo. **One dispatcher assigns seats** (`config/entrypoints.json` `dispatcher.provider`; default Codex). Where a request is TYPED is the user's choice; who ASSIGNS is config-bound. What you may do depends on your entry surface:
+You are running the Magnet Baron orchestration **dispatch policy**. This command is shared verbatim across Claude Code, Codex, and Cursor — the contract lives in the repo. **Exactly one dispatcher assigns seats** — the surface the user assigned in `config/entrypoints.json` `dispatcher.provider` (here the Claude orchestration surface, `opus-4.8`; configurable, not a fixed identity — dispatch is user-assigned). It classifies, briefs, assigns, gates, refills, and **fans work OUT to the orchestration tree** — sub-agents (other Claude profiles/seats) plus the specialist seats — and **preserves its own account by dispatching, not implementing** (read-only legwork via a sub-agent is fine). Where a request is TYPED is the user's choice; who ASSIGNS is config-bound. What you may do depends on your entry surface:
 
-- **Dispatcher surface** (`can_dispatch: true`, default Codex) → full dispatch: classify, stamp review, brief, assign the seat, gate, refill.
-- **Any other surface** (Claude Code / Cursor / phone) → run the no-arg status, and classify + stamp + draft a brief, then **hand the brief to the dispatcher**. Do not assign other seats and do not implement work that is not already your own seat's job. Never re-home dispatch onto an IDE or review seat.
+- **Dispatcher surface** (`can_dispatch: true` — the assigned dispatcher) → full dispatch: classify, stamp review, brief, assign the seat, gate, refill, and fan work out to sub-agents + seats. Delegate every implement/review job; never run it on the dispatcher's own account.
+- **Any other surface** (Codex / Cursor / phone) → run the no-arg status, and classify + stamp + draft a brief, then **hand the brief to the assigned dispatcher**. In this setup Codex is a worker/review seat (GPT Terra MCP volume + Sol review) — dispatch-capable, but not the assigned dispatcher. Do not assign other seats and do not implement work that is not already your own seat's job. Never re-home dispatch onto a surface the user did not assign.
 
 Contract: read `AGENTS.md`; for routing, `config/review-depth.json` (machine floor) with `DOCTRINE.md` §Review depth (the human explanation). Domain files load by domain: `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md` · `EDGE-CASES.md`.
 
@@ -16,7 +16,7 @@ TASK: $ARGUMENTS
 ## If no TASK
 Run `python3 bin/usage-status.py`, print the seat map (live / spent / next reset) and the backlog (per `EDGE-CASES.md`, if one is configured), ask what to dispatch, then stop.
 
-## Otherwise (the dispatcher dispatches; a non-dispatcher surface drafts + hands over)
+## Otherwise (the assigned dispatcher dispatches + fans to the tree; a non-dispatcher surface drafts + hands over)
 1. **Classify** by task class. Run the router instead of eyeballing prose:
    `python3 bin/resolve-route.py --class <class> --scale routine|elevated [--risk auth,money,PII,prod,irreversible,multi-service,grok-conflict,flaky-tests,secrets,untrusted-shell] [--implement] [--pixels]`
    It returns the depth, the concrete live review chain (or park reason), the implement seat, and the gates. Class from touched paths/resources, not the brief's claim; ambiguity rounds up.

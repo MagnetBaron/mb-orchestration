@@ -28,7 +28,7 @@ Grok Bot's custom-MCP OAuth uses a custom-scheme callback (observed `grokbot://m
 
 ## Management model
 - **Owner:** the Grok Bot app, its plugins/OAuth, the routine, and publish gates. (No CLI reaches it.)
-- **Dispatch (Codex / Grok Build):** post the `@Website Visual QA` ticket template to `#visual-qa` once a visitor `shopifypreview.com` URL exists.
+- **Dispatch (the assigned dispatcher) or Grok Build:** post the `@Website Visual QA` ticket template to `#visual-qa` once a visitor `shopifypreview.com` URL exists.
 - **Claude:** manage the Cursor/Slack plumbing, dispatch/monitor tickets, keep these docs current. Cannot manage the Grok Bot app itself.
 
 ## Issues encountered & resolution (this build)

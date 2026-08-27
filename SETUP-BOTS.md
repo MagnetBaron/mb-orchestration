@@ -1,13 +1,13 @@
 # Finish this setup on the worker machine
 
-Codex is the entry point. Codex does not implement. Hand this file to Grok Build, Cursor, and Claude Code. They complete the machine setup. Luna/Terra only confirm the three receivers have the packet, then stop.
+The dispatcher on this machine — the user-assigned Claude orchestration surface (`entrypoints.dispatcher.provider`) — does not implement; it fans work out to the worker seats. Hand this file's packet to Grok Build, Cursor, and Codex; they complete the machine setup. The dispatcher confirms the receivers have the packet, then reviews the result and stops (it never implements on its own account).
 
-## Codex (Terra/Luna) — you
+## Dispatcher — the Claude orchestration surface (you)
 
 1. Open `MagnetBaron/mb-orchestration`.
-2. Copy the packet at the bottom to Grok Build, Cursor, and Claude Code.
-3. Reply: handed to Grok Build, Cursor, Claude Code. Exit.
-4. Do not clone extra copies, do not run teamclaude, do not open Grok Bot.app, do not touch Shopify.
+2. Copy the packet at the bottom to the worker seats: Grok Build, Cursor, and Codex.
+3. Reply: handed to Grok Build, Cursor, Codex. Then review the setup result (below).
+4. Do not implement on your own account — delegate. Do not clone extra copies, do not open Grok Bot.app, do not touch Shopify.
 
 ## Grok Build — implement install
 
@@ -25,11 +25,17 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-sla
 - Confirm GitHub Desktop can see MagnetBaron/mb-orchestration and MagnetBaron/teamclaude.
 - Do not install extra Claude GUI apps.
 
-## Claude Code — review only
+## Codex — worker/review seat
+
+- Confirm the Codex plan is signed in: GPT Terra (Google-MCP volume) and Sol (OpenAI review) reachable.
+- You are NOT the dispatcher — do not assign seats or dispatch. If typed into, draft-and-hand to the dispatcher.
+- Do not open Grok Bot.app; do not touch Shopify Admin.
+
+## Setup review — the dispatcher (Claude orchestration surface)
 
 - Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md` against what Grok/Cursor did.
-- Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change.
-- Pin opus-4.8. teamclaude if seats exist. No Fable as installer.
+- Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change. Delegate an OpenAI-family second look to Codex Sol if the risk gate calls for it.
+- Pin opus-4.8. teamclaude across the five Claude seats. No Fable as installer.
 
 ## Owner-only (not a coding bot)
 
@@ -37,12 +43,12 @@ Once per account.
 
 1. **Website Visual QA + Slack** — full steps in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
 2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
-3. **Luna close-loop** — paste standing add-on from [luna-close-loop.md](./luna-close-loop.md) if you want finish reports forwarded.
+3. **Dispatcher close-loop** — paste standing add-on from [close-the-loop](./luna-close-loop.md) if you want finish reports forwarded.
 4. **Usage metering** — set the `config/usage-windows.json` anchors you know (Grok weekly weekday/time, Cursor billing day) so `bin/usage-status.py` computes resets; wrappers/owner write `config/usage-ledger.json`. See `usage-metering.md`.
 
 ## Packet for Codex to paste
 
-objective: Finish mb-orchestration + teamclaude desktop discovery and policy wiring on THIS machine per SETUP-BOTS.md. Codex stays dispatcher.
+objective: Finish mb-orchestration + teamclaude desktop discovery and policy wiring on THIS machine per SETUP-BOTS.md. The Claude orchestration surface stays the dispatcher; Codex is a worker/review seat.
 
 must_read:
 - install.md

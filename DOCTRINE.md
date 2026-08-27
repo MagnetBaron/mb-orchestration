@@ -18,7 +18,7 @@ Unspent quota at reset is waste. Buckets are asymmetric (current providers in `c
 | **Abundant volume** | terra | Grok Build/Bot — code, listings, non-Google research, standing Bot work |
 | **MCP volume** | terra | GPT Terra — Google MCP fetches to `output_path` |
 | **Scarce judgment** | frontier / sole | Opus 4.8 (Anthropic gate) + Codex Sol — verify, land-gate, hard review; Fable = optional architecture only, out of gating |
-| **Dispatcher** | luna | Codex Terra/Luna — queue, assign, status — never implement |
+| **Dispatcher** | varies (user-assigned) | The seat the user assigned in `entrypoints.dispatcher.provider` — here the Claude orchestration surface (Opus 4.8) — classify, risk-gate, assign, refill; fans work OUT to sub-agents + seats; preserves its account by dispatching, not implementing |
 | **Last $** | terra | Cursor Other Models $400 — only after others are spent |
 | **Metered fallback** | frontier | Review E (independent family, unwired) — last-resort / cross-family second family. No reset — the drain law never applies. |
 
@@ -48,7 +48,7 @@ capability level — one config edit (`providers.json` §model_slot_in), no code
 
 ```
 OWNER — spend, credentials, destructive ops, authority expansion
-  └─ DISPATCH (one config-bound provider; default Codex Luna) — queue, risk gate, assign, report
+  └─ DISPATCH (user-assigned in entrypoints.dispatcher.provider; here the Claude orchestration surface — Opus 4.8) — classify, risk gate, assign, report; FANS work OUT to sub-agents (other Claude profiles/seats) + the seats below; preserves its account by dispatching, not implementing
        ├─ IMPLEMENT (Grok Build) — code/listings in worktrees; never lands alone on high risk
        ├─ MCP VOLUME (GPT Terra) — Google connector fetches → output_path snapshots
        ├─ REVIEW D (Grok Bot Website Visual QA) — Slack + preview URL; app quit on Mini
@@ -57,9 +57,19 @@ OWNER — spend, credentials, destructive ops, authority expansion
 ```
 
 **Entry surface ≠ dispatcher.** Where a request is typed is the user's choice (`config/entrypoints.json`
-entry surfaces). Who assigns seats is exactly one dispatcher. A non-dispatcher surface drafts a
-brief and hands it over. Moving the whole system to a user without the default dispatcher is a
-one-line `entrypoints.json` edit — the single-dispatcher invariant is unchanged; only the holder moves.
+entry surfaces). Who assigns seats is exactly one dispatcher — **user-assigned** in
+`entrypoints.dispatcher.provider` (here the Claude orchestration surface, Opus 4.8), which fans work
+out to sub-agents + seats and preserves its account by dispatching, not implementing. A non-dispatcher
+surface (Codex included — a worker/review seat in this setup) drafts a brief and hands it to the
+assigned dispatcher. Reassigning the dispatcher is a one-line `entrypoints.json` edit — the
+single-dispatcher invariant is unchanged; only the holder moves.
+
+**Dispatch is user-assigned, never an absolute value.** Exactly one dispatcher holds the seat at a
+time; `config/entrypoints.json` `dispatcher.provider` records the current choice. Any provider the user
+owns that is `dispatch`-capable may hold it — the reference config binds it to the Claude orchestration
+surface because that is who THIS owner dispatched to, not because dispatch belongs to Claude. **The only
+absolute in this system is the Opus-5.0 block; everything else — including which seat dispatches, which
+providers exist, the tiers, and the review order — is user-configurable data.**
 
 **Authority:** Owner → brief → `AGENTS.md` → specialty file → this doctrine → `EDGE-CASES.md`. Account facts (who/what/when) come from `config/`, read by `bin/` — never re-typed into prose.
 
@@ -74,9 +84,9 @@ whose seat is not a provider at the role's level.
 
 ## Correlated failure (pipes, not independent seats)
 
-The review seats are not independent. **Fable and Opus 4.8 are one pipe** (Anthropic via teamclaude, across the five seats). **Sol, Terra, and Luna are one pipe** (Codex) — so dispatch shares a pipe with a reviewer. Native review therefore has **two** families, not four seats. Consequences:
+The seats are not independent. **The dispatcher (Claude orchestration surface), Opus 4.8 review, and Fable are one pipe** (Anthropic via teamclaude, across the five seats) — so **dispatch now shares a pipe with a reviewer** (it no longer rides the Codex pipe). **Sol and Terra — plus the Luna coordination helper — are one pipe** (Codex). Native review therefore has **two** families, not four seats. Consequences:
 
-- A teamclaude blip looks like Fable **and** Opus 4.8 down at once; a Codex blip looks like Sol **and** dispatch down. That is **one** outage, not two — do not cascade to Review E or Cursor on it (`EDGE-CASES.md`). With five Claude seats, "teamclaude down" is rarer than one seat capping — check per-seat state in `usage-status` before calling the whole Anthropic pipe dead.
+- A teamclaude blip looks like the **dispatcher AND Opus 4.8 review** down at once (and Fable, when granted); a Codex blip looks like **Sol AND Terra MCP** down at once. That is **one** outage each, not two — do not cascade to Review E or Cursor on it (`EDGE-CASES.md`). With five Claude seats, "teamclaude down" is rarer than one seat capping — check per-seat state in `usage-status` before calling the whole Anthropic pipe (dispatch + Opus review) dead.
 - Cross-family (safety gate 5) on only Anthropic + OpenAI means one spent family leaves the pair unsatisfiable. **Review E (independent open-weight) is the first genuinely independent third family** — that, not raw capacity, is why it earns a seat.
 
 ## Brief schema (required fields)
@@ -162,7 +172,7 @@ Reset instants and seat state come from `bin/usage-status.py` (reading `config/u
 - Official `grok` CLI → named Grok Bot (does not exist; use Slack)
 - Grok Bot.app as a worker process on the 16 GB Mini
 - SimGym or collaborator accounts for Website Visual QA
-- Treating Opus 5 as default (pin 4.8; enforce via `availableModels`)
+- Treating Opus 5.0 as default (pin 4.8; the one hard invariant — 5.1+ are allowed and slot in normally)
 - Using Cursor $400 as a worker pool
 - Moving volume onto scarce seats when Grok or Terra is down
 - Review E as a routine reviewer, implementer, or MCP seat — review-only, and only at confirmed exhaustion or as a cross-family second family

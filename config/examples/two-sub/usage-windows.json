@@ -1,5 +1,5 @@
 {
-  "_note": "TWO-SUB: Codex (dispatch, reserve) + Grok (worker, drain full). Codex codes when Grok is spent.",
+  "_note": "TWO-SUB: Codex plan = intake/reserve + worker/review family + the user's assigned dispatcher; Grok = worker (drain full). The intake Codex plan codes when Grok is spent.",
   "schema_version": 3,
   "updated": "2026-08-27",
   "consumed_by": "bin/usage-status.py",
@@ -11,7 +11,7 @@
       "live_signal": "hard 429 → usage-ledger.json", "reset_note": "review-preservation reserve; yields when it's the only reviewer"
     },
     "codex-plan": {
-      "meter": "Codex $200 plan (Luna dispatch + Terra MCP)", "subscription": "codex-200", "family": "openai",
+      "meter": "Codex $200 plan (Terra MCP + Luna coordination + Sol review; intake seat)", "subscription": "codex-200", "family": "openai",
       "reserve_pct": null, "drain": "reserve", "intake": true, "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 }, { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" } ],
       "live_signal": "hard 429 → usage-ledger.json", "reset_note": "intake — reserves headroom, codes when Grok is spent"

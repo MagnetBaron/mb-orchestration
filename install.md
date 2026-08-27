@@ -7,8 +7,10 @@ git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
 ```
 
-Open **mb-orchestration** as the workspace. Codex reads `AGENTS.md`. Claude Code reads `CLAUDE.md`.
-Then Codex follows `SETUP-BOTS.md` — dispatch only.
+Open **mb-orchestration** as the workspace. Claude Code reads `CLAUDE.md` and is the dispatcher in this
+setup (the user-assigned Claude orchestration surface); Codex reads `AGENTS.md` as a worker/review seat.
+Then follow `SETUP-BOTS.md` for the machine wire-up — the dispatcher fans the setup work out to the
+worker seats.
 
 ## 1. Validate the setup first
 
@@ -28,7 +30,8 @@ Everything user-specific is in `config/` — edit these, not prose:
 
 1. `config/subscriptions.json` — the plans you pay for. Fable grants live here (`grants.fable`).
 2. `config/entrypoints.json` — your entry surfaces and the one dispatcher (`dispatcher.provider`).
-   A user without Codex points this at a provider they own and flips `can_dispatch`.
+   The dispatcher is user-assigned (the Claude orchestration surface in this reference setup); point
+   `dispatcher.provider` at any dispatch-capable provider you own and flip that surface's `can_dispatch`.
 3. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
 4. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
 5. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
@@ -75,8 +78,9 @@ Provision or repair the symlinks on any machine:
 ```
 
 No-arg `/orchestrate` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
-stamps depth (`bin/resolve-route.py`), and routes. **Only the dispatcher surface assigns seats** — a
-non-dispatcher host shows status and drafts a brief, then hands it to the dispatcher.
+stamps depth (`bin/resolve-route.py`), and routes. **Only the assigned dispatcher surface assigns
+seats** — any other host (Codex included) shows status and drafts a brief, then hands it to the
+assigned dispatcher.
 
 ## 7. Ordered adoption
 

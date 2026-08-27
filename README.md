@@ -7,14 +7,14 @@ independent family backs up review. Who fills each role is **config, not prose**
 the system by editing `config/`, running `bin/doctor.py`, and getting the same routing with no policy
 edits.
 
-**Codex dispatches. Grok implements. GPT Terra runs Google-MCP volume. Opus 4.8 + Sol gate (Fable = optional architecture, out of the gating order per owner ruling). Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.**
+**A user-assigned surface dispatches** — in this reference setup the Claude orchestration surface — fanning work out to sub-agents + seats and preserving its account by dispatching, not implementing. **Grok implements. GPT Terra runs Google-MCP volume. Opus 4.8 + Sol gate** (Fable = optional architecture, out of the gating order per owner ruling). **Codex is a worker/review seat here** (dispatch is user-assigned; any dispatch-capable seat can hold it). Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.
 
 ## Layout
 
 | Path | What |
 |------|------|
 | `AGENTS.md` | Day-to-day contract — **every** agent session |
-| `CLAUDE.md` | Claude Code loader (pins Opus 4.8, forbids Opus 5) |
+| `CLAUDE.md` | Claude Code loader (pins Opus 4.8, forbids Opus 5.0 — the one hard invariant; 5.1+ allowed) |
 | `DOCTRINE.md` | Design doctrine — load when designing/debugging the system |
 | `EDGE-CASES.md` | Outages, ambiguity, partial work, owner unreachable |
 | `USER-GUIDE.md` | **Humans only** — plan choice, AI-family-per-task, subscription calculator. **Never loaded into agent context.** |
@@ -73,4 +73,4 @@ Port to a different user: edit `config/subscriptions.json` (your plans), `config
 (your dispatcher/surfaces), `config/connectors.json` (your MCP/stores), set anchors in
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
-Daily: the dispatcher is the only entry point that assigns seats (default Codex; configurable). When something breaks, agents read `EDGE-CASES.md`.
+Daily: exactly one dispatcher assigns seats — the Claude orchestration surface (Opus 4.8 here; configurable). Type from any entry surface; only the dispatcher assigns and fans work to the tree. When something breaks, agents read `EDGE-CASES.md`.

@@ -1,6 +1,6 @@
 # GPT-5.6 Sol on the $200 Codex plan
 
-Sol is **Review B**, not the implementer and not the dispatcher. Terra/Luna stay the Codex entry. teamclaude is Claude seats and does not spend this pool.
+Sol is **Review B** (the OpenAI review family), not the implementer and not the dispatcher. Terra/Luna are Codex worker seats (MCP volume + coordination); in this setup the assigned dispatcher is the Claude orchestration surface, not a Codex seat (dispatch is user-assigned — `entrypoints.dispatcher.provider`). teamclaude is Claude seats and does not spend this pool.
 
 **Reset & %:** read from `usage-status` — the weekly window and `soft_cap_pct` live in `config/usage-windows.json` (seat `codex-sol`); do not hardcode the day/time here. A wrapper records a real 429 into `usage-ledger.json`; the owner may note the plan-UI % there as a fallback. See `usage-metering.md`.
 
@@ -17,7 +17,7 @@ Do not treat Cursor Sol usage as “free Codex Sol,” and do not treat Codex So
 
 | Model | Job |
 |-------|-----|
-| Luna or Terra | Dispatch only (queue, assign, status) |
+| Luna or Terra | Codex worker seats: MCP volume + coordination (NOT the dispatcher) |
 | Sol | Git-diff review — the OpenAI-family gate (second in the order after Opus 4.8), and the cross-family second pass |
 | Grok Build | All implementation |
 | Opus 4.8 via teamclaude | Extra frontier pass if needed; not a Sol substitute for every ticket |
@@ -42,7 +42,7 @@ The $200 plan has enough Sol for full-quality reviews. When Sol is assigned:
 - One thorough Sol pass per change-set is the default. A second Sol pass only for a **novel** defect after a fix loop — not to re-read the same diff.
 - Do not use Sol as the implementer, for phone chatter, or for Ultra/fast modes as a habit. Fast mode multiplies cost; skip it unless the owner asked for speed on that review.
 
-## Dispatch check (Codex Luna/Terra before starting Sol)
+## Dispatch check (the assigned dispatcher runs this before starting Sol)
 
 1. Review brief with `attack_angle` and a git diff path?
 2. Opus 4.8 already used on this change-set, or cross-family needs the OpenAI family (or owner said Sol)?

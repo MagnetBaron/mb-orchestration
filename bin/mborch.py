@@ -17,11 +17,64 @@ Data (history/observed windows) lives under $MB_DATA_DIR or <repo>/data (gitigno
 from __future__ import annotations
 import json
 import os
+import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DEFAULT_CONFIG = REPO / "config"
+
+
+# ---- Forbidden-model matcher: the ONE hard invariant of this system ----------
+# Policy: Opus 5.0 must NEVER run (default or reviewer). Opus 5.1 and every later
+# minor are NOT blocked — they enter through the normal capability+prowess slot-in
+# (providers.json `model_slot_in`). So we match the Opus-5.0 version token EXACTLY;
+# this is deliberately NOT a wildcard over the whole "opus-5" series.
+#
+# Read what follows the "opus5" stem:
+#   (nothing)                    "opus-5"            -> 5.0        -> BLOCK
+#   -0  / .0                     "opus-5-0"/"5.0"    -> 5.0        -> BLOCK
+#   -<>=5-digit build/date>      "opus-5-20260401"   -> 5.0 GA     -> BLOCK
+#   non-numeric build tag        "opus-5-preview"    -> unversioned 5.0 -> BLOCK
+#   -<n> / .<n>, n >= 1 (short)  "opus-5-1"/"5.2"    -> later minor -> ALLOW
+# A short integer (<=4 digits) after opus5 is a MINOR version (0 blocks, >=1 allows);
+# a long run (>=5 digits) is a build/date stamp on 5.0. Anything that is not Opus-5
+# at all (opus-4-8, sonnet-5, fable-5, haiku-4-5-*) never matches here.
+_OPUS5_STEM = re.compile(r"(?:^|[^0-9a-z])opus[-_.]?5(?![0-9])(.*)$", re.IGNORECASE)
+
+
+def is_opus5_zero(model: str | None) -> bool:
+    """True iff `model` names Opus 5.0 in any form (bare, -0/.0, a 5.0 build/date
+    stamp, or an unversioned opus-5 build). Opus 5.1+ (minor >= 1) and every model
+    that is not Opus-5 return False — those are allowed to slot in normally."""
+    if not model:
+        return False
+    m = _OPUS5_STEM.search(model)
+    if not m:
+        return False
+    tail = m.group(1)
+    minor = re.match(r"[-_.]?([0-9]+)", tail)
+    if minor is None:
+        return True                       # bare / non-numeric opus-5 == 5.0
+    digits = minor.group(1)
+    if len(digits) >= 5:
+        return True                       # build/date stamp on 5.0 (e.g. 8-digit GA date)
+    return int(digits) == 0               # 5.0 only; 5.1, 5.2, ... allowed
+
+
+def model_is_forbidden(model: str | None, forbidden_map: dict | None) -> bool:
+    """A model is forbidden if it is Opus 5.0 (the hard invariant) OR is explicitly
+    listed — by id or alias — in providers.json `forbidden_models` (extensible data).
+    Everything else, including Opus 5.1+, is allowed."""
+    if is_opus5_zero(model):
+        return True
+    if not model or not forbidden_map:
+        return False
+    ids: set[str] = set()
+    for fid, meta in forbidden_map.items():
+        ids.add(fid)
+        ids.update((meta or {}).get("aliases", []))
+    return model in ids
 
 
 def config_dirs() -> list[Path]:

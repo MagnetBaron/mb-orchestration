@@ -21,11 +21,11 @@
       "reset_note": "review-preservation reserve (prefer Fable/Opus first) at 90%; YIELDS (Sol still reviews) when no other reviewer is live — never stranded. Shares the codex-200 plan meter with the intake seat (codex-plan)."
     },
     "codex-plan": {
-      "meter": "Codex $200 plan shared meter (Luna dispatch + Terra MCP volume)", "subscription": "codex-200", "family": "openai",
+      "meter": "Codex $200 plan shared meter (Terra MCP volume + Luna coordination + Sol review)", "subscription": "codex-200", "family": "openai",
       "reserve_pct": null, "drain": "reserve", "intake": true, "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 }, { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" } ],
       "live_signal": "hard 429 on a real Codex call → usage-ledger.json",
-      "reset_note": "dispatch/MCP plan held in reserve; yields to coding only when every worker seat is spent (2-sub setups: dispatch codes)"
+      "reset_note": "Codex worker plan held in reserve as the intake seat (the assigned dispatcher here is the Claude orchestration surface, not this seat); yields to coding only when every other worker seat is spent (never-strand; 2-sub setups: the intake seat codes)"
     },
     "grok-heavy": {
       "meter": "SuperGrok Heavy (grok CLI / Build / Bot)", "subscription": "grok-heavy", "family": "xai",

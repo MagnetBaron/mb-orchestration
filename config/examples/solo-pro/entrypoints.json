@@ -1,5 +1,5 @@
 {
-  "_note": "SOLO: no Codex, so the Claude seat is the dispatcher. Single-dispatcher invariant unchanged; only the holder moves. Using a frontier model to dispatch is expensive but it is the only seat — an accepted constraint of a 1-subscription setup.",
+  "_note": "SOLO: a single Claude Pro seat — no Codex/Grok/Cursor. The user assigned the dispatcher to their single Claude seat (the only seat they own); with no other seat to fan work out to, that same seat also codes and reviews — the 'dispatcher delegates, never implements on its own account' rule yields only because there is literally no other seat (never-strand). Dispatch is user-assigned; the single-dispatcher invariant is unchanged; only the holder moves.",
   "schema_version": 1,
   "dispatcher": { "provider": "opus-4.8", "level": "frontier", "fallback": [], "rule": "one dispatcher; a phone never implements" },
   "entry_surfaces": {
@@ -10,6 +10,6 @@
     "single_dispatcher": true,
     "non_dispatcher_hosts": "n/a — single surface",
     "entry_is_free": "one surface here",
-    "portability": "adding Codex later: set dispatcher.provider to codex-luna and add a codex-cli surface"
+    "portability": "adding Codex later: add a codex-cli worker/review surface (GPT Terra MCP volume + Sol review); the user may keep the Claude seat as dispatcher or reassign dispatcher.provider — their call"
   }
 }

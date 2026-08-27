@@ -27,7 +27,8 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 | All native review seats quota-spent (`usage-status`, not probes) | Time-critical brief → one advisory Review E pass **if wired**; else park to the earliest reset (`usage-status --earliest-reset`) — a rested native seat beats the fallback. |
 | Cross-family item, one native family quota-spent | The remaining native family gives one pass; **Review E (if wired)** gives the independent second family. Review E unwired → one pass, then park the gate. |
 | All three reviewers erroring at once | Near-certain **local** fault (Mini network, keychain, token). Diagnose the box. Never engage Review E on outage signals — it would mask the fault or fail identically. |
-| Codex dispatcher (Terra/Luna) down | Owner at the Mini console may hand a **complete** brief straight to Grok Build for non-gate work; gate work parks. Phone still never implements; do not promote Implement/Review to Dispatch. |
+| Assigned dispatcher down (here the Claude orchestration surface — a teamclaude/Claude outage, which also takes the Opus review pass: ONE outage, do not cascade) | Owner at the console may hand a **complete** brief straight to Grok Build for non-gate work; gate work parks. Phone still never implements; do not promote a worker/review seat to Dispatch unless the owner reassigns `dispatcher.provider`. |
+| Codex pipe down (Sol + Terra MCP together) | ONE Codex outage, not two — Sol review AND Terra MCP volume are affected together (the assigned dispatcher is NOT, unless the user assigned a Codex surface as dispatcher). Park MCP volume; route code review to Opus 4.8 (native Anthropic gate). Do not cascade to Review E on an outage. |
 | Slack / Visual QA routine dead | Ticket stays in `#visual-qa`. Fallback: owner or iPhone Grok Bot runs the thread. Do not open Bot.app on the Mini. Do not block Grok implement on Visual QA being offline — park only the Review D step. |
 | Cursor Models drained | IDE: stop or Tab-only. Orchestration implement stays Grok Build (Heavy), not Cursor Other Models. |
 | Cursor $400 Other Models gone | Last $ closed unless owner enables on-demand. Fall back to Cursor Grok / Grok Build / teamclaude. |
@@ -51,7 +52,7 @@ Correction happens where Dispatch already looks — at assignment and on every c
 | Lane past its `effort` budget, no completion or park note | completion sweep | Mark `stalled: <branch>`. Resume from git status (partial-completion rule) or park with a reason. No second worktree. |
 | Return outside named file scope, or touched `must_not_touch` | review gate (git diff) + completion check | Reject the change-set; re-scope the brief; do not land. |
 | Past the two-fix-loop cap, no novel defect | review verdict | Park + escalate to owner. |
-| Several seats look down at once | before any reroute | Run `usage-status`. A whole-pipe drop (teamclaude = Fable+Opus; Codex = Sol+dispatch) is **one** outage — diagnose the box, do not cascade to Review E or Cursor. |
+| Several seats look down at once | before any reroute | Run `usage-status`. A whole-pipe drop (teamclaude = the assigned dispatcher + Opus review + Fable; Codex = Sol + Terra MCP) is **one** outage — diagnose the box, do not cascade to Review E or Cursor. |
 | Gate-risk item, all review seats spent | `usage-status` at routing | Escalate to owner; do not silently park a risk item forever. |
 
 Not a meta-agent, no polling for makework. The gates in this file plus the refill law are the mechanism.
@@ -84,7 +85,7 @@ Safe to continue without owner:
 
 - Grok implement on non-risk, in-scope briefs with complete fields
 - GPT Terra MCP fetch to `output_path` when connector works
-- Luna forwarding completed `done_when` reports (`luna-close-loop.md`)
+- The dispatcher forwarding completed `done_when` reports (`luna-close-loop.md`)
 
 Must park until owner:
 
@@ -124,5 +125,5 @@ Model names and plan tiers change. **Edit `config/`, not prose** — `config/pro
 `config/connectors.json` (MCP/store bindings), `config/usage-windows.json` (reset anchors) — then run
 `bin/doctor.py`. The seat table in `AGENTS.md` is by-reference (roles are invariant; providers come
 from config), so it does not need editing when a provider changes. Do not leave a provider on a
-deleted model ID; `bin/doctor.py` fails if any provider selects a forbidden model (opus-5). Once
+deleted model ID; `bin/doctor.py` fails if any provider selects a forbidden model (Opus 5.0 — matched exactly by `mborch.is_opus5_zero`; 5.1+ allowed). Once
 Review E is wired, pin its model ID in `config/providers.json` (`review-e.model`) per `fireworks-usage.md`.

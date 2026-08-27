@@ -9,7 +9,7 @@
       "backs_providers": ["codex-luna", "codex-terra", "codex-sol"],
       "grants": { "fable": false },
       "meter": "codex-sol (weekly + 5h), see usage-windows.json",
-      "notes": "One Codex plan backs dispatch (Luna), MCP volume (Terra), and the Sol review seat. These share the plan meter."
+      "notes": "One Codex plan backs the MCP-volume worker (Terra), the coordination helper (Luna), and the Sol review seat — a worker/review family, not the assigned dispatcher here. Who dispatches is user-assigned in entrypoints.json (this setup: the Claude orchestration surface). These share the plan meter."
     },
     "grok-heavy": {
       "vendor": "xAI", "product": "SuperGrok Heavy", "monthly_usd": null,
@@ -64,7 +64,7 @@
   },
   "derived_note": "Fable-capable Claude seats: any subscription with grants.fable == true (currently Max + 2 Team = 3 seats). Opus-capable seats: grants.opus == true (all 5). resolve-route.py treats Fable as available only if at least one Fable-capable seat is live per usage-status AND detect-fable has not recorded a downgrade. This is why the review order can keep Fable first without going stale on a plan change.",
   "portability_examples": {
-    "no-codex-user": "A user without Codex sets entrypoints.json dispatcher.provider to a Claude seat (e.g. opus-4.8) and marks that host can_dispatch:true; Fable becomes more important (USER-GUIDE.md §Fable). Remove the codex-200 entry; doctor.py will confirm no orphaned providers.",
+    "no-codex-user": "The Claude orchestration surface is already the dispatcher here, so removing Codex changes only the worker/review mix: you lose the OpenAI review family (Sol) and Terra MCP volume, and cross-family gates then need Review E (USER-GUIDE.md §Fable). Remove the codex-200 entry; doctor.py will confirm no orphaned providers.",
     "solo-pro-user": "A single Claude Pro user keeps only claude-pro-25-a (rename freely), grants.fable:false; the review order collapses to opus-4.8 → review-e (if wired) → stop; Grok/Cursor entries removed."
   }
 }

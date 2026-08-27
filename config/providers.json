@@ -6,7 +6,7 @@
     "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
     "sole": { "job": "Scarce judgment: diff review and MCP interpretation" },
     "terra": { "job": "Volume: MCP bulk, implementation, and standing bot work" },
-    "luna": { "job": "Dispatch only: queue, assign, status, and risk gate" }
+    "luna": { "job": "Lightweight coordination tier (MCP/queue helper). WHO the active dispatcher is is a user assignment recorded in config/entrypoints.json (dispatcher.provider) — capability lives here, assignment lives there; dispatch is never fixed to a provider." }
   },
   "families": {
     "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
@@ -24,18 +24,18 @@
   },
   "providers": {
     "codex-luna": {
-      "label": "Codex Luna (dispatch)", "level": "luna", "family": "openai", "kind": "cli",
-      "model": "gpt-5.6-luna", "functions": ["dispatch"], "capabilities": ["dispatch"],
-      "prowess": { "dispatch": 85 }, "billing": "included", "review_eligible": false,
+      "label": "Codex GPT Luna (coordination / MCP helper)", "level": "luna", "family": "openai", "kind": "cli",
+      "model": "gpt-5.6-luna", "functions": ["mcp_bulk", "dispatch"], "capabilities": ["mcp_bulk", "dispatch"],
+      "prowess": { "mcp_bulk": 78, "dispatch": 85 }, "billing": "included", "review_eligible": false,
       "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
-      "notes": "Default dispatcher. Queue/assign/status/risk-gate only; never implements."
+      "notes": "Lightweight Codex coordination/MCP helper on the shared Codex plan; dispatch-capable. WHICH surface actually dispatches is a user assignment recorded in config/entrypoints.json (exactly one at a time) — capability lives here, assignment lives there. Never implements repo code; never a review verdict."
     },
     "codex-terra": {
       "label": "Codex GPT Terra (MCP volume)", "level": "terra", "family": "openai", "kind": "cli",
       "model": "gpt-5.6-terra", "functions": ["mcp_bulk", "dispatch"], "capabilities": ["mcp_bulk", "dispatch"],
       "prowess": { "mcp_bulk": 82 }, "billing": "included", "review_eligible": false,
       "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
-      "notes": "Google-MCP bulk fetches to output_path."
+      "notes": "Google-MCP bulk fetches to output_path — a worker seat; also dispatch-capable. WHICH surface actually dispatches is a user assignment recorded in config/entrypoints.json (e.g. the two-sub setup assigns a Codex/GPT surface; this reference setup assigns the Claude orchestration surface — both legitimate). Capability lives here, assignment lives there."
     },
     "codex-sol": {
       "label": "Codex GPT-5.6 Sol (Review B / MCP judgment)", "level": "sole", "family": "openai", "kind": "cli",
@@ -77,7 +77,7 @@
       "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
       "prowess": { "review": 94, "mcp_judgment": 86, "dispatch": 82 }, "billing": "included", "review_eligible": true,
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
-      "notes": "FIRST in the gating order and the Anthropic-family gate seat (owner ruling 2026-08-25; BullshitBench 0.94 detect). Pinned Claude reliability/judgment pass across live Claude seats (teamclaude). CAN dispatch and CAN code — but in the reference setup entrypoints.json makes Codex the dispatcher and Grok the implementer (Opus-as-daily-coder is a preference ban that yields only when no other seat exists, e.g. a solo Claude user). NEVER the default implementer where a worker seat is live. Pin 4.8; opus-5 forbidden."
+      "notes": "Dispatch-capable frontier seat. WHEN a user assigns it as the dispatcher in config/entrypoints.json (as this reference setup does), it acts as the Claude orchestration surface: classify, stamp review depth, brief, assign, gate, refill, and fan work OUT to the orchestration tree (other Claude seats/sub-agents via teamclaude + the specialist seats), preserving its own account quota by DISPATCHING, not implementing (read-only legwork via a sub-agent is fine; the gating Review-C pass and any Claude implement/review go to OTHER live Claude seats). Also FIRST in the gating order and the Anthropic-family gate seat (owner ruling 2026-08-25; BullshitBench 0.94 detect), served across live Claude seats (teamclaude). NEVER the default implementer where a worker seat is live. Pin 4.8; Opus 5.0 forbidden (5.1+ allowed)."
     },
     "review-e": {
       "label": "Review E (independent-family review slot)", "level": "frontier", "family": "open-weight", "kind": "api",
@@ -110,7 +110,7 @@
     }
   },
   "forbidden_models": {
-    "opus-5": { "reason": "Owner policy: Opus 5 forbidden as a default or reviewer. Pin Opus 4.8. A LATER model (e.g. opus-5.1) is NOT auto-forbidden — the admin decides per model. doctor fails if any provider selects a listed forbidden model.", "aliases": ["claude-opus-5", "opus5"] }
+    "opus-5": { "reason": "The ONE hard invariant of this system: Opus 5.0 must never run (default OR reviewer). Matched EXACTLY to 5.0 — bare opus-5, opus-5-0/.0, or a 5.0 build/date stamp — by bin/mborch.py is_opus5_zero; it is NOT a wildcard over the 5-series. Opus 5.1+ are NOT forbidden: they slot in via capability+prowess (see model_slot_in). Pin stays opus-4.8. Add other ids/aliases here to forbid them (extensible data; the code enforces).", "aliases": ["claude-opus-5", "opus5"] }
   },
   "review_order": ["opus-4.8", "codex-sol", "review-e"],
   "review_order_note": "GATING fallback order (owner ruling 2026-08-25, Orchestration Retro): Opus 4.8 first (Anthropic gate), then Codex Sol (OpenAI), then Review E (independent open-weight). Fable is REMOVED from the gating order — it measured worst on nonsense detection (BullshitBench), so it never gates; it stays a registered provider for optional architecture passes only. A stronger new frontier model slots ahead by prowess — the admin updates this list when adding one. resolve-route computes the LIVE chain from this order + usage-status tiers, preferring tier=available over tier=reserve so a self-imposed cap never strands a seat. Cross-family = one pass from two DIFFERENT families (Anthropic gate = Opus 4.8; OpenAI = Sol; open-weight = Review E).",

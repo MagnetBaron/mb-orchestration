@@ -84,13 +84,10 @@ def provider_levels(providers_data: dict) -> dict[str, str]:
         raise ValueError("providers.json review_order must be a unique non-empty list")
     if any(pid not in mapping for pid in order):
         raise ValueError("providers.json review_order entries must be defined providers")
-    # Forbidden models must not be selected as any provider's model.
-    forbidden = set()
-    for fid, meta in (providers_data.get("forbidden_models") or {}).items():
-        forbidden.add(fid)
-        forbidden.update(meta.get("aliases", []))
+    # Forbidden models must not be selected (the Opus-5.0 hard invariant + any listed
+    # ids/aliases). Matching lives in mborch.model_is_forbidden — Opus 5.0 only; 5.1+ pass.
     for pid, p in provs.items():
-        if p.get("model") in forbidden:
+        if mborch.model_is_forbidden(p.get("model"), providers_data.get("forbidden_models")):
             raise ValueError(f"{pid}: selects forbidden model {p.get('model')!r}")
     return mapping
 

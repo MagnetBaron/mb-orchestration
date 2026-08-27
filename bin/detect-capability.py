@@ -30,7 +30,7 @@ import mborch  # noqa: E402
 DOWNGRADE_GUIDANCE = """\
 Disable automatic model downgrades (verified against code.claude.com/docs/en/model-config):
   · availableModels allowlist — the practical lever. Include 'opus-4.8' (and 'fable-5' if granted);
-    leave 'opus-5' OUT (forbidden) and, for a hard refusal over a silent drop to Sonnet, 'sonnet-5' too.
+    leave the Opus-5.0 ids OUT (5.0 is forbidden; 5.1+ are allowed) and, for a hard refusal over a silent drop to Sonnet, 'sonnet-5' too.
   · fallbackModel — opt-IN, fires only on overload (not rate-limit/billing). Leave unset for none.
   · switchModelsOnFlag:false — stops the safety classifier swapping Fable/Opus mid-task.
   · The silent Opus→Sonnet quota downgrade has no first-class opt-out (issue claude-code#3434); the

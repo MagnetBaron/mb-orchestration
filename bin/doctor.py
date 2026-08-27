@@ -106,8 +106,8 @@ def check_providers(providers):
             err(f"provider {pid}: family {p.get('family')!r} not declared in families")
         if not p.get("functions"):
             err(f"provider {pid}: empty functions")
-        if p.get("model") in forbidden:
-            err(f"provider {pid}: selects FORBIDDEN model {p.get('model')!r} (opus-5 is banned; pin opus-4.8)")
+        if mborch.model_is_forbidden(p.get("model"), providers.get("forbidden_models")):
+            err(f"provider {pid}: selects FORBIDDEN model {p.get('model')!r} (Opus 5.0 is the one hard block; 5.1+ are allowed — pin opus-4.8)")
         if p.get("billing") not in (None, "included", "metered"):
             err(f"provider {pid}: billing must be 'included' or 'metered', got {p.get('billing')!r}")
         sup = p.get("supersedes")
@@ -268,6 +268,25 @@ def prose_hygiene():
                 warn(f"{rel}: contains raw live id '{rid}' — should come from config/connectors.json via bin/connectors.py")
 
 
+def check_forbidden_matcher():
+    """Locked test for the ONE hard invariant (bin/mborch.is_opus5_zero): Opus 5.0 —
+    and ONLY 5.0 — is refused; Opus 5.1+ and non-Opus-5 models must pass through so
+    they can slot in via capability+prowess. Running inside doctor means any regression
+    (a matcher that widens to the whole 5-series, or narrows and lets a 5.0 build run)
+    fails the gate and can never land silently."""
+    must_block = ["opus-5", "claude-opus-5", "claude-opus-5-0", "claude-opus-5.0",
+                  "claude-opus-5-20260401", "opus5"]
+    must_allow = ["opus-5-1", "claude-opus-5-1", "opus-5.1", "claude-opus-5.1",
+                  "claude-opus-5-2", "opus-5-2", "opus-4-8", "claude-opus-4-8",
+                  "sonnet-5", "fable-5", "claude-haiku-4-5-20260101"]
+    for m in must_block:
+        if not mborch.is_opus5_zero(m):
+            err(f"forbidden-matcher regression: Opus-5.0 form {m!r} is NOT being blocked")
+    for m in must_allow:
+        if mborch.is_opus5_zero(m):
+            err(f"forbidden-matcher regression: {m!r} is WRONGLY blocked (only Opus 5.0 is forbidden; 5.1+ allowed)")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Validate the mb-orchestration setup.")
     ap.add_argument("--strict", action="store_true", help="treat warnings as failures")
@@ -301,6 +320,7 @@ def main(argv=None):
     check_review_depth(depth)
     check_doctrine_has_classes(depth)
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")
+    check_forbidden_matcher()
     prose_hygiene()
 
     if args.json:

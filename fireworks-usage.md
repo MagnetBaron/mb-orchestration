@@ -31,7 +31,7 @@ Only **positive quota evidence** opens Review E. Record the state in `usage-ledg
 | Probe failure, timeout, 5xx, DNS, auth-expired, "command not found" | **OUTAGE** | **park** — says nothing about quota |
 
 - A probe result can **park** work but can **never** route it to Review E (`EDGE-CASES.md` probe rule).
-- **Correlated pipes:** teamclaude down = one Claude outage (try Claude CLI direct before calling Fable *and* Opus 4.8 dead). Codex down = Sol *and* dispatch — not "reviewers exhausted."
+- **Correlated pipes:** teamclaude down = one Claude outage that also takes the assigned dispatcher when it is a Claude seat (try Claude CLI direct before calling Fable, Opus 4.8, and the dispatcher dead). Codex down = Sol *and* Terra MCP — not "reviewers exhausted."
 - **All three reviewers erroring at once = local Mini fault.** Diagnose the box; do not engage Review E — it would mask the fault or fail identically.
 
 ## Dispatch check (all five, mirrors Sol)

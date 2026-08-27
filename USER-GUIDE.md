@@ -30,7 +30,7 @@ OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok: Build + the two Grok Bots), ope
 | **Analytics heatmaps/replays** | **xAI — Grok Bot (Heat Map)** | Browser-only Clarity layer the API can't return |
 | **Independent third-family review** | **open-weight — Review E** | The only review family that is *not* Anthropic/OpenAI/xAI (see §3) |
 | **IDE / inline edits** | **Cursor (Grok pool)** | First-party pool; drain before paid buckets |
-| **Dispatch** | **OpenAI — Codex Luna** (or any provider you choose) | One coordinator; never implements |
+| **Dispatch** | **whoever you assign** (this reference: Anthropic — the Claude orchestration surface, Opus 4.8) | One coordinator; fans work to sub-agents + seats; preserves its account by dispatching, not implementing |
 
 **The cross-family rule is the load-bearing one:** for money/auth/PII/secrets work, two *different*
 families must each review. Anthropic's Fable and Opus are ONE family — two Claude passes do not count.
@@ -149,9 +149,13 @@ in `config/entrypoints.json`:
 
 - Any surface (Codex CLI, Claude Code, Cursor, phone) can be where you *start*. Non-dispatcher surfaces
   classify + draft a brief and hand it to the dispatcher.
-- The **dispatcher** (default Codex Luna) is the only seat that assigns other seats. Exactly one at a time.
-- **No Codex?** Point `dispatcher.provider` at a provider you own (e.g. a Claude seat) and flip that
-  surface's `can_dispatch` to true. The single-dispatcher invariant holds; only the holder moves.
+- The **dispatcher** is the only seat that assigns other seats and fans work out to the tree (sub-agents
+  + specialist seats). Exactly one at a time — **user-assigned** in `dispatcher.provider`, never a fixed
+  identity. In this reference setup that is the Claude orchestration surface (Opus 4.8); it preserves its
+  account by dispatching, not implementing.
+- **Pick your dispatcher.** Point `dispatcher.provider` at any dispatch-capable provider you own — a
+  Claude seat, a Codex/GPT surface, whatever your inventory has — and flip that surface's `can_dispatch`
+  to true. The single-dispatcher invariant holds; only the holder moves.
 
 This is how the same system serves a shop owner at a Mac console, a teammate in Cursor, and you on a
 phone — without four people all trying to dispatch.
@@ -227,8 +231,9 @@ Capabilities and model strength are data, so newer/older models slot in cleanly:
   work to a browser-capable seat, review to the highest-prowess reviewer live, etc.
 - **A new model is one edit.** To adopt Opus 5.1, Fable 5.1, or a successor to Fable/Sol, add a provider
   entry bound to its capability *level* (see `providers.json` → `model_slot_in`), optionally
-  `supersedes` the incumbent, run `bin/doctor.py`. Opus 5 stays forbidden; a later model is allowed
-  unless you forbid it. Pin `opus-4.8` via `availableModels` and consider disabling auto-downgrade (§3).
+  `supersedes` the incumbent, run `bin/doctor.py`. Opus **5.0** stays forbidden (the one hard invariant);
+  Opus 5.1+ are NOT auto-forbidden — they slot in via capability+prowess like any model, unless you
+  forbid one. Pin `opus-4.8` via `availableModels` and consider disabling auto-downgrade (§3).
 - **Upgrades are detected too, not just downgrades.** `bin/detect-capability.py` surfaces a seat that
   *regained* Fable (adopt it: `--record-upgrade <seat>`) and a `supersedes` model waiting to replace an
   incumbent — the mirror of downgrade detection.

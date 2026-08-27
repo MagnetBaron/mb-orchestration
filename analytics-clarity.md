@@ -37,7 +37,7 @@ The mirror clauses (Visual QA ignoring `clarity deep-dive:`, never emitting it) 
 
 ## Operating model — how the two work together (via Dispatch)
 
-The bots never hand work to each other directly; **Dispatch (Codex) is the hub.** The loop:
+The bots never hand work to each other directly; **Dispatch (the assigned dispatcher) is the hub.** The loop:
 
 1. **Heat Map** finds UX friction (heatmap / replay / Summarize) → posts a `digest` + **recommended briefs** (brief fields only, no preview URL).
 2. **Dispatch** turns a recommended brief into a job under the normal risk gate → **Grok Build** implements the fix in a worktree.
