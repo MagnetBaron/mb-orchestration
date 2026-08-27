@@ -82,7 +82,7 @@ def detect_one(pid: str, p: dict) -> dict:
         result["present"] = None
     elif method == "capability":
         grant = det.get("grant", "?")
-        result["status"] = f"subscription grant '{grant}' — run bin/detect-fable.py"
+        result["status"] = f"subscription grant '{grant}' — run bin/detect-capability.py"
         result["present"] = None
     else:
         result["status"] = f"unknown detect method {method!r}"
@@ -120,6 +120,22 @@ def register_template(cmd: str) -> str:
     return json.dumps(entry, indent=2)
 
 
+def detect_rotation() -> dict:
+    """Report whether multi-seat Claude ROTATION is available. teamclaude rotates the several
+    Claude seats and tracks per-model caps; WITHOUT it there is no rotation — a single Claude
+    account serves, and a real 429 on it parks the Anthropic pipe (dispatch + Opus review) until
+    its 5h window resets, with no failover. Absence is a DEGRADED MODE, not an error: teamclaude
+    is a runtime dependency (wired on the worker Mini, per install.md §3), NOT repo config, so this
+    stays informational and never fails doctor/smoketest. See EDGE-CASES.md §'teamclaude absent'."""
+    tc = shutil.which("teamclaude")
+    if tc:
+        return {"tool": "teamclaude", "available": True, "path": tc,
+                "status": "available (multi-seat Claude rotation live)"}
+    return {"tool": "teamclaude", "available": False, "path": None,
+            "status": ("unavailable (single-account; no rotation — a real 429 parks the seat "
+                       "until its 5h window resets, no failover)")}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Detect installed CLI agents; discover unregistered ones.")
     ap.add_argument("--json", action="store_true")
@@ -135,9 +151,11 @@ def main(argv=None):
 
     rows = [detect_one(pid, p) for pid, p in providers_data.get("providers", {}).items()]
     unregistered = discover_unregistered(providers_data)
+    rotation = detect_rotation()
 
     if args.json:
-        print(json.dumps({"detected": rows, "unregistered_on_path": unregistered}, indent=2))
+        print(json.dumps({"detected": rows, "unregistered_on_path": unregistered,
+                          "rotation": rotation}, indent=2))
         return 0
 
     print("detect-agents  (config/providers.json)")
@@ -152,6 +170,8 @@ def main(argv=None):
             print(f"  + {u['cmd']:<14} {u['path']}  — {u['desc']}")
     else:
         print("no unregistered known agent binaries on PATH.")
+    print("-" * 72)
+    print(f"rotation ({rotation['tool']}): {rotation['status']}")
     print("-" * 72)
     print("absent seats are normal on a portable setup; resolve-route routes around them.")
     return 0

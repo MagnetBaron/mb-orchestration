@@ -1,5 +1,5 @@
 {
-  "_note": "SUBSCRIPTION INVENTORY — the ONE file a new user edits to port this system. It describes what you pay for and which providers each plan backs. Nothing here is invariant policy; it is your account reality. Change a plan → edit only this file (and usage-windows.json anchors). `grants.fable` is authoritative for Fable availability and is re-checked by bin/detect-fable.py so a silent downgrade is caught. Seats are real accounts; teamclaude rotates across the Claude seats. To hand this to a different user: replace these entries with theirs, run `bin/doctor.py`, and the whole system re-routes with no prose edits.",
+  "_note": "SUBSCRIPTION INVENTORY — the ONE file a new user edits to port this system. It describes what you pay for and which providers each plan backs. Nothing here is invariant policy; it is your account reality. Change a plan → edit only this file (and usage-windows.json anchors). `grants.fable` is authoritative for Fable availability and is re-checked by bin/detect-capability.py so a silent downgrade is caught. Seats are real accounts; teamclaude rotates across the Claude seats. To hand this to a different user: replace these entries with theirs, run `bin/doctor.py`, and the whole system re-routes with no prose edits.",
   "schema_version": 1,
   "updated": "2026-08-27",
   "owner": "constantine@themagnetbaron.com",
@@ -38,7 +38,7 @@
       "backs_providers": ["opus-4.8", "fable-5"], "seat_id": "claude-team-a",
       "tier": "team", "grants": { "fable": true, "opus": true },
       "meter": "claude-team-a (rolling 5h), see usage-windows.json",
-      "notes": "Team premium seat with Fable. Confirm the Fable grant with bin/detect-fable.py — Team STANDARD does not include Fable."
+      "notes": "Team premium seat with Fable. Confirm the Fable grant with bin/detect-capability.py — Team STANDARD does not include Fable."
     },
     "claude-team-125-b": {
       "vendor": "Anthropic", "product": "Claude Team (premium seat) $125", "monthly_usd": 125,
@@ -62,7 +62,7 @@
       "notes": "Second Pro seat — Opus 4.8 capacity only."
     }
   },
-  "derived_note": "Fable-capable Claude seats: any subscription with grants.fable == true (currently Max + 2 Team = 3 seats). Opus-capable seats: grants.opus == true (all 5). resolve-route.py treats Fable as available only if at least one Fable-capable seat is live per usage-status AND detect-fable has not recorded a downgrade. This is why the review order can keep Fable first without going stale on a plan change.",
+  "derived_note": "Fable-capable Claude seats: any subscription with grants.fable == true (currently Max + 2 Team = 3 seats). Opus-capable seats: grants.opus == true (all 5). resolve-route.py treats Fable as available only if at least one Fable-capable seat is live per usage-status AND detect-capability has not recorded a downgrade. This is why the review order can keep Fable first without going stale on a plan change.",
   "portability_examples": {
     "no-codex-user": "The Claude orchestration surface is already the dispatcher here, so removing Codex changes only the worker/review mix: you lose the OpenAI review family (Sol) and Terra MCP volume, and cross-family gates then need Review E (USER-GUIDE.md §Fable). Remove the codex-200 entry; doctor.py will confirm no orphaned providers.",
     "solo-pro-user": "A single Claude Pro user keeps only claude-pro-25-a (rename freely), grants.fable:false; the review order collapses to opus-4.8 → review-e (if wired) → stop; Grok/Cursor entries removed."

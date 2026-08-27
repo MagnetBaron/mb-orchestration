@@ -9,6 +9,13 @@ edits.
 
 **A user-assigned surface dispatches** — in this reference setup the Claude orchestration surface — fanning work out to sub-agents + seats and preserving its account by dispatching, not implementing. **Grok implements. GPT Terra runs Google-MCP volume. Opus 4.8 + Sol gate** (Fable = optional architecture, out of the gating order per owner ruling). **Codex is a worker/review seat here** (dispatch is user-assigned; any dispatch-capable seat can hold it). Website Visual QA via Slack. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.
 
+## Honest limits (what this does *not* do yet)
+
+Two boundaries an evaluating owner should know up front — both are current-by-design, not oversights:
+
+- **Cross-family review autonomy needs ≥2 review families.** The strongest safety gate is one pass from each of two *different* families (Anthropic + OpenAI, or a native family + the independent Review E). With fewer than two live families — a plan downgrade, or a solo/one-family setup — **risk-class work (money, auth, PII, secrets) PARKS pending a human** instead of auto-shipping: the discipline is unchanged, the routing just collapses toward a single seat and hands the call to the owner (`EDGE-CASES.md`).
+- **Unattended land-to-prod is a current non-goal.** The executor is gated — `bin/run-brief.py` is **dry-run only** (it prints the plan and shells nothing, and fails closed without an explicit run); landing, publish, send, and spend stay behind owner gates. Overnight autonomous land-to-prod without human approval is an explicit non-goal (`DOCTRINE.md` §Explicit non-goals).
+
 ## Layout
 
 | Path | What |

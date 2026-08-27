@@ -129,6 +129,21 @@ def c_detect_agents():
     return len(d.get("detected", [])) >= 10, f"{len(d.get('detected', []))} providers probed"
 
 
+def c_rotation_status():
+    """Graceful degradation: teamclaude is a runtime dep that is ABSENT here (as in CI). detect-agents
+    must still exit 0 and REPORT a rotation status (available/unavailable) rather than error — the
+    missing multi-seat rotation is a detected degraded mode, never a suite failure. Proves A1: the
+    gap is surfaced, not silent, and its detection stays informational."""
+    r = run([PY, "bin/detect-agents.py", "--json"])
+    d = json.loads(r.stdout)
+    rot = d.get("rotation")
+    ok = (r.returncode == 0 and isinstance(rot, dict)
+          and isinstance(rot.get("available"), bool)
+          and isinstance(rot.get("status"), str) and bool(rot["status"]))
+    avail = rot.get("available") if isinstance(rot, dict) else None
+    return ok, f"rc={r.returncode}, rotation reported (available={avail}), no-error={r.returncode == 0}"
+
+
 def c_detect_capability():
     r = run([PY, "bin/detect-capability.py", "--json"])
     d = json.loads(r.stdout)
@@ -342,6 +357,7 @@ def main(argv=None):
     check("run-ledger append→fold round-trip", c_runledger)
     check("drain-plan: metered last + reserve sizing", c_drain_plan)
     check("detect-agents", c_detect_agents)
+    check("rotation status (graceful degradation: teamclaude absent)", c_rotation_status)
     check("detect-capability", c_detect_capability)
     check("generate-roles (idempotent + toml)", c_generate_roles)
     check("skills wiring (resolve + fail-closed negatives)", c_skills)

@@ -451,6 +451,47 @@ def prose_hygiene():
                 warn(f"{rel}: contains raw live id '{rid}' — should come from config/connectors.json via bin/connectors.py")
 
 
+_BIN_REF_RE = re.compile(r"\bbin/([A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:py|sh))\b")
+
+
+def check_bin_references():
+    """Referential integrity for CITED scripts (ERROR, not just a prose warning): every
+    bin/<script>.(py|sh) named in a config/*.json (across the active config layer) OR in prose
+    (*.md) MUST exist under bin/. prose_hygiene only WARNS on backtick repo paths and never
+    scans JSON at all — so a config file citing a renamed/removed script (e.g. the
+    detect-fable.py → detect-capability.py rename) passed doctor clean while mis-pointing every
+    reader. Fail closed: a dangling bin/ citation is a hard error."""
+    sources: list[Path] = []
+    seen: set[Path] = set()
+    for d in mborch.config_dirs():
+        rd = d.resolve()
+        if rd in seen or not d.exists():
+            continue
+        seen.add(rd)
+        sources += sorted(d.glob("*.json"))
+    sources += sorted(ROOT.glob("*.md")) + sorted((ROOT / ".claude").rglob("*.md"))
+    reported: set[tuple[str, str]] = set()
+    for src in sources:
+        try:
+            text = src.read_text()
+        except Exception:
+            continue
+        try:
+            rel = src.relative_to(ROOT).as_posix()
+        except ValueError:
+            rel = str(src)
+        for m in _BIN_REF_RE.finditer(text):
+            script = m.group(1)
+            if (ROOT / "bin" / script).exists():
+                continue
+            key = (rel, script)
+            if key in reported:
+                continue
+            reported.add(key)
+            err(f"{rel}: cites bin/{script} which does not exist under bin/ "
+                "(renamed or removed? fix the reference or restore the script)")
+
+
 def check_forbidden_matcher():
     """Locked test for the ONE hard invariant (bin/mborch.is_opus5_zero): Opus 5.0 —
     and ONLY 5.0 — is refused; Opus 5.1+ and non-Opus-5 models must pass through so
@@ -515,6 +556,7 @@ def main(argv=None):
     check_seat_exec(seat_exec, provs, provider_ids)
     check_runledger()
     prose_hygiene()
+    check_bin_references()
 
     if args.json:
         print(json.dumps({"errors": ERRORS, "warnings": WARNINGS, "info": INFO,

@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
+import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -236,6 +237,17 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     }
 
 
+def rotation_status():
+    """Informational: is multi-seat Claude rotation (teamclaude) available on this box? Without
+    it a SINGLE Claude account serves — a real 429 parks that seat (and with it dispatch + the
+    Opus review pass) until its 5h window resets, with no failover. Detected here, never fatal:
+    teamclaude is a runtime dep, not config. See EDGE-CASES.md §'teamclaude absent'."""
+    if shutil.which("teamclaude"):
+        return {"available": True, "status": "available (teamclaude multi-seat rotation live)"}
+    return {"available": False,
+            "status": "unavailable (single-account; a real 429 parks the seat until its 5h reset)"}
+
+
 def compute(ledger_path=None):
     """Importable: return (updated, rows). No printing, no exit."""
     conf = mborch.load_config("usage-windows.json", required=True)
@@ -290,7 +302,8 @@ def main(argv=None):
         return 0
 
     if args.json:
-        print(json.dumps({"updated": conf.get("updated"), "seats": rows}, indent=2))
+        print(json.dumps({"updated": conf.get("updated"), "seats": rows,
+                          "rotation": rotation_status()}, indent=2))
         return 0
 
     print(f"usage-status  (windows: config/usage-windows.json, updated {conf.get('updated')})")
@@ -304,6 +317,7 @@ def main(argv=None):
         if r["reset_effective"]:
             print(f"  next reset: {r['reset_effective']}")
     print("-" * 72)
+    print(f"rotation: {rotation_status()['status']}")
     print("tiers: available → reserve (usable last resort) → spent. limits from recorded "
           "429/ledger + computed windows, never LLM token estimation.")
     return 0
