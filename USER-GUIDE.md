@@ -67,7 +67,7 @@ gate to Sonnet** mid-task (the costly one), or removing the optional Fable pass.
 `code.claude.com/docs/en/model-config`):
 
 - **`availableModels` allowlist — the practical control.** List the models you actually want
-  (`opus-4.8`, and `fable-5` if granted). Leave `opus-5` OUT (it's forbidden here) and, if you want a
+  (`opus-4.8`, and `fable-5` if granted). Leave `opus-5` OUT (Opus **5.0** is forbidden here; 5.1+ are allowed) and, if you want a
   hard **refusal instead of a silent drop to Sonnet** under an Opus cap, leave `sonnet-5` out too. A
   request for a missing model then fails loudly instead of downgrading.
 - **`fallbackModel`** is opt-IN and fires only on overload/unavailable server errors for one turn —
@@ -80,7 +80,7 @@ gate to Sonnet** mid-task (the costly one), or removing the optional Fable pass.
   serve it and unblocks when one can, so you don't hand-edit routes. `bin/detect-capability.py` records a
   downgrade so the router re-routes immediately.
 
-**Recommendation:** pin `opus-4.8` via `availableModels`, never `opus-5`; if Fable is central to your
+**Recommendation:** pin `opus-4.8` via `availableModels`, never `opus-5` (5.0); if Fable is central to your
 review, disable model-switching-on-flag and check `bin/detect-capability.py` weekly.
 
 ---

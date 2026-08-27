@@ -277,7 +277,10 @@ def check_forbidden_matcher():
     must_block = ["opus-5", "claude-opus-5", "claude-opus-5-0", "claude-opus-5.0",
                   "claude-opus-5-20260401", "opus5"]
     must_allow = ["opus-5-1", "claude-opus-5-1", "opus-5.1", "claude-opus-5.1",
-                  "claude-opus-5-2", "opus-5-2", "opus-4-8", "claude-opus-4-8",
+                  "claude-opus-5-2", "opus-5-2",
+                  "opus-5-10", "claude-opus-5-10",       # minor 10 — must NOT be misread as a 5.0 date
+                  "opus-5-1-20260401",                   # minor >=1 before a dated build
+                  "opus-4-8", "claude-opus-4-8",
                   "sonnet-5", "fable-5", "claude-haiku-4-5-20260101"]
     for m in must_block:
         if not mborch.is_opus5_zero(m):
