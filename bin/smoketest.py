@@ -210,6 +210,37 @@ def c_unit_tests():
     return r.returncode == 0, (r.stderr.strip().splitlines() or ["(no output)"])[-1]
 
 
+def c_run_brief():
+    """DRY-RUN planner prints a plan and shells nothing; without --dry-run it fails closed;
+    and a default dry-run is side-effect-free (never writes the run-ledger)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rl = str(Path(tmp) / "rl.jsonl")
+        a = run([PY, "bin/run-brief.py", "--dry-run", "--class", "money-data",
+                 "--scale", "elevated", "--run-ledger", rl])
+        dry = a.returncode == 0 and "DRY-RUN PLAN" in a.stdout and "nothing was shelled" in a.stdout
+        side_effect_free = not Path(rl).exists()
+        b = run([PY, "bin/run-brief.py", "--class", "money-data", "--scale", "elevated"])
+        closed = b.returncode != 0 and "gated" in (b.stderr + b.stdout)
+        ok = dry and closed and side_effect_free
+        return ok, f"dry-run plan={dry}, fail-closed={closed}, side-effect-free={side_effect_free}"
+
+
+def c_runledger():
+    """Append-only run-ledger: events append to the file and the fold recovers lane state."""
+    spec = importlib.util.spec_from_file_location("runledger_smoke", HERE / "runledger.py")
+    rl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rl)
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "rl.jsonl"
+        rl.append(rl.make_event("lane-x", "created", "2026-01-01T00:00:00+00:00"), str(p))
+        rl.append(rl.make_event("lane-x", "review-verdict", "2026-01-01T00:00:02+00:00",
+                                 seat="opus-4.8", verdict="ship"), str(p))
+        lines = [ln for ln in p.read_text().splitlines() if ln.strip()]
+        st = rl.fold_to_state("lane-x", str(p))
+        ok = len(lines) == 2 and isinstance(st, dict) and "status" in st
+        return ok, f"appended={len(lines)} lines, folded status={st.get('status')}"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true")
@@ -225,6 +256,8 @@ def main(argv=None):
     check("never-strand: reserve Sol released for cross-family", c_never_strand())
     check("genuine park: real exhaustion parks; single-frontier survives", c_genuine_park())
     check("dispatch codes last resort when workers spent", c_dispatch_codes())
+    check("run-brief dry-run plans + fails closed (shells nothing)", c_run_brief)
+    check("run-ledger append→fold round-trip", c_runledger)
     check("drain-plan: metered last + reserve sizing", c_drain_plan)
     check("detect-agents", c_detect_agents)
     check("detect-capability", c_detect_capability)

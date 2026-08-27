@@ -250,7 +250,7 @@ def main(argv=None):
     ap.add_argument("--ledger", default=None, help="usage ledger passthrough to resolve-route")
     ap.add_argument("--run-ledger", default=None, help="run-ledger path (default data_dir/run-ledger.jsonl)")
     ap.add_argument("--dry-run", action="store_true", help="REQUIRED — this planner only ever dry-runs")
-    ap.add_argument("--no-record", action="store_true", help="do not append the decision-trace event")
+    ap.add_argument("--record", action="store_true", help="append the decision-trace event to the run-ledger (default: a dry-run is side-effect-free)")
     ap.add_argument("--json", action="store_true")
     for f in _LIVE_FLAGS:  # any live-execution intent is refused, loudly
         ap.add_argument(f"--{f}", action="store_true", help=argparse.SUPPRESS)
@@ -264,7 +264,7 @@ def main(argv=None):
         return 2
 
     plan = build_plan(args)
-    if not args.no_record:
+    if args.record:
         record_trace(plan, args.run_ledger)
 
     print(json.dumps(plan, indent=2)) if args.json else _print_plan(plan)

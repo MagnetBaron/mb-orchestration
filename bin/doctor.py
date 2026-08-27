@@ -370,10 +370,11 @@ def main(argv=None):
     roles = load_json("roles.json")
     depth = load_json("review-depth.json")
     monitoring = load_json("monitoring.json", required=False)
+    seat_exec = load_json("seat-exec.json", required=False)
 
     schema_validate({"providers": providers, "subscriptions": subs, "connectors": conns,
                      "entrypoints": entry, "usage_windows": windows, "roles": roles,
-                     "review_depth": depth, "monitoring": monitoring})
+                     "review_depth": depth, "monitoring": monitoring, "seat_exec": seat_exec})
 
     if monitoring is not None:
         rd = monitoring.get("retention_days")
@@ -390,6 +391,8 @@ def main(argv=None):
     check_doctrine_has_classes(depth)
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")
     check_forbidden_matcher()
+    check_seat_exec(seat_exec, provs, provider_ids)
+    check_runledger()
     prose_hygiene()
 
     if args.json:
