@@ -15,7 +15,16 @@ fi
 ledger="${MB_USAGE_LEDGER:-$default_ledger}"
 reset="${MB_429_RESET:-$(date -u -v+5H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+5 hours' +%Y-%m-%dT%H:%M:%SZ)}"
 
-if ! printf '%s' "$message" | grep -Eiq '(^|[^0-9])(429|rate.?limit|usage.?limit|quota.?exceed|too many requests)([^0-9]|$)'; then
+# ─────────────────────────────────────────────────────────────────────────────
+# CALLER CONTRACT: pass ONLY the transport/API error text — the stderr of the
+# FAILING call (the HTTP status line or JSON error body). NEVER pass a model
+# completion. A model REVIEW that merely *discusses* "429" or "rate limit" is not
+# an exhaustion signal; recording it falsely marked Sol spent and parked the
+# OpenAI gate (retro §3.3 / H6). We therefore match only STRONG error signatures a
+# real 429/quota response carries — never a bare "429" or a bare "rate limit".
+# ─────────────────────────────────────────────────────────────────────────────
+sig='HTTP[ /]?429|429 Too Many Requests|status[ :]+429|code[ :]+429|error[^0-9]{0,20}429|rate.?limit.?exceeded|usage.?limit.?reached|quota.?exceeded|insufficient_quota'
+if ! printf '%s' "$message" | grep -Eiq "$sig"; then
   exit 0
 fi
 
