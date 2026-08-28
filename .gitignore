@@ -10,3 +10,6 @@ __pycache__/
 .codex/config.toml
 .codex/agents/mb-mobile-accessibility-reviewer.toml
 .codex/agents/mb-mobile-tooling.toml
+
+# Generated owner-review proposal; source of truth is roles/roles.json.
+roles/generated/

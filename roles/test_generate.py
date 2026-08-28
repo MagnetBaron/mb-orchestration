@@ -75,6 +75,12 @@ class RegistrySchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "more than one capability level"):
             dump_and_load(data)
 
+    def test_rejects_scalar_skill_binding(self):
+        data = live_registry()
+        data["roles"]["seo-research"]["grok"]["skills"] = "seo-ops"
+        with self.assertRaisesRegex(ValueError, "skills must be a list"):
+            dump_and_load(data)
+
 
 class ReadOnlyRestrictionTests(unittest.TestCase):
     def test_read_only_roles_have_no_write_tools(self):
@@ -190,6 +196,7 @@ class ArtifactTests(unittest.TestCase):
         build_text = outputs[grok_build]
         self.assertIn("Read-only: yes. Write tools stay denied for every host, including writing agents.", seo_text)
         self.assertIn("tools: Read, Glob, Grep, WebSearch, WebFetch", seo_text)
+        self.assertIn('skills: ["seo-ops"]', seo_text)
         self.assertNotIn("Write", seo_text.split("---")[1])
         self.assertIn("Read-only: no. Write tools follow this role's host allowlists.", build_text)
         self.assertIn("Write", build_text.split("---")[1])

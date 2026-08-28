@@ -122,6 +122,9 @@ def validate(data: dict) -> None:
                 raise ValueError(f"{name}: read_only unknown or non-read-safe tools on {host}: {unknown}")
             if "model" in config and config["model"] != "inherit":
                 raise ValueError(f"{name}: host model pins are not allowed; use capability-level provider bindings")
+            skills = config.get("skills", [])
+            if not isinstance(skills, list) or any(not isinstance(x, str) or not x for x in skills):
+                raise ValueError(f"{name}: {host} skills must be a list of names")
             mcp = config.get("mcpServers", [])
             if not isinstance(mcp, list) or any(not isinstance(x, str) or not x for x in mcp):
                 raise ValueError(f"{name}: {host} mcpServers must be a list of names")
@@ -182,11 +185,16 @@ def claude(role: dict, name: str) -> str:
 
 
 def grok(role: dict, name: str) -> str:
-    tools = ", ".join(host_config(role, "grok")["tools"])
-    return (
-        f"---\nname: mb-{name}\ndescription: {json.dumps(role['description'])}\ntools: {tools}\n"
-        f"---\n\n{role['prompt']}\n\n" + restriction_lines(role)
-    )
+    config = host_config(role, "grok")
+    lines = [
+        "---",
+        f"name: mb-{name}",
+        f"description: {json.dumps(role['description'])}",
+        "tools: " + ", ".join(config["tools"]),
+    ]
+    if config.get("skills"):
+        lines.append("skills: [" + ", ".join(json.dumps(x) for x in config["skills"]) + "]")
+    return "\n".join(lines) + f"\n---\n\n{role['prompt']}\n\n" + restriction_lines(role)
 
 
 def toml_quote(s: str) -> str:

@@ -87,6 +87,7 @@
         "mcpServers": ["gsc-indexing", "dfs-mcp"]
       },
       "grok": {
+        "skills": ["seo-ops"],
         "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
       },
       "mcp_deny_tools": {
