@@ -88,16 +88,24 @@ Prefer this repo’s thin files until context pressure forces a plugin.
 
 ## 8. Selective iOS, Flutter, and Dart skills
 
-Install the pinned skills listed in `skills/registry.json`, then run:
+Install the pinned skills listed in `skills/registry.json`. For an existing
+24-link installation, migrate the leaf playbooks behind the router once:
+
+```bash
+python3 skills/sync.py --migrate-library
+```
+
+Then reconcile and verify with:
 
 ```bash
 python3 skills/sync.py
 python3 skills/sync.py --check
 ```
 
-The sync links one installed copy into `~/.agents/skills` and this repository's
-`.agents/skills`, disables the mobile catalog for Codex Dispatch and ordinary
-agents, and enables `ios-accessibility` only for the read-only mobile
-accessibility reviewer. Existing Grok/Claude/Cursor implementation seats load
-only the exact skill paths named in a brief's required `skills:` and
-`must_read` fields. The skill tree does not create a seat or grant tools.
+The sync keeps all 24 leaf playbooks in a private non-discovery library and
+links only `mobile-dev-router` into `~/.agents/skills`. Existing
+Grok/Claude/Cursor implementation seats receive the router only on mobile
+briefs; it reads at most the one or two matching leaf playbooks. Generated
+Codex role profiles directly scope iOS accessibility or Dart MCP tools without
+placing those instructions or tool schemas in Dispatch. The skill tree does
+not create a seat or grant tools.

@@ -1,7 +1,12 @@
 {
-  "schema_version": 1,
-  "installed_root": "~/.codex/skills",
+  "schema_version": 2,
+  "library_root": "~/.codex/skill-library/mobile",
+  "legacy_install_root": "~/.codex/skills",
   "universal_root": "~/.agents/skills",
+  "router": {
+    "name": "mobile-dev-router",
+    "path": "skills/mobile-dev-router"
+  },
   "sources": {
     "ios-accessibility": {
       "repository": "https://github.com/dadederk/iOS-Accessibility-Agent-Skill",
@@ -42,44 +47,25 @@
   },
   "routes": {
     "dispatch": {
-      "activation": "disabled",
-      "skills": []
+      "activation": "progressive",
+      "skills": [
+        "mobile-dev-router"
+      ]
     },
     "default": {
-      "activation": "disabled",
-      "skills": []
+      "activation": "progressive",
+      "skills": [
+        "mobile-dev-router"
+      ]
     },
     "mobile-implementer": {
       "activation": "progressive",
       "skills": [
-        "ios-accessibility",
-        "dart-add-unit-test",
-        "dart-build-cli-app",
-        "dart-collect-coverage",
-        "dart-fix-runtime-errors",
-        "dart-generate-test-mocks",
-        "dart-migrate-to-checks-package",
-        "dart-resolve-package-conflicts",
-        "dart-run-static-analysis",
-        "dart-setup-ffi-assets",
-        "dart-use-ffigen",
-        "dart-use-pattern-matching",
-        "dart-use-primary-constructors",
-        "dart-write-documentation",
-        "flutter-add-integration-test",
-        "flutter-add-widget-preview",
-        "flutter-add-widget-test",
-        "flutter-apply-architecture-best-practices",
-        "flutter-build-responsive-layout",
-        "flutter-fix-layout-issues",
-        "flutter-implement-json-serialization",
-        "flutter-setup-declarative-routing",
-        "flutter-setup-localization",
-        "flutter-use-http-package"
+        "mobile-dev-router"
       ]
     },
     "mobile-accessibility-reviewer": {
-      "activation": "progressive",
+      "activation": "direct",
       "skills": [
         "ios-accessibility"
       ]

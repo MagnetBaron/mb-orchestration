@@ -1,0 +1,7 @@
+interface:
+  display_name: "Mobile Development Router"
+  short_description: "Route mobile work to minimal playbooks"
+  default_prompt: "Use $mobile-dev-router to select and apply the smallest matching Dart, Flutter, or iOS accessibility playbook set."
+
+policy:
+  allow_implicit_invocation: true

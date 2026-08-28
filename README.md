@@ -49,6 +49,6 @@ git clone https://github.com/MagnetBaron/qa-idle-handoff.git
 1. Clone as above.
 2. Codex opens this repo and pastes the packet in `SETUP-BOTS.md` to Grok Build, Cursor, and Claude Code.
 3. Owner wires Slack Visual QA, Google MCP on Codex/Claude seats, optional Luna close-loop, and idle QA minis per `qa-idle-handoff.md`.
-4. Install the mobile skills, then run `python3 skills/sync.py`; verify with `python3 skills/sync.py --check`.
+4. Install the mobile skills, migrate the leaf library once with `python3 skills/sync.py --migrate-library`, then verify with `python3 skills/sync.py --check`.
 
 Daily: Codex is still the only entry point. When something breaks, agents read `EDGE-CASES.md`.
