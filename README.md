@@ -2,7 +2,7 @@
 
 **Policy repo for Magnet Baron multi-CLI work.**
 
-**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Cursor Other Models $400 is last.** Fireworks **Review E** is the unwired last-resort / independent-family review backup.
+**Codex dispatches. Grok implements code/listings. GPT Terra runs Google MCP volume. Sol/Opus judge. Website Visual QA via Slack. Exclusive idle-mini QA via `qa-idle-handoff`. Cursor Other Models $400 is last.** Fireworks **Review E** is the unwired last-resort / independent-family review backup.
 
 ## Clone (desktop + CLI)
 
@@ -10,10 +10,13 @@
 |------|-----|----------|
 | **This policy** | https://github.com/MagnetBaron/mb-orchestration | Workspace — `AGENTS.md` + `CLAUDE.md` |
 | **teamclaude fork** | https://github.com/MagnetBaron/teamclaude | Multi-seat Claude proxy source |
+| **QA idle handoff** | https://github.com/MagnetBaron/qa-idle-handoff (private) | Exclusive idle-mini QA workers |
 
 ```bash
 git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
+# private — after GitHub auth:
+git clone https://github.com/MagnetBaron/qa-idle-handoff.git
 ```
 
 ## Files
@@ -26,6 +29,7 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 | [EDGE-CASES.md](./EDGE-CASES.md) | Outages, ambiguity, partial work, owner unreachable |
 | [visual-qa.md](./visual-qa.md) | Storefront pixel review / allowlist |
 | [visual-qa-slack.md](./visual-qa-slack.md) | How the Bot receives the Slack ticket |
+| [qa-idle-handoff.md](./qa-idle-handoff.md) | Exclusive idle M4 mini QA (not a cluster) |
 | [sol-usage.md](./sol-usage.md) | Codex $200 Sol: soft cap + weekly window (via `usage-status`) |
 | [cursor-usage.md](./cursor-usage.md) | Cursor Ultra pools vs $400 vs Heavy |
 | [fireworks-usage.md](./fireworks-usage.md) | Review E (Fireworks): last-resort review trigger, model pin, wrapper contract |
@@ -43,6 +47,6 @@ git clone https://github.com/MagnetBaron/teamclaude.git
 
 1. Clone as above.
 2. Codex opens this repo and pastes the packet in `SETUP-BOTS.md` to Grok Build, Cursor, and Claude Code.
-3. Owner wires Slack Visual QA, Google MCP on Codex/Claude seats, and optional Luna close-loop.
+3. Owner wires Slack Visual QA, Google MCP on Codex/Claude seats, optional Luna close-loop, and idle QA minis per `qa-idle-handoff.md`.
 
 Daily: Codex is still the only entry point. When something breaks, agents read `EDGE-CASES.md`.
