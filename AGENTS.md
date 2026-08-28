@@ -1,6 +1,6 @@
 # Magnet Baron orchestration
 
-Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Failures: `EDGE-CASES.md`.
+Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Idle mini QA: `qa-idle-handoff.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Failures: `EDGE-CASES.md`.
 
 **Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`.
 
@@ -14,6 +14,7 @@ Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `
 | **MCP / review judgment** | Codex **Sol** or **Opus 4.8** | Interpret MCP outputs; Sol also Review B | Row-dump fetch loops |
 | **Cloud standing** | Grok Bot (xAI VM) | Inbox / scheduled work off the Mini | Same change-set as Build |
 | **Review D** | Grok Bot **Website Visual QA** | Storefront preview via Slack | Admin, SimGym, publish |
+| **QA idle** | GitHub Actions (`MagnetBaron/qa-idle-handoff`) | Exclusive smoke on first idle mini labeled `qa` | Cluster, two QA at once, public-repo runners, Admin |
 | **Analytics** | Grok Bot **Heat Map** (2nd bot) | Read-only Clarity heatmaps/replays/Summarize; feeds Dispatch (`analytics-clarity.md`) | Admin, settings, member mgmt, implement, review verdicts |
 | **Review A** | Fable 5 (while included) | Hard PR / architecture | Daily typing |
 | **Review B** | GPT-5.6 Sol **on Codex** | Diff review when Fable empty | Cursor Sol ($400) |
@@ -67,6 +68,7 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 6. On completion: refill or state why idle. Never implement from phone.
 7. Route reviews by `usage-status` seat state (spent / capped / next reset), never by guesswork.
 8. Supervise at the checkpoints you already run, not continuously: past-budget lane with no park note → `stalled:`; return outside scope or into `must_not_touch` → reject + re-scope; two loops, no novel defect → park + escalate. Run `usage-status` before any reroute — a whole-pipe outage is one outage, diagnose don't cascade. No watcher daemon (`EDGE-CASES.md`).
+9. Storefront smoke after a visitor preview URL exists → private `qa-idle-handoff` **Run workflow** (exclusive idle mini). Not a second implementer on the 16 GB box. See `qa-idle-handoff.md`.
 
 ## Implement (Grok Build)
 
@@ -78,4 +80,4 @@ Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship
 
 ## Hard bans
 
-- Fable/Sol/Opus as daily coder · Opus 5 default · two frontier passes from the **same family** on one branch (the cross-family gate pair — one pass each from two families — is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host
+- Fable/Sol/Opus as daily coder · Opus 5 default · two frontier passes from the **same family** on one branch (the cross-family gate pair — one pass each from two families — is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · two QA minis at once or a self-hosted runner on a public repo · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus 4.8 as two families · sending secrets/PII to a third-party inference host
