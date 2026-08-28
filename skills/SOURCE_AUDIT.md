@@ -52,3 +52,35 @@ new workflow owner.
 - Skills cannot grant tools, secrets, filesystem scope, or mutation authority.
 - `skills/sync.py --check` fails on missing leaves, global leaf exposure,
   stale generated profiles, router collisions, duplicate names, or bad routes.
+
+## Runtime verification
+
+`grok inspect` saw exactly the four routers as user skills; all 44 leaves were
+absent from discovery. Read-only live probes produced these paths:
+
+- Unrelated purchase-order task: no skill files and no MCP tools.
+- Obsidian callout/wikilink: knowledge router, catalog, then only
+  `obsidian-markdown`.
+- Worker source review: Cloudflare router, catalog, then only
+  `workers-best-practices`; Wrangler was correctly skipped.
+- Next.js waterfall/bundle review: engineering router, catalog, then only
+  `react-best-practices`; composition and web-performance leaves were skipped.
+
+The four router descriptions total 1,020 characters, about 255 tokens. All 44
+leaf descriptions total 12,069 characters, about 3,018 tokens if exposed. The
+prior mobile-router plus 13 exposed Cloudflare descriptions totaled 5,136
+characters; this change adds seven private leaves while reducing this managed
+startup metadata by about 80%.
+
+Grok's `mb-grok-build` unrelated-task probe still used 11,232 input tokens.
+Only about 255 characters came from these routers. The remaining baseline is
+project instructions, Grok bundled skills, other user/plugin skill metadata,
+and harness configuration. `grok inspect` discovers nine MCP connections from
+Claude configuration, while the `mb-grok-build` role allowlists only
+`Read, Write, Edit, Grep, Glob`; the probe used no MCP tools. Exact MCP schema
+token contribution is not exposed by `inspect`, so no broader config deletion
+was inferred from warnings alone.
+
+Grok also warned about duplicate plugin locations, but scope precedence chose
+one `github` plugin and one `magnet-baron-skills` plugin; `inspect` reported
+only those two active plugins. No destructive plugin cleanup was justified.
