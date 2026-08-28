@@ -163,7 +163,7 @@ def claude(role: dict, name: str) -> str:
     lines = [
         "---",
         f"name: mb-{name}",
-        f"description: {role['description']}",
+        f"description: {json.dumps(role['description'])}",
         "tools: " + ", ".join(config["tools"]),
         f"model: {config.get('model', 'inherit')}",
     ]
@@ -171,7 +171,7 @@ def claude(role: dict, name: str) -> str:
         if field in config:
             lines.append(f"{field}: {config[field]}")
     if config.get("skills"):
-        lines.append("skills: " + ", ".join(config["skills"]))
+        lines.append("skills: [" + ", ".join(json.dumps(x) for x in config["skills"]) + "]")
     if config.get("mcpServers"):
         lines.append("mcpServers: [" + ", ".join(json.dumps(x) for x in config["mcpServers"]) + "]")
     denied_mcp = role.get("mcp_deny_tools", {}).get("claude", {})
@@ -184,7 +184,7 @@ def claude(role: dict, name: str) -> str:
 def grok(role: dict, name: str) -> str:
     tools = ", ".join(host_config(role, "grok")["tools"])
     return (
-        f"---\nname: mb-{name}\ndescription: {role['description']}\ntools: {tools}\n"
+        f"---\nname: mb-{name}\ndescription: {json.dumps(role['description'])}\ntools: {tools}\n"
         f"---\n\n{role['prompt']}\n\n" + restriction_lines(role)
     )
 

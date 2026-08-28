@@ -199,11 +199,20 @@ class ArtifactTests(unittest.TestCase):
         claude_seo = next(path for path in outputs if path.name == "mb-seo-research.md" and "claude" in path.parts)
         text = outputs[claude_seo]
         self.assertIn('mcpServers: ["gsc-indexing", "dfs-mcp"]', text)
+        self.assertIn('skills: ["magnet-baron-skills:seo-ops"]', text)
         self.assertNotIn("sk-", text)
         self.assertTrue(all(p.name != "mb-seo-research.md" or "codex" not in p.parts for p in outputs))
         toml_path = next(path for path in outputs if path.name == "codex.toml")
         parsed = tomllib.loads(outputs[toml_path])
         self.assertNotIn("seo-research", parsed.get("subagents", {}).get("roles", {}))
+
+    def test_host_descriptions_are_yaml_quoted(self):
+        _, outputs = self.render()
+        for path, text in outputs.items():
+            if path.suffix != ".md":
+                continue
+            description = next(line for line in text.splitlines() if line.startswith("description: "))
+            self.assertRegex(description, r'^description: ".*"$')
 
     def test_check_does_not_write(self):
         with tempfile.TemporaryDirectory() as tmp:
