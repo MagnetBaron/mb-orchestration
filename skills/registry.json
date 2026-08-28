@@ -1,74 +1,114 @@
 {
-  "schema_version": 2,
-  "library_root": "~/.codex/skill-library/mobile",
+  "schema_version": 3,
   "legacy_install_root": "~/.codex/skills",
   "universal_root": "~/.agents/skills",
-  "router": {
-    "name": "mobile-dev-router",
-    "path": "skills/mobile-dev-router"
-  },
-  "sources": {
-    "ios-accessibility": {
-      "repository": "https://github.com/dadederk/iOS-Accessibility-Agent-Skill",
-      "revision": "dcc3a36ce1d0099341d545c1af4eb5a8c989bf66",
-      "skills": [
-        "ios-accessibility"
-      ]
+  "bundles": {
+    "mobile": {
+      "library_root": "~/.codex/skill-library/mobile",
+      "router": {"name": "mobile-dev-router", "path": "skills/mobile-dev-router"},
+      "sources": {
+        "ios-accessibility": {
+          "repository": "https://github.com/dadederk/iOS-Accessibility-Agent-Skill",
+          "revision": "dcc3a36ce1d0099341d545c1af4eb5a8c989bf66",
+          "path_prefix": "",
+          "skills": ["ios-accessibility"]
+        },
+        "dart-flutter": {
+          "repository": "https://github.com/flutter/agent-plugins",
+          "revision": "864cf8797b190ddb81e4875db6dd6bab89641f62",
+          "path_prefix": "skills",
+          "skills": [
+            "dart-add-unit-test", "dart-build-cli-app", "dart-collect-coverage",
+            "dart-fix-runtime-errors", "dart-generate-test-mocks",
+            "dart-migrate-to-checks-package", "dart-resolve-package-conflicts",
+            "dart-run-static-analysis", "dart-setup-ffi-assets", "dart-use-ffigen",
+            "dart-use-pattern-matching", "dart-use-primary-constructors",
+            "dart-write-documentation", "flutter-add-integration-test",
+            "flutter-add-widget-preview", "flutter-add-widget-test",
+            "flutter-apply-architecture-best-practices",
+            "flutter-build-responsive-layout", "flutter-fix-layout-issues",
+            "flutter-implement-json-serialization",
+            "flutter-setup-declarative-routing", "flutter-setup-localization",
+            "flutter-use-http-package"
+          ]
+        }
+      },
+      "routes": {
+        "dispatch": {"activation": "progressive", "skills": ["mobile-dev-router"]},
+        "default": {"activation": "progressive", "skills": ["mobile-dev-router"]},
+        "mobile-implementer": {"activation": "progressive", "skills": ["mobile-dev-router"]},
+        "mobile-accessibility-reviewer": {"activation": "direct", "skills": ["ios-accessibility"]}
+      }
     },
-    "dart-flutter": {
-      "repository": "https://github.com/flutter/agent-plugins",
-      "revision": "864cf8797b190ddb81e4875db6dd6bab89641f62",
-      "skills": [
-        "dart-add-unit-test",
-        "dart-build-cli-app",
-        "dart-collect-coverage",
-        "dart-fix-runtime-errors",
-        "dart-generate-test-mocks",
-        "dart-migrate-to-checks-package",
-        "dart-resolve-package-conflicts",
-        "dart-run-static-analysis",
-        "dart-setup-ffi-assets",
-        "dart-use-ffigen",
-        "dart-use-pattern-matching",
-        "dart-use-primary-constructors",
-        "dart-write-documentation",
-        "flutter-add-integration-test",
-        "flutter-add-widget-preview",
-        "flutter-add-widget-test",
-        "flutter-apply-architecture-best-practices",
-        "flutter-build-responsive-layout",
-        "flutter-fix-layout-issues",
-        "flutter-implement-json-serialization",
-        "flutter-setup-declarative-routing",
-        "flutter-setup-localization",
-        "flutter-use-http-package"
-      ]
-    }
-  },
-  "routes": {
-    "dispatch": {
-      "activation": "progressive",
-      "skills": [
-        "mobile-dev-router"
-      ]
+    "cloudflare": {
+      "library_root": "~/.codex/skill-library/cloudflare",
+      "router": {"name": "cloudflare-dev-router", "path": "skills/cloudflare-dev-router"},
+      "sources": {
+        "cloudflare-official": {
+          "repository": "https://github.com/cloudflare/skills",
+          "revision": "f96bff754e428838818017f75817f0f9428acd48",
+          "path_prefix": "skills",
+          "skills": [
+            "agents-sdk", "cloudflare", "cloudflare-email-service",
+            "cloudflare-one", "cloudflare-one-migrations", "durable-objects",
+            "sandbox-migrate-to-next", "sandbox-next", "sandbox-stable",
+            "turnstile-spin", "workers-best-practices", "wrangler"
+          ]
+        }
+      },
+      "routes": {
+        "dispatch": {"activation": "progressive", "skills": ["cloudflare-dev-router"]},
+        "default": {"activation": "progressive", "skills": ["cloudflare-dev-router"]},
+        "cloudflare-implementer": {"activation": "progressive", "skills": ["cloudflare-dev-router"]}
+      }
     },
-    "default": {
-      "activation": "progressive",
-      "skills": [
-        "mobile-dev-router"
-      ]
+    "knowledge": {
+      "library_root": "~/.codex/skill-library/knowledge",
+      "router": {"name": "knowledge-vault-router", "path": "skills/knowledge-vault-router"},
+      "sources": {
+        "obsidian": {
+          "repository": "https://github.com/kepano/obsidian-skills",
+          "revision": "a1dc48e68138490d522c04cbf5822214c6eb1202",
+          "path_prefix": "skills",
+          "skills": ["json-canvas", "obsidian-bases", "obsidian-cli", "obsidian-markdown"]
+        }
+      },
+      "routes": {
+        "dispatch": {"activation": "progressive", "skills": ["knowledge-vault-router"]},
+        "default": {"activation": "progressive", "skills": ["knowledge-vault-router"]},
+        "knowledge-maintainer": {"activation": "progressive", "skills": ["knowledge-vault-router"]}
+      }
     },
-    "mobile-implementer": {
-      "activation": "progressive",
-      "skills": [
-        "mobile-dev-router"
-      ]
-    },
-    "mobile-accessibility-reviewer": {
-      "activation": "direct",
-      "skills": [
-        "ios-accessibility"
-      ]
+    "engineering": {
+      "library_root": "~/.codex/skill-library/engineering",
+      "router": {"name": "engineering-dev-router", "path": "skills/engineering-dev-router"},
+      "sources": {
+        "cloudflare-web-performance": {
+          "repository": "https://github.com/cloudflare/skills",
+          "revision": "f96bff754e428838818017f75817f0f9428acd48",
+          "path_prefix": "skills",
+          "skills": ["web-perf"]
+        },
+        "vercel-react": {
+          "repository": "https://github.com/vercel-labs/agent-skills",
+          "revision": "063bee94c3f4df8453406c830b0a7df0f2860278",
+          "skills": [
+            {"name": "vercel-composition-patterns", "directory": "composition-patterns", "path": "skills/composition-patterns"},
+            {"name": "vercel-react-best-practices", "directory": "react-best-practices", "path": "skills/react-best-practices"}
+          ]
+        },
+        "anthropic-mcp": {
+          "repository": "https://github.com/anthropics/skills",
+          "revision": "3b3fad96af16a10759d930941b4520ba0c40edae",
+          "path_prefix": "skills",
+          "skills": ["mcp-builder"]
+        }
+      },
+      "routes": {
+        "dispatch": {"activation": "progressive", "skills": ["engineering-dev-router"]},
+        "default": {"activation": "progressive", "skills": ["engineering-dev-router"]},
+        "engineering-implementer": {"activation": "progressive", "skills": ["engineering-dev-router"]}
+      }
     }
   }
 }

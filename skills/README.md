@@ -1,50 +1,60 @@
-# Selective mobile skill tree
+# Selective skill tree
 
-`registry.json` pins the upstream iOS accessibility, Dart, and Flutter leaf
-playbooks. The 24 leaves live in the non-discovery library
-`~/.codex/skill-library/mobile`; they are not linked into a user or repository
-skill discovery root.
+`registry.json` pins 44 leaf playbooks in four non-discovery libraries under
+`~/.codex/skill-library/`. Only four concise routers are linked into
+`~/.agents/skills/`:
 
-Only `mobile-dev-router` is linked at `~/.agents/skills/mobile-dev-router`.
-Codex, Grok, Claude Code, and compatible clients see one concise description.
-When real mobile work matches, the router reads its compact catalog and then
-opens only one primary leaf, plus at most one distinct validation leaf.
+| Router | Private leaves | Use |
+|---|---:|---|
+| `mobile-dev-router` | 24 | Dart, Flutter, native iOS accessibility |
+| `cloudflare-dev-router` | 12 | Cloudflare platform and operations |
+| `knowledge-vault-router` | 4 | Obsidian Markdown, Bases, Canvas, CLI |
+| `engineering-dev-router` | 4 | React specialties, generic MCP design, web performance |
 
-| Route | Startup exposure | Full instructions loaded |
-|---|---|---|
-| Dispatch or ordinary agent, unrelated work | one router description | none |
-| Dispatch, mobile brief | one router description | no leaf bodies |
-| Existing mobile implementation seat | one router description | router, catalog, one or two selected leaves |
-| `mb-mobile-accessibility-reviewer` | direct role configuration | `ios-accessibility` only |
-| `mb-mobile-tooling` | direct role configuration | router plus role-scoped Dart MCP tools |
+Codex, Grok, Claude Code, and compatible clients see only router metadata.
+When a real task matches, the router reads its compact catalog and opens one
+primary leaf plus at most one distinct validation leaf. Dispatch never reads
+leaf bodies. Unrelated briefs use `skills: []`.
 
-The two Codex agent files are role profiles inside existing seats, not new
-seats or permissions. Dart MCP is deliberately role-scoped: enabling it for the
-repository root would make Dispatch and unrelated agents carry its tool schemas.
-Grok can discover and invoke the universal router. A Grok session has Dart MCP
-only when its target project or enabled Grok configuration supplies the server;
-the router uses CLI fallbacks or reports the live-tool validation gap honestly.
+This follows Codex progressive disclosure: startup sees skill names,
+descriptions, and paths, while full `SKILL.md` bodies load only after selection.
+Keeping leaves outside user and repository discovery roots avoids description
+truncation and accidental broad activation as the library grows.
 
-For the one-time conversion from the earlier 24-link layout, run:
+## Installation and reconciliation
+
+Upstream sources and exact revisions are in `registry.json`; evaluation and
+exclusions are in `SOURCE_AUDIT.md`. Install new upstream leaves directly into
+their bundle’s private `library_root`. Never install them into
+`~/.codex/skills` or `~/.agents/skills`.
+
+For the migration of known legacy user-level leaves, then normal verification:
 
 ```bash
 python3 skills/sync.py --migrate-library
+python3 skills/sync.py --check
 ```
 
-For normal reconciliation and verification, run:
+Normal reconciliation:
 
 ```bash
 python3 skills/sync.py
 python3 skills/sync.py --check
 ```
 
-The migration moves the exact pinned leaf directories from `~/.codex/skills`
-into the private library, removes only known leaf symlinks, links the router,
-and generates the two machine-local Codex role files. Collisions fail closed.
+The migration moves only registry-owned leaf directories, removes only known
+leaf symlinks, creates router links, and regenerates the two mobile Codex role
+profiles. Collisions fail closed. Other role profiles are deliberately not
+created: Cloudflare, vault, React, MCP, and performance tasks need no permanent
+tool schema, so briefs load their router dynamically.
 
-Briefs use `skills: []` for unrelated work. Mobile implementation briefs use
-`skills: [mobile-dev-router]` and include
-`~/.agents/skills/mobile-dev-router/SKILL.md` in `must_read`. Native iOS
-accessibility review may instead directly name `ios-accessibility` with its
-private library path. The skill layer never grants tools, deploys, or broadens
-the assigned scope.
+## Brief routing
+
+Every brief carries `skills`. Unrelated work uses `skills: []`. A matching
+brief names one router and includes its exact
+`~/.agents/skills/<router>/SKILL.md` path in `must_read`. The receiver selects
+the private leaf. A dedicated native iOS accessibility review may directly
+name only `ios-accessibility` and its private path.
+
+Skills never create seats, grant credentials or tools, expand filesystem
+scope, deploy, publish, or authorize an external mutation.

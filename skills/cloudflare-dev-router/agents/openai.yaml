@@ -1,0 +1,6 @@
+interface:
+  display_name: "Cloudflare Development Router"
+  short_description: "Select minimal Cloudflare guidance"
+  default_prompt: "Use $cloudflare-dev-router to select the smallest Cloudflare playbook for this task."
+policy:
+  allow_implicit_invocation: true

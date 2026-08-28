@@ -1,0 +1,6 @@
+interface:
+  display_name: "Engineering Specialty Router"
+  short_description: "Select minimal specialty engineering guidance"
+  default_prompt: "Use $engineering-dev-router to select the smallest specialty engineering playbook for this task."
+policy:
+  allow_implicit_invocation: true

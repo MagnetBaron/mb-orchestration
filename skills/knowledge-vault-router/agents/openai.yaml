@@ -1,0 +1,6 @@
+interface:
+  display_name: "Knowledge Vault Router"
+  short_description: "Select minimal Obsidian vault guidance"
+  default_prompt: "Use $knowledge-vault-router to select the smallest Obsidian playbook for this vault task."
+policy:
+  allow_implicit_invocation: true

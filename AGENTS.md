@@ -1,6 +1,6 @@
 # Magnet Baron orchestration
 
-Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Idle mini QA: `qa-idle-handoff.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Selective mobile skills: `skills/README.md`, `skills/registry.json`. Failures: `EDGE-CASES.md`.
+Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `DOCTRINE.md`. Visual QA: `visual-qa.md`, `grokbot-connection.md`. Idle mini QA: `qa-idle-handoff.md`. Analytics: `analytics-clarity.md`. Pools: `sol-usage.md`, `cursor-usage.md`, `fireworks-usage.md`. Metering: `usage-metering.md` (run `usage-status`, don't hardcode resets). MCP: `mcp-routing.md`. Selective skill routers: `skills/README.md`, `skills/registry.json`. Failures: `EDGE-CASES.md`.
 
 **Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`.
 
@@ -36,15 +36,17 @@ Day-to-day contract for Codex, Claude Code, Grok Build, Cursor. Deep doctrine: `
 `objective` · `must_read` · `must_not_touch` · `output_path` · `done_when` · `effort` · `skills`
 Reviews also: `attack_angle`. Missing field → no dispatch. Paths only; no pasted dumps.
 
-`skills` is always present. Use `skills: []` for unrelated work. Dart, Flutter,
-or native iOS accessibility implementation uses `skills: [mobile-dev-router]`
-and adds `~/.agents/skills/mobile-dev-router/SKILL.md` to `must_read`. Dispatch
-sees only that router's concise metadata and never reads the 24 private leaf
-bodies. The receiving existing seat uses the router to open one primary leaf,
-plus at most one distinct validation leaf, from
-`~/.codex/skill-library/mobile/`. A dedicated native iOS accessibility review
-may directly load only `ios-accessibility`. Skills are a role-loading layer
-inside seats, never a new seat or permission.
+`skills` is always present. Use `skills: []` for unrelated work. Matching work
+names exactly one of `mobile-dev-router`, `cloudflare-dev-router`,
+`knowledge-vault-router`, or `engineering-dev-router` and adds its exact
+`~/.agents/skills/<router>/SKILL.md` path to `must_read`. Dispatch sees only
+four concise router descriptions and never reads the 44 private leaf bodies.
+The receiving existing seat opens one primary leaf plus at most one distinct
+validation leaf from the selected private library. A dedicated native iOS
+accessibility review may directly load only `ios-accessibility`. Skills are a
+role-loading layer inside seats, never a new seat, tool, credential, or
+permission. Do not bind these routers permanently to generic Build or Review
+roles; per-brief loading avoids unrelated context.
 
 `effort`: `setup` | `low` | `medium` | `high` | `review`.
 
@@ -79,7 +81,7 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 7. Route reviews by `usage-status` seat state (spent / capped / next reset), never by guesswork.
 8. Supervise at the checkpoints you already run, not continuously: past-budget lane with no park note → `stalled:`; return outside scope or into `must_not_touch` → reject + re-scope; two loops, no novel defect → park + escalate. Run `usage-status` before any reroute — a whole-pipe outage is one outage, diagnose don't cascade. No watcher daemon (`EDGE-CASES.md`).
 9. Storefront smoke after a visitor preview URL exists → private `qa-idle-handoff` **Run workflow** (exclusive idle mini). Not a second implementer on the 16 GB box. See `qa-idle-handoff.md`.
-10. Mobile/Dart/Flutter implementation → put only `mobile-dev-router` plus its exact `~/.agents/skills/mobile-dev-router/SKILL.md` path in the brief. Do not inspect or preload leaf metadata or bodies. The receiver selects one primary leaf and at most one distinct validation leaf. A dedicated native iOS accessibility review may instead directly load only `~/.codex/skill-library/mobile/ios-accessibility/SKILL.md`. Unrelated dispatch, implementation, and review lanes get `skills: []`.
+10. Selective skills → mobile/Dart/Flutter/iOS accessibility: `mobile-dev-router`; explicit Cloudflare platform work: `cloudflare-dev-router`; Obsidian vault/Bases/Canvas/CLI work: `knowledge-vault-router`; React specialty, generic MCP builder, or measured web-performance work: `engineering-dev-router`. Put only the matching router plus its exact `~/.agents/skills/<router>/SKILL.md` path in the brief. Do not inspect or preload leaf metadata or bodies. The receiver selects one primary leaf and at most one distinct validation leaf. Dedicated native iOS accessibility review may directly load only `~/.codex/skill-library/mobile/ios-accessibility/SKILL.md`. Unrelated dispatch, implementation, and review lanes get `skills: []`.
 
 ## Implement (Grok Build)
 
