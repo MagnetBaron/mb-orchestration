@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "installed_root": "~/.codex/skills",
+  "universal_root": "~/.agents/skills",
+  "sources": {
+    "ios-accessibility": {
+      "repository": "https://github.com/dadederk/iOS-Accessibility-Agent-Skill",
+      "revision": "dcc3a36ce1d0099341d545c1af4eb5a8c989bf66",
+      "skills": [
+        "ios-accessibility"
+      ]
+    },
+    "dart-flutter": {
+      "repository": "https://github.com/flutter/agent-plugins",
+      "revision": "864cf8797b190ddb81e4875db6dd6bab89641f62",
+      "skills": [
+        "dart-add-unit-test",
+        "dart-build-cli-app",
+        "dart-collect-coverage",
+        "dart-fix-runtime-errors",
+        "dart-generate-test-mocks",
+        "dart-migrate-to-checks-package",
+        "dart-resolve-package-conflicts",
+        "dart-run-static-analysis",
+        "dart-setup-ffi-assets",
+        "dart-use-ffigen",
+        "dart-use-pattern-matching",
+        "dart-use-primary-constructors",
+        "dart-write-documentation",
+        "flutter-add-integration-test",
+        "flutter-add-widget-preview",
+        "flutter-add-widget-test",
+        "flutter-apply-architecture-best-practices",
+        "flutter-build-responsive-layout",
+        "flutter-fix-layout-issues",
+        "flutter-implement-json-serialization",
+        "flutter-setup-declarative-routing",
+        "flutter-setup-localization",
+        "flutter-use-http-package"
+      ]
+    }
+  },
+  "routes": {
+    "dispatch": {
+      "activation": "disabled",
+      "skills": []
+    },
+    "default": {
+      "activation": "disabled",
+      "skills": []
+    },
+    "mobile-implementer": {
+      "activation": "progressive",
+      "skills": [
+        "ios-accessibility",
+        "dart-add-unit-test",
+        "dart-build-cli-app",
+        "dart-collect-coverage",
+        "dart-fix-runtime-errors",
+        "dart-generate-test-mocks",
+        "dart-migrate-to-checks-package",
+        "dart-resolve-package-conflicts",
+        "dart-run-static-analysis",
+        "dart-setup-ffi-assets",
+        "dart-use-ffigen",
+        "dart-use-pattern-matching",
+        "dart-use-primary-constructors",
+        "dart-write-documentation",
+        "flutter-add-integration-test",
+        "flutter-add-widget-preview",
+        "flutter-add-widget-test",
+        "flutter-apply-architecture-best-practices",
+        "flutter-build-responsive-layout",
+        "flutter-fix-layout-issues",
+        "flutter-implement-json-serialization",
+        "flutter-setup-declarative-routing",
+        "flutter-setup-localization",
+        "flutter-use-http-package"
+      ]
+    },
+    "mobile-accessibility-reviewer": {
+      "activation": "progressive",
+      "skills": [
+        "ios-accessibility"
+      ]
+    }
+  }
+}

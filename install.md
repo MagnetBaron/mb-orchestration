@@ -85,3 +85,19 @@ No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it 
 ## 7. Optional heavy harnesses
 
 Prefer this repo’s thin files until context pressure forces a plugin.
+
+## 8. Selective iOS, Flutter, and Dart skills
+
+Install the pinned skills listed in `skills/registry.json`, then run:
+
+```bash
+python3 skills/sync.py
+python3 skills/sync.py --check
+```
+
+The sync links one installed copy into `~/.agents/skills` and this repository's
+`.agents/skills`, disables the mobile catalog for Codex Dispatch and ordinary
+agents, and enables `ios-accessibility` only for the read-only mobile
+accessibility reviewer. Existing Grok/Claude/Cursor implementation seats load
+only the exact skill paths named in a brief's required `skills:` and
+`must_read` fields. The skill tree does not create a seat or grant tools.

@@ -4,3 +4,8 @@ usage-ledger.json
 # Python cache
 __pycache__/
 *.pyc
+
+# Machine-local skill links and generated Codex route configuration.
+.agents/skills/
+.codex/config.toml
+.codex/agents/mb-mobile-accessibility-reviewer.toml
