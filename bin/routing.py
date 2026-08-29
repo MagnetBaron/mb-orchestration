@@ -13,10 +13,23 @@ Encodes the economics the owner asked for, as legible deterministic rules:
 
 `capabilities_of(provider, connectors)` unions the provider's coarse capabilities with the
 connectors it appears in (`available_on`), so "who has Clarity/Chrome/GSC" is data-derived.
-Known connector IDs/aliases never count as coarse labels — a connector capability is granted
-only through an explicitly active connector whose `available_on` includes the provider.
+Connector-derived labels (IDs, aliases, and classes) never count as coarse labels — a
+connector capability is granted only through an explicitly active connector whose
+`available_on` includes the provider. The coarse vocabulary is enumerated in
+`COARSE_CAPABILITIES` and is not connector-derived.
 """
 from __future__ import annotations
+
+
+# Enumerated non-connector capability vocabulary. Connector IDs, aliases, and classes
+# never join this set. Must match providers.json `capability_catalog` keys (except `_note`).
+COARSE_CAPABILITIES = frozenset({
+    "code", "review", "architecture", "dispatch", "mcp_bulk", "mcp_judgment",
+    "browser", "visual_qa", "analytics", "ide",
+})
+
+# Current Google-MCP volume seat. `--needs-mcp` requires this provider in available_on.
+MCP_VOLUME_PROVIDER = "codex-terra"
 
 
 def expiry_urgency(row):
@@ -79,7 +92,7 @@ def resets_before(row, task_seconds):
 
 
 def connector_ids(connectors):
-    """Known connector IDs and aliases. These never count as coarse capability labels."""
+    """Known connector IDs and aliases (not classes)."""
     names = set()
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
         names.add(cname)
@@ -87,6 +100,26 @@ def connector_ids(connectors):
         if alias:
             names.add(alias)
     return names
+
+
+def connector_derived_labels(connectors):
+    """IDs, aliases, and classes. These never count as coarse capability labels.
+
+    Classes that collide with the enumerated coarse vocabulary (`code`, `review`, …)
+    stay coarse — they are not connector-derived.
+    """
+    labels = set()
+    for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
+        labels.add(cname)
+        if not isinstance(meta, dict):
+            continue
+        alias = meta.get("alias")
+        if alias:
+            labels.add(alias)
+        cls = meta.get("class")
+        if cls:
+            labels.add(cls)
+    return labels - COARSE_CAPABILITIES
 
 
 def lookup_connector(name, connectors):
@@ -102,21 +135,70 @@ def lookup_connector(name, connectors):
     return None, None
 
 
+def connectors_for_label(name, connectors):
+    """Matching connectors for an ID, explicit alias, or non-coarse class.
+
+    ID/alias resolves to exactly one connector. A class label matches every connector
+    that declares that class. Coarse vocabulary names never match by class.
+    """
+    cid, meta = lookup_connector(name, connectors)
+    if cid is not None:
+        return [(cid, meta)]
+    if not name or name in COARSE_CAPABILITIES:
+        return []
+    out = []
+    for cname, meta in ((connectors or {}).get("mcp_connectors") or {}).items():
+        if isinstance(meta, dict) and meta.get("class") == name:
+            out.append((cname, meta))
+    return out
+
+
+def mcp_volume_matches(name, connectors, provider_id=None):
+    """Active connectors matching `name` that list the MCP volume provider in available_on.
+
+    Returns (matches, reason). Empty matches = fail closed (unknown/missing/primed/
+    inactive/wrong-seat). `connector_is_active` is the lifecycle predicate.
+    """
+    provider_id = provider_id or MCP_VOLUME_PROVIDER
+    if not name:
+        return [], "missing connector requirement"
+    matches = connectors_for_label(name, connectors)
+    if not matches:
+        return [], "unknown connector (not an id, alias, or class)"
+    live = []
+    reasons = []
+    for cid, meta in matches:
+        if not connector_is_active(meta):
+            reasons.append(f"{cid} status={meta.get('status')!r} is inert")
+            continue
+        if provider_id not in (meta.get("available_on") or []):
+            reasons.append(f"{cid} does not list {provider_id} in available_on")
+            continue
+        live.append((cid, meta))
+    if live:
+        return live, "ok"
+    return [], "; ".join(reasons) or "no active matching connector on the MCP volume seat"
+
+
 def capabilities_of(provider_id, provider, connectors):
     """Union of coarse capabilities (providers.json) and connector access (connectors.json).
 
-    Connector IDs/aliases are recognized first and stripped from the raw capability list.
-    A connector name is granted only when the connector is active, its lifecycle predicate
-    passes, and `available_on` includes this provider.
+    Connector-derived labels (IDs, aliases, classes) are stripped from the raw capability
+    list. A derived label is granted only when at least one matching connector is active,
+    its lifecycle predicate passes, and `available_on` includes this provider.
     """
-    known = connector_ids(connectors)
-    caps = {c for c in (provider.get("capabilities") or []) if c not in known}
+    derived = connector_derived_labels(connectors)
+    caps = {c for c in (provider.get("capabilities") or []) if c not in derived}
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
         if not connector_is_active(meta):
             continue  # primed/ready/missing/unknown are inert scaffolding — never routed/granted
-        if provider_id in (meta.get("available_on") or []):
-            caps.add(cname)
-            cls = meta.get("class", "connector")
-            if cls not in known:
-                caps.add(cls)
+        if provider_id not in (meta.get("available_on") or []):
+            continue
+        caps.add(cname)
+        alias = (meta or {}).get("alias")
+        if alias:
+            caps.add(alias)
+        cls = (meta or {}).get("class")
+        if cls and cls not in COARSE_CAPABILITIES:
+            caps.add(cls)
     return caps

@@ -196,9 +196,10 @@ def check_connector_lifecycle(conns, providers):
     """Validate the MCP strap-in lifecycle (status enum + optional bundled server block) and
     PROVE inertness: a connector that is not 'active' (i.e. primed/ready) must never be treated
     as live — the router must not grant it to any provider, including seats outside available_on
-    and providers that copied the connector name into coarse capabilities. Rejects capability/
-    connector-name collisions. This is SHAPE + pure-logic only; it NEVER opens a socket, spawns
-    a subprocess, or hits the network (the whole point of priming)."""
+    and providers that copied the connector name or class into coarse capabilities. Rejects
+    capability/connector-derived-label (id/alias/class) collisions. This is SHAPE + pure-logic
+    only; it NEVER opens a socket, spawns a subprocess, or hits the network (the whole point
+    of priming)."""
     if not conns:
         return
     prov = (providers or {}).get("providers", {})
@@ -207,12 +208,19 @@ def check_connector_lifecycle(conns, providers):
     except Exception as exc:  # pragma: no cover
         routing = None
         err(f"connector lifecycle: cannot import routing for the inertness proof: {exc}")
-    known = routing.connector_ids(conns) if routing is not None else set()
+    derived = routing.connector_derived_labels(conns) if routing is not None else set()
+    catalog = {k for k in (providers or {}).get("capability_catalog", {}) if k != "_note"}
+    if routing is not None and catalog and catalog != set(routing.COARSE_CAPABILITIES):
+        err(
+            f"capability_catalog {sorted(catalog)} != routing.COARSE_CAPABILITIES "
+            f"{sorted(routing.COARSE_CAPABILITIES)} — coarse vocabulary must stay enumerated "
+            "and not connector-derived"
+        )
     for pid, p in prov.items():
         for cap in (p.get("capabilities") or []) if isinstance(p, dict) else []:
-            if cap in known:
+            if cap in derived:
                 err(
-                    f"provider {pid}: capability {cap!r} collides with a connector id/alias — "
+                    f"provider {pid}: capability {cap!r} collides with a connector id/alias/class — "
                     "connector access is granted only via connectors.json available_on + status=active, "
                     "never as a coarse provider capability"
                 )
@@ -235,31 +243,54 @@ def check_connector_lifecycle(conns, providers):
         # not only those listed in available_on (coarse-label leaks must not hide).
         if status != "active" and routing is not None:
             alias = m.get("alias")
+            cls = m.get("class")
+            mcp = conns.get("mcp_connectors") or {}
             for pid in prov:
                 caps = routing.capabilities_of(pid, prov.get(pid, {}), conns)
                 if name in caps or (alias and alias in caps):
                     err(f"connector {name}: status={status} but the router still grants it to seat "
                         f"{pid!r} — a non-active connector MUST be inert (never routed). "
                         "See bin/routing.connector_is_active.")
+                if cls and cls in derived and cls in caps:
+                    others_active = any(
+                        n2 != name
+                        and isinstance(m2, dict)
+                        and m2.get("class") == cls
+                        and routing.connector_is_active(m2)
+                        and pid in (m2.get("available_on") or [])
+                        for n2, m2 in mcp.items()
+                    )
+                    if not others_active:
+                        err(
+                            f"connector {name}: status={status} but class {cls!r} is still granted "
+                            f"to seat {pid!r} — a non-active connector class MUST be inert unless "
+                            "another active connector of that class is assigned to the seat."
+                        )
 
 
 def check_skills(skills, providers, conns):
     """skills.json registry hygiene (mirrors check_connectors for MCP): every skill's
-    required_capability resolves to a known coarse capability (providers.json `capabilities` /
-    `capability_catalog`) or a known connector (connectors.json `mcp_connectors`); hosts are valid;
+    required_capability resolves to a known coarse capability (providers.json `capability_catalog`
+    / `COARSE_CAPABILITIES`) or a known connector-derived label (id/alias/class); hosts are valid;
     and each skill's in-repo SKILL.md resolves through the repo marketplace (host-discoverable).
     The FAIL-CLOSED binding enforcement itself (unregistered skill, write-skill on a read_only role,
     seat missing a required_capability) runs in generate-roles.load via check_roles_and_windows_run."""
     if not skills:
         return
-    provs = (providers or {}).get("providers", {})
-    coarse = {k for k in (providers or {}).get("capability_catalog", {}) if k != "_note"}
-    for p in provs.values():
-        coarse.update(p.get("capabilities", []) or [])
-    connector_names = set((conns or {}).get("mcp_connectors", {}))
-    for m in (conns or {}).get("mcp_connectors", {}).values():
-        if isinstance(m, dict) and m.get("alias"):
-            connector_names.add(m["alias"])
+    try:
+        routing = load_module("routing_skills", HERE / "routing.py")
+    except Exception:
+        routing = None
+    coarse = set(routing.COARSE_CAPABILITIES) if routing is not None else {
+        k for k in (providers or {}).get("capability_catalog", {}) if k != "_note"
+    }
+    catalog = {k for k in (providers or {}).get("capability_catalog", {}) if k != "_note"}
+    if catalog:
+        coarse |= catalog
+    connector_names = routing.connector_derived_labels(conns) if routing is not None else set()
+    connector_names |= routing.connector_ids(conns) if routing is not None else set(
+        (conns or {}).get("mcp_connectors", {})
+    )
     coarse -= connector_names
     try:
         gen = load_module("gen_roles_skills", HERE / "generate-roles.py")

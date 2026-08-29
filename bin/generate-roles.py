@@ -98,23 +98,18 @@ def skill_md_path(skill_id: str) -> Path:
 
 
 def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) -> bool:
-    """A seat satisfies `cap` only through the right source.
+    """A seat satisfies `cap` only through `routing.capabilities_of`.
 
-    Connector IDs/aliases are recognized first: a connector capability is granted only by an
-    explicitly active connector whose lifecycle predicate passes and whose `available_on`
-    includes the seat. Coarse provider capability labels never grant a known connector name
+    Connector-derived labels (IDs, aliases, classes) are granted only by an explicitly
+    active matching connector whose lifecycle predicate passes and whose `available_on`
+    includes the seat. Coarse provider capability labels never grant a derived label
     (primed/ready/missing/unknown stay inert even if the name was copied into capabilities).
     None = no capability gate.
     """
     if cap is None:
         return True
-    cid, meta = routing.lookup_connector(cap, connectors)
-    if cid is not None:
-        return routing.connector_is_active(meta) and seat in ((meta or {}).get("available_on") or [])
     prov = (providers_data.get("providers") or {}).get(seat, {})
-    if cap in routing.connector_ids(connectors):
-        return False
-    return cap in (prov.get("capabilities") or [])
+    return cap in routing.capabilities_of(seat, prov, connectors)
 
 
 def provider_levels(providers_data: dict) -> dict[str, str]:

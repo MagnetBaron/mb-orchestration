@@ -265,9 +265,20 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     workers.sort(key=lambda ps: routing.route_key(ps[1]))
 
     if needs_mcp:
-        # MCP bulk to Terra first (capability), then implement against the snapshot
-        terra = best_seat("codex-terra") if live_ok("codex-terra") else None
-        steps.append({"seat": "codex-terra", "why": f"Google-MCP bulk ({needs_mcp}) → output_path snapshot",
+        # MCP bulk to Terra first — only if a real matching connector is active on Terra.
+        # Unknown/missing/primed/inactive/wrong-seat PARK; do not snapshot then continue.
+        matches, why = routing.mcp_volume_matches(needs_mcp, connectors, routing.MCP_VOLUME_PROVIDER)
+        if not matches:
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} is not an active connector "
+                        f"(id/alias/class) on {routing.MCP_VOLUME_PROVIDER} ({why})"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        terra = best_seat(routing.MCP_VOLUME_PROVIDER) if live_ok(routing.MCP_VOLUME_PROVIDER) else None
+        steps.append({"seat": routing.MCP_VOLUME_PROVIDER,
+                      "why": f"Google-MCP bulk ({needs_mcp}) → output_path snapshot",
                       "available": bool(terra), "tier": terra["tier"] if terra else "spent"})
 
     if workers:
@@ -329,7 +340,8 @@ def main(argv=None):
     ap.add_argument("--scale", default="routine", choices=["routine", "elevated"])
     ap.add_argument("--risk", default="")
     ap.add_argument("--implement", action="store_true")
-    ap.add_argument("--needs-mcp", default="", help="google connector this brief needs (routes bulk to Terra)")
+    ap.add_argument("--needs-mcp", default="",
+                    help="connector id, alias, or class this brief needs (routes bulk to Terra; unknown/inert PARK)")
     ap.add_argument("--needs-connector", default="", help="capability/connector the implement seat must have (e.g. clarity-magnetbaron, browser)")
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--task-seconds", type=int, default=0, help="est. task length; flags seats that reset before it finishes (no mid-turn swaps)")

@@ -388,6 +388,97 @@ class ConnectorLifecycleTests(unittest.TestCase):
         self.assertTrue(gen.seat_has_capability("grok-build", "github", provs, conns))
         self.assertFalse(gen.seat_has_capability("codex-luna", "github", provs, conns))
 
+    def test_coarse_vocabulary_is_not_connector_derived(self):
+        catalog = {k for k in live_providers()["capability_catalog"] if k != "_note"}
+        self.assertEqual(catalog, set(routing.COARSE_CAPABILITIES))
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        derived = routing.connector_derived_labels(conns)
+        self.assertTrue(derived.isdisjoint(routing.COARSE_CAPABILITIES))
+        self.assertIn("google-mcp", derived)
+        self.assertIn("github", derived)
+        self.assertNotIn("code", derived)
+
+    def test_coarse_code_survives_primed_github(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        conns["mcp_connectors"]["github"]["status"] = "primed"
+        grok = live_providers()["providers"]["grok-build"]
+        caps = routing.capabilities_of("grok-build", grok, conns)
+        self.assertIn("code", caps)
+        self.assertNotIn("github", caps)
+
+    def _luna_google_mcp_class_primed(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        for meta in conns["mcp_connectors"].values():
+            if isinstance(meta, dict) and meta.get("class") == "google-mcp":
+                meta["status"] = "primed"
+        luna = provs["providers"]["codex-luna"]
+        luna["capabilities"] = list(luna["capabilities"]) + ["google-mcp"]
+        return provs, conns
+
+    def test_primed_google_mcp_class_does_not_leak_to_luna(self):
+        """Exact regression: google-mcp on codex-luna.capabilities + every google-mcp primed."""
+        provs, conns = self._luna_google_mcp_class_primed()
+        luna = provs["providers"]["codex-luna"]
+        caps = routing.capabilities_of("codex-luna", luna, conns)
+        self.assertNotIn("google-mcp", caps)
+        self.assertFalse(gen.seat_has_capability("codex-luna", "google-mcp", provs, conns))
+        terra = provs["providers"]["codex-terra"]
+        self.assertNotIn(
+            "google-mcp",
+            routing.capabilities_of("codex-terra", terra, conns),
+        )
+
+    def test_primed_google_mcp_class_skill_gate_fails(self):
+        """luna.capabilities google-mcp must not satisfy a skill gate when every google-mcp is primed."""
+        provs, conns = self._luna_google_mcp_class_primed()
+        self.assertFalse(gen.seat_has_capability("codex-luna", "google-mcp", provs, conns))
+        skills = json.loads((CONFIG / "skills.json").read_text())
+        skills["skills"]["magnet-baron-skills:shopify-theme"]["required_capability"] = "google-mcp"
+        roles = live_roles()
+        roles["roles"]["shopify-theme-build"]["seat"] = "codex-luna"
+        roles["roles"]["shopify-theme-build"]["level"] = "luna"
+        # Priming every google-mcp connector also primes gsc-indexing; drop it so the
+        # skill-gate error (luna lacks google-mcp) is the one we observe.
+        roles["roles"]["seo-research"]["claude"]["mcpServers"] = []
+        roles["roles"]["seo-research"]["mcp_deny_tools"] = {}
+        orig = gen.mborch.load_config
+
+        def fake(name, required=True):
+            if name == "connectors.json":
+                return conns
+            if name == "skills.json":
+                return skills
+            return orig(name, required=required)
+
+        gen.mborch.load_config = fake
+        try:
+            with self.assertRaisesRegex(ValueError, r"lacks capability 'google-mcp'"):
+                dump_and_load(roles=roles, providers=provs)
+        finally:
+            gen.mborch.load_config = orig
+
+    def test_doctor_reports_google_mcp_class_capability_collision(self):
+        provs, conns = self._luna_google_mcp_class_primed()
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        blob = "\n".join(doc.ERRORS)
+        self.assertTrue(
+            any("codex-luna" in e and "google-mcp" in e and "collides" in e for e in doc.ERRORS),
+            blob,
+        )
+
+    def test_active_google_mcp_class_grants_via_connector_not_coarse_label(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        terra = provs["providers"]["codex-terra"]
+        luna = provs["providers"]["codex-luna"]
+        self.assertIn("google-mcp", routing.capabilities_of("codex-terra", terra, conns))
+        self.assertNotIn("google-mcp", routing.capabilities_of("codex-luna", luna, conns))
+        self.assertTrue(gen.seat_has_capability("codex-terra", "google-mcp", provs, conns))
+        self.assertFalse(gen.seat_has_capability("codex-luna", "google-mcp", provs, conns))
+        self.assertIn("dfs-mcp", routing.capabilities_of("codex-terra", terra, conns))
+
 
 if __name__ == "__main__":
     unittest.main()

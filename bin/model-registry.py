@@ -135,19 +135,78 @@ def _dated_evidence(records) -> tuple[list[tuple[date, dict]], list[str]]:
     return dated, errors
 
 
+def _official_id_families(models: dict) -> dict[str, set]:
+    """official_id → set of families that claim it. Used by route-local identity checks."""
+    out: dict[str, set] = {}
+    for model in (models or {}).values():
+        if not isinstance(model, dict):
+            continue
+        fam = model.get("family")
+        ids = model.get("official_ids")
+        if not isinstance(ids, list):
+            continue
+        for oid in ids:
+            if isinstance(oid, str) and oid:
+                out.setdefault(oid, set()).add(fam)
+    return out
+
+
+def _route_local_errors(registry: dict, rid: str, route: dict) -> list[str]:
+    """Route-local identity/family/invocation/shape invariants.
+
+    Shared by `validate` and `route_is_live` so public `resolve()` cannot return a
+    route that CLI validation would reject for these reasons.
+    """
+    errors: list[str] = []
+    models = registry.get("models") or {}
+    routes = registry.get("routes") or {}
+    mid = route.get("model")
+    if mid not in models:
+        errors.append(f"route {rid}: model {mid!r} is not in models")
+        model: dict = {}
+    else:
+        model = models[mid] if isinstance(models.get(mid), dict) else {}
+    if not route.get("host") or not route.get("harness") or not route.get("invocation_id"):
+        errors.append(f"route {rid}: host, harness, and invocation_id are required")
+    if not isinstance(route.get("capabilities"), list):
+        errors.append(f"route {rid}: capabilities must be a list")
+    if not isinstance(route.get("tools"), list) and route.get("tools") is not None:
+        errors.append(f"route {rid}: tools must be a list")
+    if AUTHORITY_KEYS.intersection(route):
+        errors.append(f"route {rid}: must not grant {sorted(AUTHORITY_KEYS.intersection(route))}")
+    inv = route.get("invocation_id")
+    mf = model.get("family")
+    official_id_families = _official_id_families(models)
+    if inv in official_id_families and mf not in official_id_families[inv]:
+        errors.append(
+            f"route {rid}: invocation_id {inv!r} is an official id of family "
+            f"{sorted(official_id_families[inv])}, not {mf!r}"
+        )
+    alias_of = route.get("invocation_alias_of")
+    if alias_of is not None and alias_of not in routes:
+        errors.append(f"route {rid}: invocation_alias_of {alias_of!r} is not a cataloged route")
+    return errors
+
+
 def route_is_live(registry: dict, route_id, as_of: date | None = None) -> bool:
     """Shared live-route predicate: bound catalog route is live_verified, current, and valid.
 
     Unknown, missing, catalog-only, unwired, auth-blocked, disabled, incubation, stale,
-    future, or unattested state fails closed. Used by review, implement, MCP, and last-resort
-    selection — there is no Review E (or any provider) exception.
+    future, unattested, or route-local identity/family/invocation contradiction fails closed.
+    Used by review, implement, MCP, last-resort, and public `resolve()` — there is no
+    Review E (or any provider) exception.
     """
     if not isinstance(registry, dict) or not route_id:
         return False
     route = (registry.get("routes") or {}).get(route_id)
     if not isinstance(route, dict):
         return False
-    return not _live_route_errors(registry, str(route_id), route, as_of or date.today())
+    rid = str(route_id)
+    if route.get("invocation_alias_of"):
+        return False
+    if _route_local_errors(registry, rid, route):
+        return False
+    return not _live_route_errors(registry, rid, route, as_of or date.today())
 
 
 def provider_route_is_live(registry: dict, provider: dict | None, as_of: date | None = None) -> bool:
@@ -315,7 +374,6 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         if not isinstance(group, str) or not group:
             errors.append(f"family {fid}: independence_group is required")
 
-    official_id_families: dict[str, set[str]] = {}
     for mid, model in models.items():
         if not isinstance(model, dict):
             errors.append(f"model {mid}: must be an object")
@@ -327,9 +385,6 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         ids = model.get("official_ids")
         if not isinstance(ids, list) or not ids or any(not isinstance(x, str) or not x for x in ids):
             errors.append(f"model {mid}: official_ids must be a non-empty list of strings")
-        else:
-            for oid in ids:
-                official_id_families.setdefault(oid, set()).add(model.get("family"))
         if AUTHORITY_KEYS.intersection(model):
             errors.append(f"model {mid}: rank/catalog must not grant {sorted(AUTHORITY_KEYS.intersection(model))}")
 
@@ -338,12 +393,6 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         if not isinstance(route, dict):
             errors.append(f"route {rid}: must be an object")
             continue
-        mid = route.get("model")
-        if mid not in models:
-            errors.append(f"route {rid}: model {mid!r} is not in models")
-            model = {}
-        else:
-            model = models[mid]
         state = route.get("route_state")
         if state not in ROUTE_STATES:
             errors.append(f"route {rid}: route_state {state!r} not in {ROUTE_STATES}")
@@ -362,24 +411,7 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
             errors.append(f"route {rid}: evidence_strength {strength!r} not in {EVIDENCE_STRENGTHS}")
         if route.get("data_boundary") not in DATA_BOUNDARIES:
             errors.append(f"route {rid}: data_boundary {route.get('data_boundary')!r} not in {DATA_BOUNDARIES}")
-        if not route.get("host") or not route.get("harness") or not route.get("invocation_id"):
-            errors.append(f"route {rid}: host, harness, and invocation_id are required")
-        if not isinstance(route.get("capabilities"), list):
-            errors.append(f"route {rid}: capabilities must be a list")
-        if not isinstance(route.get("tools"), list) and route.get("tools") is not None:
-            errors.append(f"route {rid}: tools must be a list")
-        if AUTHORITY_KEYS.intersection(route):
-            errors.append(f"route {rid}: must not grant {sorted(AUTHORITY_KEYS.intersection(route))}")
-        inv = route.get("invocation_id")
-        mf = model.get("family")
-        if inv in official_id_families and mf not in official_id_families[inv]:
-            errors.append(
-                f"route {rid}: invocation_id {inv!r} is an official id of family "
-                f"{sorted(official_id_families[inv])}, not {mf!r}"
-            )
-        alias_of = route.get("invocation_alias_of")
-        if alias_of is not None and alias_of not in routes:
-            errors.append(f"route {rid}: invocation_alias_of {alias_of!r} is not a cataloged route")
+        errors.extend(_route_local_errors(registry, rid, route))
         if state in ACTIVE_RESOLVE_STATES:
             errors.extend(_live_route_errors(registry, rid, route, as_of))
         else:
@@ -625,8 +657,9 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
     """Fail-closed resolver. Rank does not grant authority.
 
     Every candidate is filtered with `route_is_live` before matching/ranking. Missing,
-    stale, future, mismatched, or unattested evidence never returns the route — this
-    function does not depend on CLI `assert_valid`. `as_of` defaults to the current date.
+    stale, future, mismatched, unattested evidence, or a route-local identity/family/
+    invocation contradiction never returns the route — this function does not depend
+    on CLI `assert_valid`. `as_of` defaults to the current date.
 
     family_diversity=2 requires distinct configured independence groups AND distinct
     physical (host, harness, invocation_id) identities — never family strings alone.
@@ -781,7 +814,7 @@ def render_matrix(registry: dict) -> str:
         "Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.",
         "",
         "A catalog entry is not a usable route. Only `live_verified` routes resolve.",
-        "The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence never returns).",
+        "The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence or a route-local identity/family/invocation contradiction never returns).",
         "Last-resort coding requires a concrete live provider with `implement`/`ide` and `code` on both the provider and its bound live route; sharing a plan is not enough.",
         "Quality rank is not selection priority. Rank never grants tools or data.",
         "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",

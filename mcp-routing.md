@@ -34,13 +34,17 @@ then is it routable.
 
 - The router refuses to grant a non-active connector to any seat — `bin/routing.py`'s
   `connector_is_active` is the single lifecycle predicate (routing, role/MCP generation, doctor,
-  and skill gates). Connector IDs/aliases are recognized before coarse provider capability labels;
-  a primed name copied into `providers.json` `capabilities` does not grant access. Missing/unknown/primed/ready never route and `available_on` is only a
+  and skill gates). Connector-derived labels (IDs, aliases, **and classes** such as `google-mcp`)
+  are recognized before coarse provider capability labels; a primed name or class copied into
+  `providers.json` `capabilities` does not grant access. Missing/unknown/primed/ready never route and `available_on` is only a
   *declaration* of the seat it would ride on once active. A primed Shopify connector does not
   satisfy a write-capable Shopify skill gate. Existing `status: active` connectors still route.
+  `--needs-mcp` resolves through id, alias, or class and PARKS unless a matching connector is
+  `status=active` and lists the MCP volume seat (Terra) in `available_on`.
 - `bin/doctor.py` (`check_connector_lifecycle`) validates the SHAPE only — status enum, a well-formed
   server block — and *proves* the inertness (a non-active connector is granted to no provider, not
-  only `available_on` seats). It rejects provider capability/connector-name collisions. It reads
+  only `available_on` seats). It rejects provider capability collisions with connector IDs, aliases,
+  and classes. It reads
   strings; it never runs `command`, opens `url`, spawns a process, or hits the network.
 - `bin/smoketest.py` asserts a primed connector validates and is inert while active connectors still route.
 - **No credentials in-repo.** A `server` block holds NO secrets: `env_keys` names the env vars the

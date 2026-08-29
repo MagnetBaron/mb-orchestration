@@ -620,6 +620,75 @@ class LastResortCodingTests(unittest.TestCase):
         self.assertFalse(any(s.get("seat") == "codex-luna" for s in steps))
 
 
+class NeedsMcpTests(unittest.TestCase):
+    """--needs-mcp resolves ID/alias/class through the connector lifecycle; else PARK."""
+
+    def _rows(self):
+        return [
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "available",
+             "billing": "included", "intake": False, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "xai"},
+            {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": "available",
+             "billing": "included", "intake": False, "window_kinds": ["monthly"],
+             "runway_seconds": 864000 * 20, "family": "cursor-pool"},
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+             "billing": "included", "intake": True, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "openai"},
+        ]
+
+    def _impl(self, needs_mcp, conns=None):
+        return rr.pick_implement(
+            providers(), conns or connectors(), self._rows(),
+            "repo-code", "", needs_mcp, False, 0, live(),
+        )
+
+    def _assert_parked_no_continue(self, steps):
+        self.assertTrue(
+            any(not s.get("available") and "PARK" in (s.get("why") or "") for s in steps),
+            steps,
+        )
+        self.assertFalse(
+            any(s.get("seat") == "codex-terra" and s.get("available") for s in steps),
+            steps,
+        )
+        self.assertFalse(any(s.get("seat") == "grok-build" for s in steps), steps)
+
+    def _assert_terra_then_implement(self, steps):
+        self.assertTrue(any(s.get("seat") == "codex-terra" for s in steps), steps)
+        self.assertTrue(
+            any(s.get("seat") == "grok-build" and s.get("available") for s in steps),
+            steps,
+        )
+
+    def test_active_id(self):
+        self._assert_terra_then_implement(self._impl("google-search-console"))
+
+    def test_active_alias(self):
+        self._assert_terra_then_implement(self._impl("dfs-mcp"))
+
+    def test_active_class(self):
+        self._assert_terra_then_implement(self._impl("google-mcp"))
+
+    def test_primed(self):
+        self._assert_parked_no_continue(self._impl("mb-bundled-example"))
+
+    def test_unknown(self):
+        self._assert_parked_no_continue(self._impl("no-such-connector"))
+
+    def test_wrong_seat(self):
+        self._assert_parked_no_continue(self._impl("gsc-indexing"))
+
+    def test_primed_active_id_parks(self):
+        conns = connectors()
+        conns["mcp_connectors"]["google-search-console"]["status"] = "primed"
+        self._assert_parked_no_continue(self._impl("google-search-console", conns=conns))
+
+    def test_missing_status_parks(self):
+        conns = connectors()
+        del conns["mcp_connectors"]["google-search-console"]["status"]
+        self._assert_parked_no_continue(self._impl("google-search-console", conns=conns))
+
+
 class DuplicateInvocationTests(unittest.TestCase):
     def test_cloned_teamclaude_opus5_under_openai_fails_closed(self):
         data = copy.deepcopy(live())
@@ -634,6 +703,7 @@ class DuplicateInvocationTests(unittest.TestCase):
             blob,
         )
         self.assertIn("teamclaude/claude-cli/claude-opus-5", blob)
+        self.assertFalse(mr.route_is_live(data, "spoof-openai-opus", as_of=date(2026, 8, 28)))
         data["rankings"]["code_review"]["selection"] = [
             {"priority": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "real"},
             {"priority": 2, "route": "spoof-openai-opus", "confidence": "high", "rationale": "spoof"},
@@ -644,9 +714,40 @@ class DuplicateInvocationTests(unittest.TestCase):
         )
         self.assertFalse(decision["ok"])
         self.assertIn("fail-closed", decision["reason"])
-        self.assertIn("spoof-openai-opus", decision["rejected_same_family"])
+        self.assertNotIn("spoof-openai-opus", [r["route"] for r in decision["routes"]])
         families = [r["family"] for r in decision["routes"]]
         self.assertNotEqual(set(families), {"anthropic", "openai"})
+
+
+class RouteLocalIdentityTests(unittest.TestCase):
+    """Public resolve() and route_is_live share the route-local identity predicate."""
+
+    def test_sol_invocation_spoofing_opus_is_not_live_or_resolvable(self):
+        """Exact regression: Sol invocation_id = claude-opus-5 fails validate, live, and resolve."""
+        data = copy.deepcopy(live())
+        data["routes"]["gpt-5.6-sol-codex"]["invocation_id"] = "claude-opus-5"
+        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        self.assertTrue(
+            any("gpt-5.6-sol-codex" in e and "official id of family" in e for e in errors),
+            errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "gpt-5.6-sol-codex", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", n=3, as_of=date(2026, 8, 28))
+        ids = [r["route"] for r in decision["routes"]]
+        self.assertNotIn("gpt-5.6-sol-codex", ids)
+        direct = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("gpt-5.6-sol-codex", [r["route"] for r in direct["routes"]])
+        if direct["ok"]:
+            self.assertEqual(direct["routes"][0]["route"], "opus-5-teamclaude")
+
+    def test_authority_keys_on_route_are_not_live(self):
+        data = copy.deepcopy(live())
+        data["routes"]["gpt-5.6-sol-codex"]["write_access"] = True
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("must not grant" in e and "gpt-5.6-sol-codex" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(data, "gpt-5.6-sol-codex", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("gpt-5.6-sol-codex", [r["route"] for r in decision["routes"]])
 
 
 class LiveEvidenceTests(unittest.TestCase):
