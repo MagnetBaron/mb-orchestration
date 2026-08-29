@@ -32,18 +32,18 @@
     },
     "opus-5": {
       "bin": "claude", "args_template": ["-p", "review the git diff on {branch}; verdict ship|fix-list|blocked"],
-      "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
-      "note": "Anthropic gate (gate #1, Opus 5). MUST run on ANOTHER live Claude seat via teamclaude — NEVER the dispatcher account."
+      "reads": "git-diff", "worktree": false, "never_metered_host": true, "separate_invocation_when_dispatcher": true,
+      "note": "Anthropic gate (Opus 5). If Opus 5 dispatched this run, review uses a separate invocation and is artifact-only; another reviewer must independently validate dispatch intent/risk."
     },
     "opus-4.8": {
       "bin": "claude", "args_template": ["-p", "review the git diff on {branch}; verdict ship|fix-list|blocked"],
-      "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
-      "note": "Opus 4.8 intended time-bounded compatibility fallback. Same family as Opus 5; not in review_order. live_verified from a 2026-08-28 direct smoke; still excluded from the gating order. MUST run on another Claude seat via teamclaude."
+      "reads": "git-diff", "worktree": false, "never_metered_host": true, "separate_invocation_when_dispatcher": true,
+      "note": "Opus 4.8 is a time-bounded Anthropic review fallback. If it dispatched this run, review uses a separate invocation and is artifact-only; another reviewer validates dispatch intent/risk."
     },
     "fable-5": {
       "bin": "claude", "args_template": ["-p", "architecture pass on the git diff on {branch}"],
-      "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
-      "note": "Architecture / long-horizon only — OUT of the gating order. Same family as Opus. Never a gating verdict; never the daily coder. Runs on another Claude seat, never the dispatcher account."
+      "reads": "git-diff", "worktree": false, "never_metered_host": true, "separate_invocation_when_dispatcher": true,
+      "note": "Architecture / long-horizon only — OUT of the gating order. Same family as Opus. Never a gating verdict; never the daily coder."
     },
     "cursor-grok": {
       "bin": "cursor-agent", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],

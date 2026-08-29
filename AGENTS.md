@@ -12,7 +12,8 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 - `config/model-registry.json` — model identity, routes, lifecycle, route state, per-role rankings
 - `config/subscriptions.json` — the plans you pay for (the one file a new user edits)
 - `config/connectors.json` — live MCP/analytics/store/Slack bindings (no stale IDs in prose)
-- `config/entrypoints.json` — entry surfaces (user choice) + the one dispatcher
+- `config/entrypoints.json` — entry surfaces, user profiles, and per-run dispatcher fallback order
+- `config/handoff-policy.json` — preauthorized ordinary artifacts + fail-closed restricted classes
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
 - `bin/usage-status.py` · `bin/resolve-route.py` · `bin/model-registry.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/dashboard.py` · `bin/smoketest.py`
 - Config layers by `$MB_CONFIG_DIR` then `config/` — the reference `config/` is ONE example; a user points `MB_CONFIG_DIR` at their own subscriptions/entrypoints/windows (`config/examples/` shows 1→N).
@@ -21,18 +22,21 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 
 **Authority:** Owner override → brief fields → this file → specialty file for the domain → `DOCTRINE.md` → `EDGE-CASES.md`. (Account facts come from `config/`; when a policy and a config fact seem to conflict, the config fact is the current reality — fix config, don't override policy in prose.)
 
-## Entry surface vs dispatcher (you control where you work; one user-assigned seat dispatches)
+## Entry surface vs dispatcher (user choice first; exactly one dispatcher per run)
 
-Where a request is **typed** is the user's choice — any entry surface in `config/entrypoints.json`
-(Claude Code, Codex CLI, Cursor, phone). Who **assigns seats, runs the risk gate, and fans work out to
-the tree** is ONE dispatcher, **user-assigned** in `config/entrypoints.json` `dispatcher.provider` —
-here the Claude orchestration surface (`opus-5`), but any `dispatch`-capable provider the user owns
-may hold it. Dispatch is configurable **data, not an identity**: exactly one dispatcher at a time, and
-reassigning it is a one-line `dispatcher.provider` edit + `can_dispatch` flip (only the holder moves;
-the single-dispatcher invariant is unchanged). Rankings never grant dispatch authority. Full framing: `DOCTRINE.md` §Roles.
+Where a request is **typed** and which model receives it are user choices. Run
+`bin/resolve-route.py --intake-provider <provider>` (or select a profile). If that tested,
+dispatch-qualified provider has a live route and usable quota, it is the effective dispatcher. A
+recorded unavailable/spent state activates the configured fallback order automatically. A known
+non-dispatch surface relays an ordinary brief without gaining authority. Unknown identities and
+malformed dispatch claims park; they never gain authority from a ranking. Exactly one effective
+dispatcher exists **per run**, not globally for every user.
 
-- **Dispatcher surface** (`can_dispatch: true`) → full dispatch: classify, stamp review, brief, assign, gate, refill, and **fan work OUT to the tree** (sub-agents — other profiles/seats — plus the specialist seats). It **preserves its own account by dispatching, not implementing**: it never runs implement/review on its own account (read-only legwork via a sub-agent is fine); it delegates.
-- **Any other surface** → run status, classify + stamp + **draft a brief, then hand it to the assigned dispatcher**. Never self-assign other seats; never implement outside your own seat; never re-home dispatch onto a surface the user did not assign. (Here **Codex is a worker/review seat** — GPT Terra MCP volume + Sol review, cross-family gate #2 — dispatch-capable but not the assigned dispatcher; a user owning no Claude seat may assign a Codex/GPT surface, `config/examples/two-sub`.)
+- A dispatch-qualified intake classifies, stamps review depth, briefs, assigns, and gates.
+- Prefer another implementer while one is usable; the dispatcher may implement only as a capability-checked fallback.
+- A dispatcher may review an artifact it did not author, but that pass is `artifact-only`; at least one other reviewer must independently validate dispatch intent/risk.
+- Implementers/authors never review their own artifact. Cross-family gates still need distinct independence groups and physical invocations.
+- `config/handoff-policy.json` preauthorizes minimum-necessary ordinary repo artifacts between configured providers. Authorship never creates a permission prompt. Credentials, tokens, restricted PII, customer data, production exports, and unknown classes park without a permission loop.
 
 ## Seats (roles are invariant; providers are config)
 
@@ -42,9 +46,9 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 
 | Role (invariant) | Level | Current provider(s) — see providers.json | Does not |
 |------|------|------|------|
-| **Dispatch** | frontier | Claude orchestration surface — Opus 5 *(the seat the user assigned in entrypoints.json; fans to sub-agents + seats)* | Implement/review on its OWN account; long solo jobs; desktop app |
+| **Dispatch** | varies | Per-run selected Sol / Opus 5 / Opus 4.8 / Fable / Terra / Luna / Grok, when live and qualified | More than one effective dispatcher per run; authority from rank alone |
 | **Implement** | terra | Grok Build | Google MCP without a connector; Grok Bot change-sets |
-| **MCP volume** | terra | Codex GPT Terra (· Luna coordination) | Being the dispatcher; default coder |
+| **MCP volume** | terra | Codex GPT Terra (· Luna coordination) | Default coder; MCP without a live connector |
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 5 | Row-dump fetch loops |
 | **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
 | **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
@@ -72,7 +76,7 @@ Per-seat policy lives in `config/usage-windows.json` (`drain`, `reserve_pct`, `i
 `bin/drain-plan.py` computes the live plan. Rules the router already enforces:
 
 - **Never strand.** A soft cap / reserve is a *priority demotion that yields*, not a stop. A `reserve`-tier seat is still USABLE. The system parks only for genuine exhaustion (a recorded 429) or an unsatisfiable safety gate — **never** because a self-imposed cap sat on real quota.
-- **The intake/reserve seat codes last (never strand), and only through a concrete coder.** When every worker seat is spent, last-resort coding requires a live provider on that intake subscription that is operationally allowed to implement (`implement` or `ide`) and has `code` on both the provider and its bound live route. The router names that provider. Sharing a plan with Codex Luna/Terra/Sol is not enough — those seats have no coding function. If no such provider exists, PARK. Reserves protect the intake seat's *own* headroom, sized to need + margin (`bin/drain-plan.py --reserve`), never to block a real coder from coding. The **dispatcher** is separate — it preserves its account by delegating (§Entry surface), not coding on it — *except* where a user owns no other seat (solo-pro, or a two-sub user who assigned their Codex plan), where the dispatcher's plan is also last-resort coder only if that plan actually has a coding-capable live provider.
+- **Dispatcher codes last when another coder is usable.** Last-resort coding still requires `implement`/`ide` plus `code` on provider and live route. This is a preference tied to current intake identity, not an absolute provider ban.
 - **Minimize API $.** `included` (subscription) seats before `metered` ($). Metered pools (Cursor Other Models, Review E) drain LAST — only when no included capacity remains.
 - **Use before lost.** Drain soon-to-reset weekly/monthly quota before it resets to waste; rolling windows refill, so they wait.
 - **No mid-turn swaps.** Pick a seat with enough runway to finish the task (`resolve-route --task-seconds N`); bring a just-reset account in at the NEXT task boundary.
@@ -107,7 +111,7 @@ brief and the risk gate only raises it, never lowers; class is read from the dif
 (explained in `DOCTRINE.md` §Review depth). **Do not eyeball it — run the router:**
 
 ```
-bin/resolve-route.py --class <class> --scale routine|elevated [--risk auth,money,…] [--implement] [--pixels]
+bin/resolve-route.py --class <class> --scale routine|elevated --intake-provider <provider> [--profile <name>] [--risk auth,money,…] [--implement] [--artifacts brief,repo-source,diff,test-output] [--pixels]
 ```
 
 It returns the depth, the live review chain (or a park reason), the implement seat, and the gates —
@@ -135,9 +139,9 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 
 **Autonomy limits (disclosed).** Cross-family autonomy needs **≥2 review families**: with fewer (a downgrade or a solo/one-family setup) risk-class work — money, auth, PII, secrets — **parks pending a human** rather than auto-shipping (the routing collapses toward one seat; the discipline holds). And **unattended land-to-prod is a current non-goal** — the executor is gated: `bin/run-brief.py` is **dry-run only** (it plans, shells nothing) and fails closed without an explicit run; landing/publish/send stay behind owner gates (`DOCTRINE.md` §non-goals).
 
-## Dispatch (the Claude orchestration surface)
+## Dispatch (effective provider for this run)
 
-The dispatcher (defined in §Entry surface vs dispatcher — user-assigned; here the Claude orchestration surface) **fans work OUT to the tree** — sub-agents (other Claude seats via teamclaude) + the specialist seats below — and delegates every implement/review job rather than running one on its own account. Its steps:
+Resolver records requested intake, effective dispatcher, fallback reason, authors, review scopes, and handoff decision. Its steps:
 
 1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → Grok Bot; theme/layout → Build then Review D; product copy → MCP packet (if needed) then Grok write.
 2. **Brief** every job (fields above) and **stamp `review:`** at the router's floor; ambiguous risk → park + ask owner. Do not invent seats.
@@ -152,7 +156,7 @@ The dispatcher (defined in §Entry surface vs dispatcher — user-assigned; here
 
 ## Review (Opus 5 / Codex Sol / Review E / Website Visual QA)
 
-Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time; Review E is an off-box HTTP call, never a Mini process. Fix loops return to the issuing seat; a seat spent mid-loop → park the loop.
+Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time. Implementer is excluded. Dispatcher review is artifact-only and cannot independently attest to its own brief/risk decision. Review E is an off-box HTTP call, never a Mini process.
 
 ## Standing-config changes (this repo included)
 
@@ -161,4 +165,4 @@ A change to `config/`, a cron/LaunchAgent, an MCP config, or a Bot routine is `s
 
 ## Hard bans
 
-- Fable/Sol/Opus as daily coder · two frontier passes from the **same family** on one branch (the cross-family pair is the only two-pass case) · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · two QA minis at once or a self-hosted runner on a public repo · Build+Bot on one change-set · inventing makework · two implementer CLIs on 16 GB · Grok Bot.app open on the worker · Visual QA in Shopify Admin or SimGym · moving legwork to scarce seats on outage · Review E before confirmed exhaustion or on an outage/probe signal · Review E as implementer or sole land-gate · counting Fable + Opus as two families · sending secrets/PII to a third-party inference host · **hardcoding a live ID, tier, reset time, or connector location in prose instead of `config/`** · **parking or stopping work while a usable (reserve/intake) seat still has real quota** (a self-imposed cap is never a stop) · **draining a metered $ seat while included subscription capacity is available** · **any surface acting as dispatcher when the user did not assign it** (exactly one, per `entrypoints.dispatcher.provider`; a non-dispatcher surface drafts + hands over — §Entry surface) · **the assigned dispatcher masquerading as the worker** — running implement/review on its OWN account instead of fanning work out to sub-agents + seats (read-only legwork sub-agents are fine) · **swapping the serving account mid-turn** (pick a seat with runway; rotate at the next task boundary) · **treating a catalog entry, announcement, or quality rank as a live route, a tool grant, or a credential** · **resolving any route that is not `live_verified`**.
+- Fable/Sol/Opus as daily coder · author reviewing own artifact · dispatcher-only attestation of its own dispatch intent/risk · two frontier passes from the **same family** counted as cross-family · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · two QA minis at once · Build+Bot on one change-set · inventing makework · Review E before confirmed exhaustion · counting Fable + Opus as two families · sending restricted artifacts across agents · asking repeatedly for permission to transfer ordinary configured repo artifacts · hardcoding live IDs/tiers/resets · parking while usable quota exists · metered capacity before included capacity · more than one effective dispatcher in one run · authority from a quality rank · mid-turn account swaps · resolving a route that is not `live_verified`.

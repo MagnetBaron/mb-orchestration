@@ -30,7 +30,7 @@ OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok: Build + the two Grok Bots), ope
 | **Analytics heatmaps/replays** | **xAI — Grok Bot (Heat Map)** | Browser-only Clarity layer the API can't return |
 | **Independent third-family review** | **open-weight — Review E** | The only review family that is *not* Anthropic/OpenAI/xAI (see §3) |
 | **IDE / inline edits** | **Cursor (Grok pool)** | First-party pool; drain before paid buckets |
-| **Dispatch** | **whoever you assign** (this reference: Anthropic — the Claude orchestration surface, Opus 5) | One coordinator; fans work to sub-agents + seats; preserves its account by dispatching, not implementing. Rankings never grant this authority |
+| **Dispatch** | Requested/profile intake provider, with recorded-availability fallback | Exactly one effective coordinator per run; reviewer chain flexes around dispatcher and authors. Rankings never grant authority |
 
 **The cross-family rule is the load-bearing one:** for money/auth/PII/secrets work, two *different*
 families must each review. Anthropic's Fable and Opus are ONE family — two Claude passes do not count.
@@ -144,18 +144,14 @@ The system leans on a few verified projects rather than reinventing them:
 
 ## 6. Entry points — work from wherever you like
 
-**Where you type a request is your choice; who assigns seats is one config-bound dispatcher.** Set both
-in `config/entrypoints.json`:
+**Where you type and which tested intake model you select are your choices.** `config/entrypoints.json`
+defines profiles and fallback order; the router selects one effective dispatcher per run:
 
-- Any surface (Codex CLI, Claude Code, Cursor, phone) can be where you *start*. Non-dispatcher surfaces
-  classify + draft a brief and hand it to the dispatcher.
-- The **dispatcher** is the only seat that assigns other seats and fans work out to the tree (sub-agents
-  + specialist seats). Exactly one at a time — **user-assigned** in `dispatcher.provider`, never a fixed
-  identity. In this reference setup that is the Claude orchestration surface (Opus 5); it preserves its
-  account by dispatching, not implementing.
-- **Pick your dispatcher.** Point `dispatcher.provider` at any dispatch-capable provider you own — a
-  Claude seat, a Codex/GPT surface, whatever your inventory has — and flip that surface's `can_dispatch`
-  to true. The single-dispatcher invariant holds; only the holder moves.
+- `--intake-provider codex-sol|opus-5|opus-4.8|fable-5|codex-terra|codex-luna|grok-build` honors that provider while usable.
+- `--profile <name>` supplies a per-user default without changing another user's preference.
+- Recorded usage exhaustion moves to the evidence-ranked fallback automatically. Known non-dispatch surfaces relay without gaining authority; unknown providers park.
+- Reviewer choice changes with dispatcher and implementer. Authors are excluded; dispatcher self-attestation cannot satisfy the independent intent/risk check.
+- Ordinary repo artifacts transfer without another permission prompt. Restricted data parks instead of asking you to weaken the boundary.
 
 This is how the same system serves a shop owner at a Mac console, a teammate in Cursor, and you on a
 phone — without four people all trying to dispatch.
@@ -168,7 +164,7 @@ Everything user-specific is in `config/`. To hand this to someone with different
 points, and habits:
 
 1. Rewrite `config/subscriptions.json` with their plans (this drives Fable grants and capacity).
-2. Set `config/entrypoints.json` — their dispatcher and entry surfaces.
+2. Set `config/entrypoints.json` — their entry surfaces, profiles, and fallback order.
 3. Set `config/connectors.json` — their MCP connectors, stores, analytics login, Slack channel.
 4. Fill the anchors they know in `config/usage-windows.json`.
 5. Run `python3 bin/doctor.py` (must be error-free) and `python3 bin/smoketest.py` (must be 13/13).

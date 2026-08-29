@@ -2,7 +2,7 @@
 
 **Not previously spelled out.** Default implementer remains Grok Build. Google MCP (Search Console, Drive, DataForSEO / Trends / Ads volume, and similar) is available on **Opus** and **appropriate GPT models** (Codex Terra / Sol; not the Luna coordination helper). Grok does not assume Google MCP for these jobs.
 
-The **assigned dispatcher** dispatches — in this setup the Claude orchestration surface (Codex is a worker/review seat here: dispatch-capable, but not the assigned dispatcher). The seat that *runs* the MCP calls is assigned below.
+The **effective per-run dispatcher** dispatches. It may be Claude, Codex, or Grok when requested and qualified. The seat that *runs* MCP calls is still capability-routed below; dispatch identity does not grant connector access.
 
 ## Connector map — lives in `config/connectors.json`
 
@@ -76,7 +76,7 @@ Activation (primed/ready → active, wiring a role/seat to it) is a **standing-c
 ### 1. Product description pipeline
 
 ```
-The assigned dispatcher
+The effective dispatcher
   1) Research brief → GPT Terra + Google MCP (keywords, GSC, Drive brief if any)
      output_path: research note / CSV
   2) Write brief → Grok Build + Shopify (titles, bodies, metafields)
@@ -89,7 +89,7 @@ Many SKUs, same template: one research packet for the family, then Grok bulk wri
 ### 2. Bulk analytics pipeline
 
 ```
-The assigned dispatcher
+The effective dispatcher
   1) Fetch brief → GPT Terra + GSC / DataForSEO / Drive
      done_when: tables at output_path, row counts, date range
   2) Optional interpret brief → Sol or Opus
@@ -101,7 +101,7 @@ Never assign Opus to pull 10k GSC rows. Fetch on GPT; judge on Sol/Opus.
 ### 3. Coding with MCP context
 
 ```
-The assigned dispatcher
+The effective dispatcher
   1) If code needs live Google numbers: GPT Terra MCP → snapshot file in repo or artifacts
   2) Grok Build implements against that snapshot (must_read)
   3) Code review as usual (diff only)
@@ -109,7 +109,7 @@ The assigned dispatcher
 
 Grok does not need Google MCP mid-compile if the brief points at a frozen snapshot.
 
-## Dispatch rules (the assigned dispatcher)
+## Dispatch rules (effective dispatcher)
 
 1. Does this brief **require Google MCP** (GSC, Drive, DataForSEO, Trends)?
    - No → default **Grok Build** for implement; reviews unchanged.

@@ -59,7 +59,8 @@ def _now_iso() -> str:
 
 
 def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
-                   task_seconds, user_said_ship, ledger) -> dict:
+                   task_seconds, user_said_ship, ledger, intake_provider="",
+                   profile="default", artifacts="") -> dict:
     """Consume resolve-route.py's JSON decision verbatim (exact shape — never reshaped).
     Called in-process with stdout captured; this is not a subprocess and shells nothing."""
     argv = ["--class", klass, "--scale", scale, "--implement", "--json"]
@@ -77,6 +78,12 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
         argv.append("--user-said-ship")
     if ledger:
         argv += ["--ledger", ledger]
+    if intake_provider:
+        argv += ["--intake-provider", intake_provider]
+    if profile:
+        argv += ["--profile", profile]
+    if artifacts:
+        argv += ["--artifacts", artifacts]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = resolve_route.main(argv)
@@ -98,7 +105,7 @@ def render_cmd(recipe, ctx):
     return out
 
 
-def plan_for_seat(pid, recipes, ctx, role):
+def plan_for_seat(pid, recipes, ctx, role, dispatcher=None, review_scope=None):
     """What the executor WOULD do for one seat — or WHY it would refuse to shell it.
     Encodes the hard invariant as an inspectable decision, not a hidden branch."""
     r = recipes.get(pid)
@@ -116,15 +123,19 @@ def plan_for_seat(pid, recipes, ctx, role):
         entry["reason"] = "no CLI (app/API seat) — reached out-of-band (Slack #visual-qa / off-box HTTP), never shelled"
     else:
         entry["would_run"] = render_cmd(r, ctx)
-        if r.get("dispatcher_account_forbidden"):
-            entry["note"] = "Claude seat → runs on ANOTHER live Claude seat via teamclaude, never the dispatcher account"
+        if role == "review" and pid == dispatcher and r.get("separate_invocation_when_dispatcher"):
+            entry["note"] = ("same provider dispatched this run → separate review invocation; artifact-only, "
+                             "does not independently attest to dispatch intent/risk")
+    if review_scope:
+        entry["review_scope"] = review_scope
     return entry
 
 
 def build_plan(args) -> dict:
     decision = build_decision(args.klass, args.scale, args.risk, args.pixels,
                               args.needs_mcp.strip(), args.needs_connector.strip(),
-                              args.task_seconds, args.user_said_ship, args.ledger)
+                              args.task_seconds, args.user_said_ship, args.ledger,
+                              args.intake_provider.strip(), args.profile, args.artifacts.strip())
     lane = args.lane or f"lane-{args.klass}"
     recipes = mborch.load_config("seat-exec.json")["recipes"]
     ctx = {
@@ -147,13 +158,19 @@ def build_plan(args) -> dict:
             p["on"] = step["on"]
         impl_plans.append(p)
 
-    review_plans = [plan_for_seat(c["provider"], recipes, ctx, "review")
+    effective_dispatcher = decision["dispatcher"].get("effective")
+    review_plans = [plan_for_seat(c["provider"], recipes, ctx, "review",
+                                  dispatcher=effective_dispatcher,
+                                  review_scope=c.get("review_scope"))
                     for c in decision["review"]["chain"]]
 
     cur = runledger.fold_to_state(lane, args.run_ledger)
-    trans = {"lane": lane, "from": cur["status"], "to": "routed",
+    transition_to = "routed" if decision.get("routing_satisfied") else "parked"
+    trans = {"lane": lane, "from": cur["status"], "to": transition_to,
              "fix_loops": cur["fix_loops"], "fix_loop_exhausted": cur["fix_loop_exhausted"],
              "terminal_before": cur["terminal"]}
+    if decision.get("park_reason"):
+        trans["park_reason"] = decision["park_reason"]
     if cur["terminal"]:
         trans["warning"] = f"lane already {cur['status']} (terminal) — planning again re-opens it"
     if cur["fix_loop_exhausted"]:
@@ -164,6 +181,9 @@ def build_plan(args) -> dict:
         "lane": lane, "dry_run": True, "class": args.klass, "scale": args.scale,
         "risk_flags": decision["risk_flags"], "review_depth": decision["review_depth"],
         "depth_reasons": decision["depth_reasons"], "review": decision["review"],
+        "dispatcher": decision["dispatcher"], "handoff": decision["handoff"],
+        "authors": decision.get("authors") or [],
+        "routing_satisfied": decision.get("routing_satisfied", False),
         "gates": decision["gates"], "user_said_ship": decision["user_said_ship"],
         "implement": impl_plans, "review_plan": review_plans, "transition": trans,
         "implement_seat": implement_seat,
@@ -175,10 +195,13 @@ def record_trace(plan, run_ledger_path):
     """Append a decision-trace event to the run-ledger (auditability): after the fact you
     can prove what was routed and whether the gates were honored before a land."""
     ev = runledger.make_event(
-        plan["lane"], "routed", _now_iso(),
+        plan["lane"], plan["transition"]["to"], _now_iso(),
         **{"class": plan["class"], "scale": plan["scale"], "review_depth": plan["review_depth"],
+           "requested_dispatcher": plan["dispatcher"].get("requested"),
+           "effective_dispatcher": plan["dispatcher"].get("effective"),
            "implement_seat": plan["implement_seat"], "review_chain": plan["review_chain"],
-           "gates": plan["gates"], "dry_run": True, "decided_by": "run-brief"})
+           "gates": plan["gates"], "handoff": plan["handoff"],
+           "dry_run": True, "decided_by": "run-brief"})
     return runledger.append(ev, run_ledger_path)
 
 
@@ -189,6 +212,10 @@ def _print_plan(plan):
     print(f"review depth: {plan['review_depth']}")
     for r in plan["depth_reasons"]:
         print(f"  · {r}")
+    dp = plan["dispatcher"]
+    print(f"dispatcher: {'SATISFIED' if dp['satisfied'] else 'NOT SATISFIED (park)'} — {dp['explanation']}")
+    hp = plan["handoff"]
+    print(f"handoff: {'ALLOWED' if hp['allowed'] else 'PARK'} — {hp['reason']} (permission prompt: no)")
     rv = plan["review"]
     print(f"review: {'SATISFIED' if rv['satisfied'] else 'NOT SATISFIED (park)'} — {rv['explanation']}")
     print(f"gates: {', '.join(k for k, v in plan['gates'].items() if v) or '(none)'}")
@@ -213,6 +240,8 @@ def _print_plan(plan):
     for key in ("warning", "warning_fix_loops"):
         if t.get(key):
             print(f"  ⚠ {t[key]}")
+    if t.get("park_reason"):
+        print(f"  park reason: {t['park_reason']}")
     print("=" * 72)
     print("DRY-RUN: nothing was shelled, no model was called. Live execution is gated — see pipeline-graph.md.")
 
@@ -224,6 +253,8 @@ def _print_seat(p):
     if p.get("last_resort"):
         head += " [LAST RESORT]"
     print(head + f"  [{p['role']}, reads {p.get('reads', '?')}]")
+    if p.get("review_scope"):
+        print(f"      scope: {p['review_scope']}")
     if p.get("would_run"):
         print(f"      would run: {' '.join(p['would_run'])}")
     if p.get("reason"):
@@ -245,6 +276,9 @@ def main(argv=None):
     ap.add_argument("--needs-connector", default="")
     ap.add_argument("--task-seconds", type=int, default=0)
     ap.add_argument("--user-said-ship", action="store_true")
+    ap.add_argument("--intake-provider", default="", help="user-selected dispatcher for this run")
+    ap.add_argument("--profile", default="default", help="dispatcher preference profile")
+    ap.add_argument("--artifacts", default="", help="comma-separated handoff artifact classes")
     ap.add_argument("--lane", default=None)
     ap.add_argument("--brief", default=None, help="path to the 6-field brief file (paths only)")
     ap.add_argument("--ledger", default=None, help="usage ledger passthrough to resolve-route")

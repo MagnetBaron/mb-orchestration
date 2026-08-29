@@ -7,7 +7,7 @@
     "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
     "sole": { "job": "Scarce judgment: diff review and MCP interpretation" },
     "terra": { "job": "Volume: MCP bulk, implementation, and standing bot work" },
-    "luna": { "job": "Lightweight coordination tier (MCP/queue helper). WHO the active dispatcher is is a user assignment recorded in config/entrypoints.json (dispatcher.provider) — capability lives here, assignment lives there; dispatch is never fixed to a provider." }
+    "luna": { "job": "Lightweight coordination tier (MCP/queue helper). Effective dispatcher is selected per run from requested intake/profile plus live usage; capability lives here, assignment lives in the decision trace." }
   },
   "families": {
     "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
@@ -27,31 +27,35 @@
     "codex-luna": {
       "label": "Codex GPT Luna (coordination / MCP helper)", "level": "luna", "family": "openai", "kind": "cli",
       "model": "gpt-5.6-luna", "functions": ["mcp_bulk", "dispatch"], "capabilities": ["mcp_bulk", "dispatch"],
-      "prowess": { "mcp_bulk": 78, "dispatch": 85 }, "billing": "included", "review_eligible": false,
-      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "prowess": { "mcp_bulk": 78, "dispatch": 85 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json" },
+      "backed_by": "codex-200", "usage_seat": "codex-plan", "detect": { "method": "command", "cmd": "codex" },
       "route": "gpt-5.6-luna-codex",
-      "notes": "Lightweight Codex coordination/MCP helper on the shared Codex plan; dispatch-capable. WHICH surface actually dispatches is a user assignment recorded in config/entrypoints.json (exactly one at a time) — capability lives here, assignment lives there. Never implements repo code; never a review verdict."
+      "notes": "Lightweight Codex coordination/MCP helper and tested dispatch target. Requested intake/profile wins per run while usable. Never implements repo code; never a review verdict."
     },
     "codex-terra": {
       "label": "Codex GPT Terra (MCP volume)", "level": "terra", "family": "openai", "kind": "cli",
       "model": "gpt-5.6-terra", "functions": ["mcp_bulk", "dispatch"], "capabilities": ["mcp_bulk", "dispatch"],
-      "prowess": { "mcp_bulk": 82 }, "billing": "included", "review_eligible": false,
-      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "prowess": { "mcp_bulk": 82, "dispatch": 90 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json" },
+      "backed_by": "codex-200", "usage_seat": "codex-plan", "detect": { "method": "command", "cmd": "codex" },
       "route": "gpt-5.6-terra-codex",
-      "notes": "Google-MCP bulk fetches to output_path — a worker seat; also dispatch-capable. WHICH surface actually dispatches is a user assignment recorded in config/entrypoints.json (e.g. the two-sub setup assigns a Codex/GPT surface; this reference setup assigns the Claude orchestration surface — both legitimate). Capability lives here, assignment lives there."
+      "notes": "Google-MCP bulk fetches to output_path; also a tested dispatch target. Requested intake/profile wins per run while usable; capability lives here, assignment lives in the decision trace."
     },
     "codex-sol": {
       "label": "Codex GPT-5.6 Sol (Review B / MCP judgment)", "level": "sole", "family": "openai", "kind": "cli",
-      "model": "gpt-5.6-sol", "functions": ["review", "mcp_judgment"], "capabilities": ["review", "mcp_judgment"],
-      "prowess": { "review": 85, "mcp_judgment": 84 }, "billing": "included", "review_eligible": true,
-      "backed_by": "codex-200", "detect": { "method": "command", "cmd": "codex" },
+      "model": "gpt-5.6-sol", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch"],
+      "prowess": { "review": 85, "mcp_judgment": 84, "dispatch": 82 }, "billing": "included", "review_eligible": true, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json" },
+      "backed_by": "codex-200", "usage_seat": "codex-sol", "detect": { "method": "command", "cmd": "codex" },
       "route": "gpt-5.6-sol-codex",
       "notes": "Scarce OpenAI judgment. On the intake plan → reserve tier, but yields (never stranded)."
     },
     "grok-build": {
       "label": "Grok Build CLI (implement)", "level": "terra", "family": "xai", "kind": "cli",
-      "model": "grok-4.6-build", "functions": ["implement"], "capabilities": ["code"],
-      "prowess": { "implement": 82 }, "billing": "included", "review_eligible": false,
+      "model": "grok-4.6-build", "functions": ["implement", "dispatch"], "capabilities": ["code", "dispatch"],
+      "prowess": { "implement": 82, "dispatch": 79 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json", "runtime_note": "TTY launcher path required; non-TTY launcher failed" },
       "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
       "route": "grok-4.6-build",
       "notes": "Default implementer. 1 worktree / 1 branch / named file scope."
@@ -74,8 +78,9 @@
     },
     "fable-5": {
       "label": "Fable 5 (architecture only — OUT of the gating order)", "level": "frontier", "family": "anthropic", "kind": "cli",
-      "model": "claude-fable-5", "functions": ["architecture"], "capabilities": ["architecture"],
-      "prowess": { "architecture": 88 }, "billing": "included", "review_eligible": false,
+      "model": "claude-fable-5", "functions": ["architecture", "dispatch"], "capabilities": ["architecture", "dispatch"],
+      "prowess": { "architecture": 88, "dispatch": 80 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json", "runtime_note": "first attempt stalled; clean retry completed" },
       "route": "fable-5-teamclaude",
       "backed_by": "claude-fable-capable-seats", "detect": { "method": "capability", "grant": "fable" },
       "notes": "Rare long-horizon/architecture escalation. Same Anthropic family as Opus — never a second family for a cross-family gate. Not the default Anthropic judgment seat: Opus 5 is currently stronger and more efficient for normal review. Public Fable measurements can be contaminated by safety fallback to Opus. Confirm the grant with bin/detect-capability.py. Never a sole gate; never the daily coder."
@@ -83,16 +88,18 @@
     "opus-5": {
       "label": "Opus 5 (Review C / first gating reviewer / Claude judgment; dispatch-capable)", "level": "frontier", "family": "anthropic", "kind": "cli",
       "model": "claude-opus-5", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch", "code", "architecture"],
-      "prowess": { "review": 90, "mcp_judgment": 88, "dispatch": 84, "architecture": 86 }, "billing": "included", "review_eligible": true,
+      "prowess": { "review": 90, "mcp_judgment": 88, "dispatch": 84, "architecture": 86 }, "billing": "included", "review_eligible": true, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json", "limitation": "single-turn probe does not disprove reported long-horizon retraction loops" },
       "route": "opus-5-teamclaude",
       "supersedes": "opus-4.8",
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
-      "notes": "Operational Anthropic review/judgment seat (released 2026-07-24 at the same list price as 4.8). WHEN a user assigns it as the dispatcher in config/entrypoints.json (as this reference setup does), it acts as the Claude orchestration surface and preserves its own account by DISPATCHING, not implementing. FIRST in the gating order. Served across live Claude seats via teamclaude. Direct claude without teamclaude is auth_blocked. NEVER the default implementer where a worker seat is live."
+      "notes": "Operational Anthropic review/judgment seat and tested dispatch target. When it is effective dispatcher, Sol or another provider independently checks dispatch intent/risk; any Opus self-review is artifact-only. FIRST in normal gating order when it did not dispatch. Served across live Claude seats via teamclaude. Direct claude without teamclaude is auth_blocked."
     },
     "opus-4.8": {
       "label": "Opus 4.8 (time-bounded compatibility fallback)", "level": "frontier", "family": "anthropic", "kind": "cli",
       "model": "claude-opus-4-8", "functions": ["review", "mcp_judgment", "dispatch"], "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
-      "prowess": { "review": 82, "mcp_judgment": 80, "dispatch": 78 }, "billing": "included", "review_eligible": true,
+      "prowess": { "review": 82, "mcp_judgment": 80, "dispatch": 78 }, "billing": "included", "review_eligible": true, "dispatch_eligible": true,
+      "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json" },
       "route": "opus-4.8-teamclaude",
       "compatibility_fallback": true, "fallback_until": "2026-12-31",
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
@@ -111,7 +118,7 @@
       "label": "Cursor Grok 4.6 / Composer (IDE)", "level": "terra", "family": "cursor-pool", "kind": "ide",
       "model": "grok-4.6", "functions": ["ide"], "capabilities": ["code", "ide"],
       "prowess": { "ide": 78 }, "billing": "included", "review_eligible": false,
-      "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
+      "backed_by": "cursor-ultra", "usage_seat": "cursor-models", "detect": { "method": "command", "cmd": "cursor" },
       "route": "grok-4.6-cursor",
       "notes": "First-party Cursor Models pool (included). Drain for IDE edits before Grok Build Heavy."
     },
@@ -119,7 +126,7 @@
       "label": "Cursor Other Models $400 (Last $)", "level": "terra", "family": "cursor-pool", "kind": "ide",
       "model": null, "functions": ["ide", "last_dollar"], "capabilities": ["code", "ide"],
       "prowess": { "ide": 80 }, "billing": "metered", "review_eligible": false,
-      "backed_by": "cursor-ultra", "detect": { "method": "command", "cmd": "cursor" },
+      "backed_by": "cursor-ultra", "usage_seat": "cursor-other-400", "detect": { "method": "command", "cmd": "cursor" },
       "notes": "Metered $/month third-party pool → drain LAST. Never a default worker or cross-family reviewer."
     },
     "local-llm-example": {
@@ -140,9 +147,10 @@
     "Heat Map": "grok-bot-heat-map",
     "Grok Build": "grok-build",
     "MCP volume": "codex-terra",
-    "Dispatch": "entrypoints.dispatcher.provider"
+    "Dispatch": "resolve-route decision.dispatcher.effective"
   },
   "review_order": ["opus-5", "codex-sol", "review-e"],
+  "review_fallbacks": ["opus-4.8"],
   "review_order_note": "GATING fallback order: Opus 5 first (Anthropic gate), then Codex Sol (OpenAI), then Review E (independent open-weight, if wired). Fable is OUT of the gating order — rare architecture/long-horizon escalation, same family as Opus. Opus 4.8 is a time-bounded compatibility fallback, not in this list. resolve-route computes the LIVE chain from this order + live_verified registry routes + usage-status tiers. Cross-family = one pass from two DIFFERENT families.",
   "model_slot_in": {
     "_note": "CLEAN SLOT-IN for a new/updated model (Opus 5.1, Fable 5.1, a successor to Fable/Sol, a new implementer). It is ONE edit here — no code or prose changes:",

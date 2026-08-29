@@ -1,7 +1,6 @@
 # Close-the-loop (the dispatcher forwards finish reports)
 
-After it hands work out, the **dispatcher** — the surface the user assigned in
-`config/entrypoints.json` `dispatcher.provider` (the Claude orchestration surface in this setup) —
+After it hands work out, the **effective dispatcher** recorded in the run decision —
 does not implement, review, or manage on its own account. It fans work out to the seats/sub-agents,
 then closes the loop: it forwards each `done_when` / `parked:` / `blocked:` report to the owner.
 

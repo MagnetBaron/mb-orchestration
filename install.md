@@ -7,10 +7,9 @@ git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
 ```
 
-Open **mb-orchestration** as the workspace. Claude Code reads `CLAUDE.md` and is the dispatcher in this
-setup (the user-assigned Claude orchestration surface); Codex reads `AGENTS.md` as a worker/review seat.
-Then follow `SETUP-BOTS.md` for the machine wire-up — the dispatcher fans the setup work out to the
-worker seats.
+Open **mb-orchestration** as the workspace. Every CLI reads the shared per-run routing contract. Pass
+its provider identity with `--intake-provider`, or choose a user profile. Resolver selects one effective
+dispatcher and records fallback, authors, review scopes, and handoff gate.
 
 ## 1. Validate the setup first
 
@@ -30,12 +29,12 @@ metering, fallback, and role generation all work. Do this before wiring anything
 Everything user-specific is in `config/` — edit these, not prose:
 
 1. `config/subscriptions.json` — the plans you pay for. Fable grants live here (`grants.fable`).
-2. `config/entrypoints.json` — your entry surfaces and the one dispatcher (`dispatcher.provider`).
-   The dispatcher is user-assigned (the Claude orchestration surface in this reference setup); point
-   `dispatcher.provider` at any dispatch-capable provider you own and flip that surface's `can_dispatch`.
-3. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
-4. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
-5. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
+2. `config/entrypoints.json` — entry surfaces, per-user profiles, and evidence-ranked fallback order.
+   `--intake-provider` overrides a profile for one run; valid user selection wins while usable.
+3. `config/handoff-policy.json` — keep ordinary artifact preauthorization and restricted classes fail-closed.
+4. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
+5. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
+6. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
 
 ## 3. teamclaude (Claude seats)
 
@@ -79,9 +78,9 @@ Provision or repair the symlinks on any machine:
 ```
 
 No-arg `/orchestrate` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
-stamps depth (`bin/resolve-route.py`), and routes. **Only the assigned dispatcher surface assigns
+stamps depth (`bin/resolve-route.py`), and routes. **Only the effective per-run dispatcher assigns
 seats** — any other host (Codex included) shows status and drafts a brief, then hands it to the
-assigned dispatcher.
+effective dispatcher.
 
 ## 7. Ordered adoption
 

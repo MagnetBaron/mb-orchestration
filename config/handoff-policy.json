@@ -1,0 +1,16 @@
+{
+  "_note": "Agent-to-agent handoff policy. Ordinary development artifacts are preauthorized between configured live providers; no repeated permission prompt is generated and authorship never changes authority. Restricted artifacts never transfer automatically and park fail-closed instead of pressuring a user to approve disclosure.",
+  "schema_version": 1,
+  "updated": "2026-08-29",
+  "ordinary_artifacts": ["brief", "repo-source", "diff", "test-output", "public-docs", "synthetic-eval"],
+  "restricted_artifacts": ["credentials", "tokens", "restricted-pii", "customer-data", "production-export"],
+  "rules": {
+    "configured_provider_handoffs": "preauthorized",
+    "authorship_never_requires_permission": true,
+    "ordinary_requires_user_permission": false,
+    "restricted_action": "park",
+    "unknown_artifact_action": "park",
+    "no_permission_escalation_loop": true,
+    "minimum_necessary_only": true
+  }
+}

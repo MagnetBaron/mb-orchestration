@@ -1,8 +1,8 @@
 # Finish this setup on the worker machine
 
-The dispatcher on this machine — the user-assigned Claude orchestration surface (`entrypoints.dispatcher.provider`) — does not implement; it fans work out to the worker seats. Hand this file's packet to Grok Build, Cursor, and Codex; they complete the machine setup. The dispatcher confirms the receivers have the packet, then reviews the result and stops (it never implements on its own account).
+Resolve the setup run with the actual intake provider. The effective dispatcher prefers other worker seats, records authors, and routes independent review. Same-provider review is artifact-only; ordinary setup artifacts transfer under `handoff-policy.json` without another permission prompt.
 
-## Dispatcher — the Claude orchestration surface (you)
+## Effective dispatcher for this setup run
 
 1. Open `MagnetBaron/mb-orchestration`.
 2. Copy the packet at the bottom to the worker seats: Grok Build, Cursor, and Codex.
@@ -31,7 +31,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-sla
 - You are NOT the dispatcher — do not assign seats or dispatch. If typed into, draft-and-hand to the dispatcher.
 - Do not open Grok Bot.app; do not touch Shopify Admin.
 
-## Setup review — the dispatcher (Claude orchestration surface)
+## Setup review — conflict-aware chain from `resolve-route.py`
 
 - Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md` against what Grok/Cursor did.
 - Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change. Delegate an OpenAI-family second look to Codex Sol if the risk gate calls for it.
@@ -48,7 +48,7 @@ Once per account.
 
 ## Packet for Codex to paste
 
-objective: Finish mb-orchestration + teamclaude desktop discovery and policy wiring on THIS machine per SETUP-BOTS.md. The Claude orchestration surface stays the dispatcher; Codex is a worker/review seat.
+objective: Finish mb-orchestration + teamclaude desktop discovery and policy wiring on THIS machine per SETUP-BOTS.md. Record requested/effective dispatcher, authors, handoff gate, and independent review chain.
 
 must_read:
 - install.md

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "receipt_type": "dispatch_stability_v1",
+  "date": "2026-08-28",
+  "method": "Fixed bounded decision prompt; require final assignment, zero reversals or retractions, and completed termination.",
+  "limitations": "Two clean single-turn trials per provider. This does not establish long-horizon stability or universal quality rank.",
+  "providers": {
+    "codex-luna": { "route": "gpt-5.6-luna-codex", "status": "passed", "completed": 2, "reversals": 0, "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "codex-terra": { "route": "gpt-5.6-terra-codex", "status": "passed", "completed": 2, "reversals": 0, "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "codex-sol": { "route": "gpt-5.6-sol-codex", "status": "passed", "completed": 2, "reversals": 0, "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "grok-build": { "route": "grok-4.6-build", "status": "passed", "completed": 2, "reversals": 0, "runtime_note": "TTY launcher required; non-TTY launcher failed.", "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "fable-5": { "route": "fable-5-teamclaude", "status": "passed", "completed": 2, "reversals": 0, "runtime_note": "An earlier attempt stalled; two clean retries completed.", "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "opus-5": { "route": "opus-5-teamclaude", "status": "passed", "completed": 2, "reversals": 0, "limitation": "Does not disprove reported long-session retraction behavior.", "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] },
+    "opus-4.8": { "route": "opus-4.8-teamclaude", "status": "passed", "completed": 2, "reversals": 0, "trials": [{ "trial": 1, "terminal_reason": "completed", "reversals": 0 }, { "trial": 2, "terminal_reason": "completed", "reversals": 0 }] }
+  }
+}

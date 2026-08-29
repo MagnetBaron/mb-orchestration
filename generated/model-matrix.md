@@ -295,6 +295,6 @@ Administer candidate evals and receipts. Owner/admin gated; scores do not auto-w
 - `rankings_are_role_and_harness_specific`: true
 - `required_tools_are_not_capabilities`: true
 - `resolver_api_fails_closed`: true
-- `single_dispatcher`: entrypoints.json dispatcher.provider is the only authority assignment; rankings never grant dispatch
+- `single_dispatcher_per_run`: exactly one effective dispatcher is selected per run from the requested intake/provider profile and live usage; rankings never grant dispatch
 - `tools_never_follow_rank`: true
 - `unknown_availability_fails_closed`: true

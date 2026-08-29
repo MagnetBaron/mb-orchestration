@@ -1,15 +1,19 @@
 {
-  "_note": "TWO-SUB (Codex + Grok): the user assigned their Codex/GPT surface as the dispatcher — a legitimate, first-class dispatcher assignment for an inventory with no Claude seat. It classifies/briefs/assigns/gates and fans work to the seats it owns; Codex is also the worker/review family here (Terra MCP volume + Sol review). When Grok is spent, the intake Codex plan implements (never-strand, intake-codes-last-resort). Dispatch is user-assigned; adding a Claude seat later would let the user move dispatcher.provider there if they choose.",
-  "schema_version": 1,
-  "dispatcher": { "provider": "codex-terra", "level": "terra", "fallback": [], "rule": "one dispatcher (the user's assigned Codex/GPT surface); a phone never implements. Dispatch is user-assigned — this inventory has no Claude seat, so the user assigned their Codex plan; it fans work to the seats it owns." },
+  "_note": "TWO-SUB (Codex + Grok): selected Codex or Grok intake dispatches when usable. Exactly one effective dispatcher is recorded per run; recorded exhaustion activates the configured fallback.",
+  "schema_version": 2,
+  "dispatcher": { "selection_mode": "intake-provider-first", "default_provider": "codex-terra", "fallback_order": ["codex-terra", "codex-luna", "codex-sol", "grok-build"], "fallback_on_recorded_unavailability": true, "relay_known_unqualified_intake": true, "require_live_verified_route": true },
+  "profiles": { "default": { "preferred_dispatcher": "codex-terra" }, "xai-first": { "preferred_dispatcher": "grok-build" } },
   "entry_surfaces": {
-    "codex-cli": { "host": "codex", "provider": "codex-terra", "can_dispatch": true, "default": true, "note": "the user's assigned dispatcher here; also runs Sol review + MCP volume; the intake plan codes as last resort when Grok is spent" },
-    "grok-cli": { "host": "grok", "provider": "grok-build", "can_dispatch": false, "note": "implement only" }
+    "codex-cli": { "host": "codex", "providers": ["codex-terra", "codex-luna", "codex-sol"], "can_dispatch": true, "default": true, "note": "the user's selected Codex model may dispatch; the intake plan runs MCP volume and Sol review" },
+    "grok-cli": { "host": "grok", "providers": ["grok-build"], "can_dispatch": true, "note": "may dispatch when selected; otherwise implements" }
   },
   "rules": {
-    "single_dispatcher": true,
+    "single_dispatcher_per_run": true,
+    "honor_user_selected_intake": true,
+    "fallback_requires_recorded_unavailability": true,
+    "authorship_does_not_change_handoff_authority": true,
     "non_dispatcher_hosts": "Grok drafts nothing — it implements the dispatched brief",
     "entry_is_free": "type from Codex or Grok; the user assigned the single dispatcher to their Codex plan",
-    "portability": "adding a Claude seat later gives a second review family (cross-family gates stop parking) and the option to reassign dispatcher.provider to it — the user's call, not a demotion of Codex"
+    "portability": "adding a Claude seat later gives a second review family and new intake/profile/fallback choices"
   }
 }

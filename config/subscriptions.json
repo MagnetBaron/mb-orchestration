@@ -17,7 +17,7 @@
         "fable": false
       },
       "meter": "codex-sol (weekly + 5h), see usage-windows.json",
-      "notes": "One Codex plan backs the MCP-volume worker (Terra), the coordination helper (Luna), and the Sol review seat \u2014 a worker/review family, not the assigned dispatcher here. Who dispatches is user-assigned in entrypoints.json (this setup: the Claude orchestration surface). These share the plan meter."
+      "notes": "One Codex plan backs Terra, Luna, and Sol. Any may be the requested per-run dispatcher when qualified; Terra/Luna share codex-plan usage while Sol has a separate tracked role row."
     },
     "grok-heavy": {
       "vendor": "xAI",
@@ -138,7 +138,7 @@
   },
   "derived_note": "Fable-capable Claude seats: any subscription with grants.fable == true (currently Max + 2 Team = 3 seats). Opus-capable seats: grants.opus == true (all 5). resolve-route.py treats Fable as available only if at least one Fable-capable seat is live per usage-status AND detect-capability has not recorded a downgrade. Fable stays OUT of the gating order (rare architecture/long-horizon escalation, same family as Opus). The live review order is Opus 5 \u2192 Codex Sol \u2192 Review E (if wired), filtered to live_verified routes \u2014 Fable absence never changes that order.",
   "portability_examples": {
-    "no-codex-user": "The Claude orchestration surface is already the dispatcher here, so removing Codex changes only the worker/review mix: you lose the OpenAI review family (Sol) and Terra MCP volume, and cross-family gates then need Review E (USER-GUIDE.md \u00a7Fable). Remove the codex-200 entry; doctor.py will confirm no orphaned providers.",
+    "no-codex-user": "Removing Codex removes Sol/Terra/Luna dispatch candidates, the OpenAI review family, and Terra MCP volume. Update entrypoint profiles/fallbacks; doctor.py must pass.",
     "solo-pro-user": "A single Claude Pro user keeps only claude-pro-25-a (rename freely), grants.fable:false; the review order collapses to opus-5 \u2192 review-e (if wired) \u2192 stop; Grok/Cursor entries removed."
   }
 }

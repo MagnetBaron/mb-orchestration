@@ -1476,7 +1476,15 @@ def _operational_prior_errors(
             f"does not bind route model {model_id!r}"
         )
     if pointer == "config/entrypoints.json":
-        if (data.get("dispatcher") or {}).get("provider") != provider_id:
+        dispatcher = data.get("dispatcher") or {}
+        bound = {dispatcher.get("default_provider")}
+        bound.update(dispatcher.get("fallback_order") or [])
+        bound.update(
+            p.get("preferred_dispatcher")
+            for p in (data.get("profiles") or {}).values()
+            if isinstance(p, dict)
+        )
+        if provider_id not in bound:
             errors.append(f"{loc}: entrypoints dispatcher does not bind provider {provider_id!r}")
     elif pointer == "config/connectors.json":
         connectors = data.get("mcp_connectors") or {}

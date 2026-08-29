@@ -2,12 +2,12 @@
 
 **Policy + tooling repo for Magnet Baron multi-CLI work.**
 
-One dispatcher assigns seats; abundant volume implements; scarce judgment reviews; a metered
+One dispatcher per run assigns seats; abundant volume implements; scarce judgment reviews; a metered
 independent family backs up review. Who fills each role is **config, not prose** — a new user ports
 the system by editing `config/`, running `bin/doctor.py`, and getting the same routing with no policy
 edits.
 
-**A user-assigned surface dispatches** — in this reference setup the Claude orchestration surface — fanning work out to sub-agents + seats and preserving its account by dispatching, not implementing. **Grok implements. GPT Terra runs Google-MCP volume. Opus 5 + Sol gate** (Fable = rare architecture/long-horizon escalation, same Anthropic family, out of the gating order). **Codex is a worker/review seat here** (dispatch is user-assigned; any dispatch-capable seat can hold it). Website Visual QA via Slack. Exclusive idle-mini QA via `qa-idle-handoff`. Cursor Other Models $400 is last. Review E (independent open-weight, unwired) is the review backstop.
+**Requested intake dispatches when usable; recorded exhaustion activates a configured fallback.** Sol, Opus 5, Opus 4.8, Fable, Terra, Luna, and Grok are tested dispatch targets. Reviewer selection flexes around dispatcher and authors. Grok remains preferred implementation; Terra runs Google-MCP volume; Opus 5 + Sol are the normal cross-family gate. Ordinary repo handoffs are preauthorized; restricted data parks.
 
 | Repo | URL | Opens as |
 |------|-----|----------|
@@ -47,7 +47,8 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `model-registry.json` | Canonical model/route/ranking catalog (identity, lifecycle, route state, evidence, per-role quality vs selection) |
 | `subscriptions.json` | The plans you pay for — **the one file a new user edits** |
 | `connectors.json` | Live MCP/analytics/store/Slack bindings (no stale IDs in prose) |
-| `entrypoints.json` | Entry surfaces (user choice) + the one dispatcher |
+| `entrypoints.json` | Entry surfaces, user profiles, per-run dispatcher fallback order |
+| `handoff-policy.json` | Ordinary preauthorization and restricted-data fail-closed classes |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
 | `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
 | `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources |
@@ -93,7 +94,7 @@ python3 bin/usage-status.py  # live seat map
 ```
 
 Port to a different user: edit `config/subscriptions.json` (your plans), `config/entrypoints.json`
-(your dispatcher/surfaces), `config/connectors.json` (your MCP/stores), set anchors in
+(your profiles/surfaces/fallbacks), `config/connectors.json` (your MCP/stores), set anchors in
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
-Daily: exactly one dispatcher assigns seats — the Claude orchestration surface (Opus 5 here; configurable). Type from any entry surface; only the dispatcher assigns and fans work to the tree. When something breaks, agents read `EDGE-CASES.md`.
+Daily: pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. When something breaks, agents read `EDGE-CASES.md`.

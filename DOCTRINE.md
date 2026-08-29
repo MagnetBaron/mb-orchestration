@@ -18,7 +18,7 @@ Unspent quota at reset is waste. Buckets are asymmetric (current providers in `c
 | **Abundant volume** | terra | Grok Build/Bot — code, listings, non-Google research, standing Bot work |
 | **MCP volume** | terra | GPT Terra — Google MCP fetches to `output_path` |
 | **Scarce judgment** | frontier / sole | Opus 5 (Anthropic gate) + Codex Sol — verify, land-gate, hard review; Fable = rare architecture/long-horizon escalation, same family, out of gating |
-| **Dispatcher** | varies (user-assigned) | The seat the user assigned in `entrypoints.dispatcher.provider` — here the Claude orchestration surface (Opus 5) — classify, risk-gate, assign, refill; fans work OUT to sub-agents + seats; preserves its account by dispatching, not implementing |
+| **Dispatcher** | varies (per-run) | Requested/profile intake provider when live and dispatch-qualified; otherwise best usable configured fallback. Exactly one effective dispatcher per run. |
 | **Last $** | terra | Cursor Other Models $400 — only after others are spent |
 | **Metered fallback** | frontier | Review E (independent family, unwired) — last-resort / cross-family second family. No reset — the drain law never applies. |
 
@@ -48,7 +48,7 @@ capability level — one config edit (`providers.json` §model_slot_in), no code
 
 ```
 OWNER — spend, credentials, destructive ops, authority expansion
-  └─ DISPATCH (user-assigned in entrypoints.dispatcher.provider; here the Claude orchestration surface — Opus 5) — classify, risk gate, assign, report; FANS work OUT to sub-agents (other Claude profiles/seats) + the seats below; preserves its account by dispatching, not implementing
+  └─ DISPATCH (requested intake/provider profile, resolved once per run) — classify, risk gate, assign, report
        ├─ IMPLEMENT (Grok Build) — code/listings in worktrees; never lands alone on high risk
        ├─ MCP VOLUME (GPT Terra) — Google connector fetches → output_path snapshots
        ├─ REVIEW D (Grok Bot Website Visual QA) — Slack + preview URL; app quit on Mini
@@ -56,20 +56,21 @@ OWNER — spend, credentials, destructive ops, authority expansion
        └─ REVIEW E (independent family, if wired) — last-resort / cross-family 2nd family; off-box
 ```
 
-**Entry surface ≠ dispatcher.** Where a request is typed is the user's choice (`config/entrypoints.json`
-entry surfaces). Who assigns seats is exactly one dispatcher — **user-assigned** in
-`entrypoints.dispatcher.provider` (here the Claude orchestration surface, Opus 5), which fans work
-out to sub-agents + seats and preserves its account by dispatching, not implementing. A non-dispatcher
-surface (Codex included — a worker/review seat in this setup) drafts a brief and hands it to the
-assigned dispatcher. Reassigning the dispatcher is a one-line `entrypoints.json` edit — the
-single-dispatcher invariant is unchanged; only the holder moves.
+**Entry surface ≠ global dispatcher.** Requested intake/provider identity and user profile are run
+inputs. `resolve-route.py` selects exactly one effective dispatcher for that run. A requested provider
+wins if explicit dispatch eligibility, provider capability, live-route capability, and backing usage
+all agree. Recorded unavailability triggers configured fallback. Known non-dispatch surfaces may relay
+ordinary briefs without gaining authority; unknown identities and malformed dispatch claims park.
 
-**Dispatch is user-assigned, never an absolute value.** Exactly one dispatcher holds the seat at a
-time; `config/entrypoints.json` `dispatcher.provider` records the current choice. Any provider the user
-owns that is `dispatch`-capable may hold it — the reference config binds it to the Claude orchestration
-surface because that is who THIS owner dispatched to, not because dispatch belongs to Claude. **The only
-absolute in this system is the Opus-5.0 block; everything else — including which seat dispatches, which
-providers exist, the tiers, and the review order — is user-configurable data.**
+**Review depends on provenance.** Resolver records dispatcher and artifact authors before review.
+Authors cannot review their own output. A dispatcher may review an artifact it did not author, but its
+scope is artifact-only; at least one different provider independently checks dispatch intent/risk.
+Cross-family gates still require distinct independence groups and physical invocations.
+
+**Data authority is stable.** Ordinary minimum-necessary briefs, repo source, diffs, tests, public docs,
+and synthetic evals are preauthorized between configured providers. Authorship never forces a new
+permission prompt. Restricted or unknown artifact classes park; the system never pressures an operator
+to approve credentials, tokens, restricted PII, customer data, or production exports.
 
 **Authority:** Owner → brief → `AGENTS.md` → specialty file → this doctrine → `EDGE-CASES.md`. Account facts (who/what/when) come from `config/`, read by `bin/` — never re-typed into prose.
 
@@ -84,9 +85,9 @@ whose seat is not a provider at the role's level.
 
 ## Correlated failure (pipes, not independent seats)
 
-The seats are not independent. **The dispatcher (Claude orchestration surface), Opus 5 review, and Fable are one pipe** (Anthropic via teamclaude, across the five seats) — so **dispatch now shares a pipe with a reviewer** (it no longer rides the Codex pipe). **Sol and Terra — plus the Luna coordination helper — are one pipe** (Codex). Native review therefore has **two** families, not four seats. Consequences:
+Seats sharing a provider pipe are not independent. If this run selects a Claude dispatcher, it shares the Anthropic pipe with Opus/Fable. If it selects Sol/Terra/Luna, it shares the Codex pipe. Grok uses the xAI pipe. Native review still counts families/independence groups, not seat labels.
 
-- A teamclaude blip looks like the **dispatcher AND Opus 5 review** down at once (and Fable, when granted); a Codex blip looks like **Sol AND Terra MCP** down at once. That is **one** outage each, not two — do not cascade to Review E or Cursor on it (`EDGE-CASES.md`). With five Claude seats, "teamclaude down" is rarer than one seat capping — check per-seat state in `usage-status` before calling the whole Anthropic pipe (dispatch + Opus review) dead.
+- A teamclaude blip removes Claude dispatch candidates plus Opus/Fable work. A Codex blip removes Sol/Terra/Luna candidates. Resolver moves dispatch to another configured live pipe but never pretends the failed pipe supplies an independent review.
 - Cross-family (safety gate 5) on only Anthropic + OpenAI means one spent family leaves the pair unsatisfiable. **Review E (independent open-weight) is the first genuinely independent third family** — that, not raw capacity, is why it earns a seat.
 
 ## Brief schema (required fields)

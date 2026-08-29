@@ -22,6 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
+import dispatch_evidence  # noqa: E402
 
 ROOT = HERE.parent
 CONFIG = ROOT / "config"
@@ -117,10 +118,28 @@ def check_providers(providers):
             elif provs[sup].get("enabled", True) and not provs[sup].get("compatibility_fallback"):
                 warn(f"provider {pid} supersedes {sup!r}, but {sup} is still enabled — disable/remove the incumbent (clean slot-in) or mark it compatibility_fallback")
         review_fns[pid] = p.get("functions", [])
-    order = providers.get("review_order", [])
+    order = list(dict.fromkeys((providers.get("review_order") or []) +
+                               (providers.get("review_fallbacks") or [])))
     for pid in order:
         if pid not in ids:
-            err(f"review_order references unknown provider {pid!r}")
+            err(f"review order/fallback references unknown provider {pid!r}")
+    for pid, p in provs.items():
+        if p.get("dispatch_eligible"):
+            if "dispatch" not in (p.get("functions") or []):
+                err(f"provider {pid}: dispatch_eligible requires dispatch function")
+            if "dispatch" not in (p.get("capabilities") or []):
+                err(f"provider {pid}: dispatch_eligible requires dispatch capability")
+            evidence = p.get("dispatch_evidence") or {}
+            if evidence.get("status") != "passed":
+                err(f"provider {pid}: dispatch_eligible requires passed dispatch_evidence")
+            trials = evidence.get("trials")
+            if not isinstance(trials, int) or trials < 1 or evidence.get("completed") != trials:
+                err(f"provider {pid}: dispatch_evidence requires all trials completed")
+            if evidence.get("reversals") != 0:
+                err(f"provider {pid}: dispatch_evidence requires zero observed reversals")
+            valid_receipt, receipt_reason = dispatch_evidence.validate(pid, p)
+            if not valid_receipt:
+                err(f"provider {pid}: dispatch_evidence {receipt_reason}")
     return provs, ids, forbidden
 
 
@@ -335,41 +354,78 @@ def check_entrypoints(entry, provs, provider_ids):
     if not entry:
         return
     disp = entry.get("dispatcher", {})
-    dp = disp.get("provider")
-    if dp not in provider_ids:
-        err(f"entrypoints dispatcher.provider {dp!r} is not a known provider")
-    elif "dispatch" not in provs.get(dp, {}).get("functions", []):
-        err(f"entrypoints dispatcher.provider {dp!r} lacks the 'dispatch' function")
+    if disp.get("selection_mode") != "intake-provider-first":
+        err("entrypoints dispatcher.selection_mode must be 'intake-provider-first'")
+    if disp.get("relay_known_unqualified_intake") is not True:
+        err("entrypoints dispatcher.relay_known_unqualified_intake must be true")
+    default = disp.get("default_provider")
+    fallback = disp.get("fallback_order") or []
+    for label, pid in [("default_provider", default)] + [("fallback_order", p) for p in fallback]:
+        if pid not in provider_ids:
+            err(f"entrypoints dispatcher.{label} {pid!r} is not a known provider")
+        elif not provs.get(pid, {}).get("dispatch_eligible"):
+            err(f"entrypoints dispatcher.{label} {pid!r} is not dispatch_eligible")
+    if len(fallback) != len(set(fallback)):
+        err("entrypoints dispatcher.fallback_order must be unique")
+    if default not in fallback:
+        err("entrypoints dispatcher.default_provider must appear in fallback_order")
     surfaces = entry.get("entry_surfaces", {})
-    dispatchers = [(name, s) for name, s in surfaces.items() if s.get("can_dispatch")]
-    if len(dispatchers) != 1:
-        names = [n for n, _ in dispatchers]
-        err(f"entrypoints: exactly one can_dispatch:true required, found {len(dispatchers)} {names}")
-    else:
-        name, s = dispatchers[0]
-        if s.get("provider") != dp:
-            err(
-                f"entrypoints: can_dispatch surface {name} provider {s.get('provider')!r} "
-                f"!= dispatcher.provider {dp!r}"
-            )
-        declared = disp.get("level")
-        actual = (provs.get(dp) or {}).get("level")
-        if declared != actual:
-            err(
-                f"entrypoints: dispatcher.level {declared!r} != provider {dp} level {actual!r}"
-            )
-    if entry.get("rules", {}).get("single_dispatcher") is not True:
-        err("entrypoints rules.single_dispatcher must be true")
+    if not any(s.get("can_dispatch") for s in surfaces.values()):
+        err("entrypoints: at least one dispatch-capable surface is required")
     for name, s in surfaces.items():
-        p = s.get("provider")
-        if p is not None and p not in provider_ids:
-            err(f"entry surface {name}: provider {p!r} unknown")
+        pids = s.get("providers") or []
+        for p in pids:
+            if p not in provider_ids:
+                err(f"entry surface {name}: provider {p!r} unknown")
+            elif s.get("can_dispatch") and not provs.get(p, {}).get("dispatch_eligible"):
+                err(f"entry surface {name}: can_dispatch includes unqualified provider {p!r}")
+    for name, profile in (entry.get("profiles") or {}).items():
+        p = profile.get("preferred_dispatcher")
+        if p not in provider_ids or not provs.get(p, {}).get("dispatch_eligible"):
+            err(f"entrypoints profile {name}: preferred_dispatcher {p!r} is not dispatch_eligible")
+    if "default" not in (entry.get("profiles") or {}):
+        err("entrypoints profiles.default is required")
+    rules = entry.get("rules") or {}
+    if rules.get("single_dispatcher_per_run") is not True:
+        err("entrypoints rules.single_dispatcher_per_run must be true")
+    if rules.get("authorship_does_not_change_handoff_authority") is not True:
+        err("entrypoints rules.authorship_does_not_change_handoff_authority must be true")
 
 
-def check_windows(windows, subs_ids, fable_from_subs):
+def check_handoff_policy(policy):
+    if not policy:
+        return
+    ordinary = policy.get("ordinary_artifacts") or []
+    restricted = policy.get("restricted_artifacts") or []
+    if not ordinary or not restricted:
+        err("handoff-policy: ordinary_artifacts and restricted_artifacts must be non-empty")
+    overlap = sorted(set(ordinary) & set(restricted))
+    if overlap:
+        err(f"handoff-policy: artifact classes overlap: {overlap}")
+    rules = policy.get("rules") or {}
+    expected = {
+        "configured_provider_handoffs": "preauthorized",
+        "authorship_never_requires_permission": True,
+        "ordinary_requires_user_permission": False,
+        "restricted_action": "park",
+        "unknown_artifact_action": "park",
+        "no_permission_escalation_loop": True,
+        "minimum_necessary_only": True,
+    }
+    for key, value in expected.items():
+        if rules.get(key) != value:
+            err(f"handoff-policy rules.{key} must be {value!r}")
+
+
+def check_windows(windows, subs_ids, fable_from_subs, provs=None):
     fable_from_windows = set()
     if not windows:
         return
+    usage_ids = set(windows.get("seats", {}))
+    for pid, p in (provs or {}).items():
+        usage_seat = p.get("usage_seat")
+        if usage_seat and p.get("backed_by") in subs_ids and usage_seat not in usage_ids:
+            err(f"provider {pid}: usage_seat {usage_seat!r} is not in usage-windows.json")
     for seat, w in windows.get("seats", {}).items():
         sub = w.get("subscription")
         if sub is not None and sub not in subs_ids:
@@ -638,11 +694,12 @@ def main(argv=None):
     seat_exec = load_json("seat-exec.json", required=False)
     skills = load_json("skills.json", required=False)
     model_reg = load_json("model-registry.json")
+    handoff = load_json("handoff-policy.json")
 
     schema_validate({"providers": providers, "subscriptions": subs, "connectors": conns,
                      "entrypoints": entry, "usage_windows": windows, "roles": roles,
                      "review_depth": depth, "monitoring": monitoring, "seat_exec": seat_exec,
-                     "skills": skills, "model_registry": model_reg})
+                     "skills": skills, "model_registry": model_reg, "handoff_policy": handoff})
 
     if monitoring is not None:
         rd = monitoring.get("retention_days")
@@ -655,8 +712,9 @@ def main(argv=None):
     check_connector_lifecycle(conns, providers)
     check_skills(skills, providers, conns)
     check_entrypoints(entry, provs, provider_ids)
+    check_handoff_policy(handoff)
     subs_ids = set((subs or {}).get("subscriptions", {}))
-    check_windows(windows, subs_ids, fable_from_subs)
+    check_windows(windows, subs_ids, fable_from_subs, provs)
     check_review_depth(depth)
     check_doctrine_has_classes(depth)
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")

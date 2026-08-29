@@ -91,7 +91,7 @@ def c_never_strand():
 
 
 def c_genuine_park():
-    """Fable seats AND Sol hard-spent → cross-family truly parks; single-frontier survives on Opus."""
+    """With Sol spent, same-pipe Opus cannot independently validate an Opus dispatcher."""
     def fn():
         with tempfile.TemporaryDirectory() as tmp:
             led = seed_ledger(tmp, {"claude-max": HARD, "claude-team-a": HARD, "claude-team-b": HARD, "codex-sol": HARD})
@@ -99,8 +99,11 @@ def c_genuine_park():
                                  "--ledger", led, "--json"]).stdout)
             sf = json.loads(run([PY, "bin/resolve-route.py", "--class", "catalog-data", "--scale", "elevated",
                                  "--ledger", led, "--json"]).stdout)
-            ok = (not cf["review"]["satisfied"]) and sf["review"]["satisfied"] and sf["review"]["chain"][0]["provider"] == "opus-5"
-            return ok, f"cross-family parks={not cf['review']['satisfied']}, single-frontier→opus={sf['review']['chain'][0]['provider'] if sf['review']['chain'] else None}"
+            chain = sf["review"]["chain"]
+            ok = (not cf["review"]["satisfied"] and not sf["review"]["satisfied"]
+                  and bool(chain) and not chain[0].get("dispatch_independent", True))
+            return ok, (f"cross-family parks={not cf['review']['satisfied']}, "
+                        f"same-pipe single-frontier parks={not sf['review']['satisfied']}")
     return fn
 
 
@@ -291,8 +294,15 @@ def c_run_brief():
         side_effect_free = not Path(rl).exists()
         b = run([PY, "bin/run-brief.py", "--class", "money-data", "--scale", "elevated"])
         closed = b.returncode != 0 and "gated" in (b.stderr + b.stdout)
-        ok = dry and closed and side_effect_free
-        return ok, f"dry-run plan={dry}, fail-closed={closed}, side-effect-free={side_effect_free}"
+        c = run([PY, "bin/run-brief.py", "--dry-run", "--class", "repo-code", "--scale", "elevated",
+                 "--intake-provider", "codex-sol", "--artifacts", "brief,credentials", "--json"])
+        restricted = json.loads(c.stdout)
+        parked = (c.returncode == 0 and not restricted["handoff"]["allowed"]
+                  and not restricted["handoff"]["requires_user_permission"]
+                  and restricted["transition"]["to"] == "parked")
+        ok = dry and closed and side_effect_free and parked
+        return ok, (f"dry-run plan={dry}, fail-closed={closed}, side-effect-free={side_effect_free}, "
+                    f"restricted-parks-without-prompt={parked}")
 
 
 def c_skills():
@@ -406,7 +416,7 @@ def main(argv=None):
     check("route: money-data/elevated → cross-family", c_resolve("money-data", "elevated", "", "cross-family"))
     check("route: repo-code + auth → cross-family", c_resolve("repo-code", "routine", "auth", "cross-family"))
     check("never-strand: reserve Sol released for cross-family", c_never_strand())
-    check("genuine park: real exhaustion parks; single-frontier survives", c_genuine_park())
+    check("genuine park: same-pipe review cannot validate dispatch", c_genuine_park())
     check("last-resort parks without a coding-capable intake provider", c_dispatch_codes())
     check("last-resort names a concrete coding-capable provider", c_last_resort_names_coder)
     check("run-brief dry-run plans + fails closed (shells nothing)", c_run_brief)

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import sys
 import tempfile
@@ -1643,33 +1645,240 @@ class DispatcherAuthorityTests(unittest.TestCase):
         entry["entry_surfaces"].update(surface_overrides)
         return entry
 
-    def test_live_entrypoints_have_exactly_one_dispatcher(self):
+    def test_live_entrypoints_define_one_dispatcher_per_run(self):
         entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
         self.assertEqual(self._check(entry), [])
+        self.assertTrue(entry["rules"]["single_dispatcher_per_run"])
+        self.assertGreaterEqual(sum(bool(s["can_dispatch"]) for s in entry["entry_surfaces"].values()), 2)
 
-    def test_multiple_dispatchers_fail(self):
+    def test_multiple_dispatch_capable_surfaces_are_valid(self):
         entry = self._entry()
         entry["entry_surfaces"]["codex-cli"]["can_dispatch"] = True
-        errors = self._check(entry)
-        self.assertTrue(any("exactly one can_dispatch:true" in e for e in errors), errors)
+        self.assertEqual(self._check(entry), [])
 
-    def test_zero_dispatchers_fail(self):
+    def test_zero_dispatch_capable_surfaces_fail(self):
         entry = self._entry()
-        entry["entry_surfaces"]["claude-code"]["can_dispatch"] = False
+        for surface in entry["entry_surfaces"].values():
+            surface["can_dispatch"] = False
         errors = self._check(entry)
-        self.assertTrue(any("exactly one can_dispatch:true" in e and "found 0" in e for e in errors), errors)
+        self.assertTrue(any("at least one dispatch-capable surface" in e for e in errors), errors)
 
-    def test_provider_mismatch_fails(self):
+    def test_dispatch_surface_cannot_list_unqualified_provider(self):
         entry = self._entry()
-        entry["entry_surfaces"]["claude-code"]["provider"] = "codex-terra"
+        entry["entry_surfaces"]["claude-code"]["providers"].append("cursor-grok")
         errors = self._check(entry)
-        self.assertTrue(any("!= dispatcher.provider" in e for e in errors), errors)
+        self.assertTrue(any("unqualified provider 'cursor-grok'" in e for e in errors), errors)
 
-    def test_level_mismatch_fails(self):
+    def test_profile_provider_must_be_dispatch_eligible(self):
         entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
-        entry["dispatcher"]["level"] = "terra"
+        entry["profiles"]["default"]["preferred_dispatcher"] = "cursor-grok"
         errors = self._check(entry)
-        self.assertTrue(any("dispatcher.level" in e and "terra" in e for e in errors), errors)
+        self.assertTrue(any("profile default" in e and "cursor-grok" in e for e in errors), errors)
+
+    def test_default_profile_is_required(self):
+        entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
+        del entry["profiles"]["default"]
+        errors = self._check(entry)
+        self.assertTrue(any("profiles.default" in e for e in errors), errors)
+
+
+class DynamicDispatchAndHandoffTests(unittest.TestCase):
+    def _rows(self, spent=()):
+        def tier(name, default="available"):
+            return "spent" if name in spent else default
+        return [
+            {"seat": "codex-sol", "subscription": "codex-200", "tier": tier("codex-sol", "reserve"),
+             "billing": "included", "family": "openai", "intake": False, "window_kinds": ["weekly"]},
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": tier("codex-plan", "reserve"),
+             "billing": "included", "family": "openai", "intake": True, "window_kinds": ["rolling"]},
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": tier("grok-heavy"),
+             "billing": "included", "family": "xai", "intake": False, "window_kinds": ["weekly"]},
+            {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": tier("cursor-models"),
+             "billing": "included", "family": "cursor-pool", "intake": False, "window_kinds": ["monthly"]},
+            {"seat": "claude-max", "subscription": "claude-max-200", "tier": tier("claude-max"),
+             "billing": "included", "family": "anthropic", "fable": True, "intake": False,
+             "window_kinds": ["rolling"]},
+            {"seat": "claude-pro-a", "subscription": "claude-pro-25-a", "tier": tier("claude-pro-a"),
+             "billing": "included", "family": "anthropic", "fable": False, "intake": False,
+             "window_kinds": ["rolling"]},
+        ]
+
+    def _entry(self):
+        return json.loads((REPO / "config" / "entrypoints.json").read_text())
+
+    def test_every_tested_dispatch_target_honors_user_selection(self):
+        provs = providers()
+        for pid in ("codex-sol", "opus-5", "opus-4.8", "grok-build", "fable-5",
+                    "codex-terra", "codex-luna"):
+            got = rr.select_dispatcher(self._entry(), provs, self._rows(), live(), requested=pid)
+            self.assertTrue(got["satisfied"], (pid, got))
+            self.assertEqual(got["effective"], pid)
+            self.assertFalse(got["fallback_used"])
+
+    def test_spent_requested_model_falls_back_by_evidence_order(self):
+        got = rr.select_dispatcher(
+            self._entry(), providers(), self._rows(spent=("grok-heavy",)), live(),
+            requested="grok-build",
+        )
+        self.assertTrue(got["satisfied"], got)
+        self.assertEqual(got["effective"], "codex-terra")
+        self.assertTrue(got["fallback_used"])
+
+    def test_unavailable_requested_route_falls_back(self):
+        registry = live()
+        registry["routes"]["grok-4.6-build"]["route_state"] = "quota_spent"
+        got = rr.select_dispatcher(
+            self._entry(), providers(), self._rows(), registry, requested="grok-build",
+        )
+        self.assertTrue(got["satisfied"], got)
+        self.assertTrue(got["fallback_used"])
+        self.assertNotEqual(got["effective"], "grok-build")
+
+    def test_sol_usage_is_not_borrowed_from_generic_codex_intake_row(self):
+        got = rr.select_dispatcher(
+            self._entry(), providers(), self._rows(spent=("codex-sol",)), live(),
+            requested="codex-sol",
+        )
+        self.assertTrue(got["fallback_used"], got)
+        self.assertNotEqual(got["effective"], "codex-sol")
+
+    def test_fable_downgrade_ledger_removes_fable_from_dispatch(self):
+        got = rr.select_dispatcher(
+            self._entry(), providers(), self._rows(), live(), requested="fable-5",
+            ledger={"fable-downgrade:claude-max": {}},
+        )
+        self.assertTrue(got["satisfied"], got)
+        self.assertTrue(got["fallback_used"])
+        self.assertNotEqual(got["effective"], "fable-5")
+
+    def test_unknown_requested_dispatcher_fails_closed(self):
+        got = rr.select_dispatcher(self._entry(), providers(), self._rows(), live(), requested="not-a-provider")
+        self.assertFalse(got["satisfied"], got)
+        self.assertIsNone(got["effective"])
+        self.assertFalse(got["fallback_used"])
+
+    def test_known_non_dispatch_intake_relays_without_gaining_authority(self):
+        got = rr.select_dispatcher(self._entry(), providers(), self._rows(), live(), requested="cursor-grok")
+        self.assertTrue(got["satisfied"], got)
+        self.assertTrue(got["intake_relay"])
+        self.assertNotEqual(got["effective"], "cursor-grok")
+
+    def test_only_declared_non_dispatch_entry_surface_may_relay(self):
+        for pid in ("review-e", "grok-bot-heat-map", "local-llm-example"):
+            got = rr.select_dispatcher(self._entry(), providers(), self._rows(), live(), requested=pid)
+            self.assertFalse(got["satisfied"], (pid, got))
+            self.assertFalse(got.get("intake_relay", False))
+
+    def test_explicit_intake_provider_overrides_irrelevant_profile_name(self):
+        got = rr.select_dispatcher(
+            self._entry(), providers(), self._rows(), live(),
+            requested="codex-sol", profile="another-users-missing-profile",
+        )
+        self.assertTrue(got["satisfied"], got)
+        self.assertEqual(got["effective"], "codex-sol")
+
+    def test_incomplete_or_retracting_dispatch_evidence_fails_closed(self):
+        for mutation in ({"completed": 1}, {"reversals": 1}, {"status": "pending"},
+                         {"date": ""}, {"date": "not-a-date"}, {"date": "2999-01-01"},
+                         {"source": ""}, {"source": "unverifiable prose"}):
+            provs = providers()
+            provs["providers"]["codex-sol"]["dispatch_evidence"].update(mutation)
+            got = rr.select_dispatcher(self._entry(), provs, self._rows(), live(), requested="codex-sol")
+            self.assertFalse(got["satisfied"], (mutation, got))
+
+    def test_sol_dispatch_makes_opus_primary_and_sol_artifact_only(self):
+        reviewers = rr.live_reviewers(providers(), self._rows(), {}, live(), dispatcher="codex-sol")
+        self.assertEqual(reviewers[0]["provider"], "opus-5")
+        sol = next(r for r in reviewers if r["provider"] == "codex-sol")
+        self.assertFalse(sol["dispatch_independent"])
+        self.assertEqual(sol["review_scope"], "artifact-only")
+        review = rr.pick_review("cross-family", reviewers, False, 0)
+        self.assertTrue(review["satisfied"], review)
+        self.assertTrue(any(r["dispatch_independent"] for r in review["chain"]))
+
+    def test_same_pipe_reviewer_cannot_validate_dispatch_intent(self):
+        reviewers = rr.live_reviewers(
+            providers(), self._rows(), {}, live(), dispatcher="opus-5",
+        )
+        opus48 = next(r for r in reviewers if r["provider"] == "opus-4.8")
+        sol = next(r for r in reviewers if r["provider"] == "codex-sol")
+        self.assertFalse(opus48["dispatch_independent"])
+        self.assertEqual(opus48["review_scope"], "artifact-only")
+        self.assertTrue(sol["dispatch_independent"])
+        self.assertEqual(reviewers[0]["provider"], "codex-sol")
+
+    def test_same_codex_pipe_cannot_validate_terra_dispatch(self):
+        reviewers = rr.live_reviewers(
+            providers(), self._rows(), {}, live(), dispatcher="codex-terra",
+        )
+        sol = next(r for r in reviewers if r["provider"] == "codex-sol")
+        self.assertFalse(sol["dispatch_independent"])
+        self.assertEqual(sol["review_scope"], "artifact-only")
+        self.assertEqual(reviewers[0]["provider"], "opus-5")
+
+    def test_implementer_is_excluded_from_review_chain(self):
+        reviewers = rr.live_reviewers(
+            providers(), self._rows(), {}, live(), dispatcher="opus-5", authors=("codex-sol",),
+        )
+        self.assertNotIn("codex-sol", [r["provider"] for r in reviewers])
+        review = rr.pick_review("cross-family", reviewers, False, 0)
+        self.assertFalse(review["satisfied"], review)
+
+    def test_dispatcher_only_review_cannot_satisfy_gate(self):
+        only = [{"provider": "codex-sol", "seat": "codex-sol", "family": "openai",
+                 "tier": "reserve", "row": self._rows()[0], "dispatch_independent": False,
+                 "review_scope": "artifact-only"}]
+        self.assertFalse(rr.pick_review("single-frontier", only, False, 0)["satisfied"])
+
+    def test_ordinary_handoff_never_prompts_and_authorship_does_not_matter(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        got = rr.evaluate_handoff(policy, ["brief", "repo-source", "diff", "test-output"])
+        self.assertTrue(got["allowed"])
+        self.assertFalse(got["requires_user_permission"])
+        self.assertFalse(got["authorship_changes_authority"])
+
+    def test_restricted_and_unknown_handoffs_park_without_permission_loop(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        for artifact in ("credentials", "future-unclassified-artifact"):
+            got = rr.evaluate_handoff(policy, ["brief", artifact])
+            self.assertFalse(got["allowed"], got)
+            self.assertEqual(got["action"], "park")
+            self.assertFalse(got["requires_user_permission"])
+
+    def test_unknown_intake_parks_handoff_and_is_not_a_participant(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = rr.main(["--class", "internal-notes", "--intake-provider", "not-a-provider", "--json"])
+        got = json.loads(buf.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertFalse(got["handoff"]["allowed"])
+        self.assertEqual(got["handoff"]["action"], "park")
+        self.assertNotIn("not-a-provider", got["handoff"]["participants"])
+
+    def test_dispatcher_avoidance_never_outranks_included_over_metered(self):
+        rows = self._rows(spent=("cursor-models",)) + [
+            {"seat": "cursor-other-400", "subscription": "cursor-ultra", "tier": "available",
+             "billing": "metered", "family": "cursor-pool", "intake": False,
+             "window_kinds": ["none"]},
+        ]
+        steps = rr.pick_implement(
+            providers(), connectors(), rows, "repo-code", "", "", False, 0, live(),
+            avoid_provider="grok-build",
+        )
+        implement = next(s for s in steps if not s.get("input_seat"))
+        self.assertEqual(implement["seat"], "grok-build", steps)
+        self.assertEqual(implement["billing"], "included")
+
+    def test_non_dispatch_included_worker_beats_dispatcher_within_billing_class(self):
+        rows = self._rows()
+        next(r for r in rows if r["seat"] == "cursor-models")["tier"] = "reserve"
+        steps = rr.pick_implement(
+            providers(), connectors(), rows, "repo-code", "", "", False, 0, live(),
+            avoid_provider="grok-build",
+        )
+        implement = next(s for s in steps if not s.get("input_seat"))
+        self.assertEqual(implement["seat"], "cursor-grok", steps)
+        self.assertEqual(implement["billing"], "included")
 
 
 if __name__ == "__main__":

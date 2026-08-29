@@ -42,6 +42,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import routing  # noqa: E402
+import dispatch_evidence  # noqa: E402
 
 
 def _load_module(name, path):
@@ -84,6 +85,9 @@ def compute_depth(depth_conf, klass, scale, risk_flags):
 def provider_seats(pid, providers, rows):
     """Live usage rows backing a provider, best (route_key) first."""
     prov = providers["providers"].get(pid, {})
+    usage_seat = prov.get("usage_seat")
+    if usage_seat:
+        return sorted([r for r in rows if r.get("seat") == usage_seat], key=routing.route_key)
     sub = prov.get("backed_by")
     special = {"fireworks-api": ["review-e"]}
     if sub in special:
@@ -98,23 +102,192 @@ def provider_seats(pid, providers, rows):
     return sorted(seats, key=routing.route_key)
 
 
-def live_reviewers(providers, rows, ledger, registry):
+def evaluate_handoff(policy, artifacts):
+    """Classify the run's artifacts before any provider is selected.
+
+    Ordinary configured-provider handoffs are preauthorized. Restricted or unknown
+    classes park without producing a permission request.
+    """
+    ordinary = set(policy.get("ordinary_artifacts") or [])
+    restricted = set(policy.get("restricted_artifacts") or [])
+    requested = list(dict.fromkeys(a for a in artifacts if a))
+    bad = [a for a in requested if a in restricted]
+    unknown = [a for a in requested if a not in ordinary and a not in restricted]
+    allowed = not bad and not unknown
+    if bad:
+        reason = f"PARK: restricted artifact(s) cannot transfer automatically: {', '.join(bad)}"
+    elif unknown:
+        reason = f"PARK: unknown artifact class(es) fail closed: {', '.join(unknown)}"
+    else:
+        reason = "ordinary configured-provider handoff is preauthorized"
+    return {
+        "allowed": allowed,
+        "artifacts": requested,
+        "restricted": bad,
+        "unknown": unknown,
+        "requires_user_permission": False,
+        "authorship_changes_authority": False,
+        "action": "transfer-minimum-necessary" if allowed else "park",
+        "reason": reason,
+    }
+
+
+def provider_dispatch_configured(provider_id, provider, registry):
+    """Static dispatch claim: evidence + provider and bound-route capabilities agree."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+        return False
+    if provider.get("dispatch_eligible") is not True:
+        return False
+    evidence = provider.get("dispatch_evidence") or {}
+    trials = evidence.get("trials")
+    if (evidence.get("status") != "passed" or not isinstance(trials, int) or trials < 1
+            or evidence.get("completed") != trials or evidence.get("reversals") != 0):
+        return False
+    receipt_ok, _ = dispatch_evidence.validate(provider_id, provider)
+    if not receipt_ok:
+        return False
+    if "dispatch" not in (provider.get("functions") or []):
+        return False
+    if "dispatch" not in (provider.get("capabilities") or []):
+        return False
+    route = (registry.get("routes") or {}).get(provider.get("route") or "") or {}
+    return "dispatch" in (route.get("capabilities") or [])
+
+
+def provider_can_dispatch(provider_id, provider, registry):
+    """Configured dispatch claim whose bound catalog route is currently live."""
+    return (provider_dispatch_configured(provider_id, provider, registry)
+            and modelreg.provider_route_is_live(registry, provider))
+
+
+def dispatch_statuses(providers, rows, registry, entrypoints, ledger=None):
+    """Return capability/availability status for every configured provider."""
+    provs = providers.get("providers") or {}
+    fallback = (entrypoints.get("dispatcher") or {}).get("fallback_order") or []
+    order = {pid: i for i, pid in enumerate(fallback)}
+    downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
+    statuses = {}
+    for pid, p in provs.items():
+        configured = provider_dispatch_configured(pid, p, registry)
+        qualified = provider_can_dispatch(pid, p, registry)
+        seats = [s for s in provider_seats(pid, providers, rows) if routing.usable(s)] if qualified else []
+        if pid == "fable-5":
+            seats = [s for s in seats if s.get("seat") not in downgraded]
+        if qualified and not seats and p.get("kind") == "api":
+            seats = [{"seat": pid, "tier": "available", "billing": p.get("billing"),
+                      "family": p.get("family"), "intake": False, "window_kinds": ["none"]}]
+        seat = seats[0] if seats else None
+        statuses[pid] = {
+            "provider": pid,
+            "configured": configured,
+            "qualified": qualified,
+            "usable": seat is not None,
+            "seat": seat,
+            "family": p.get("family"),
+            "prowess": (p.get("prowess") or {}).get("dispatch", 0),
+            "fallback_order": order.get(pid, 999),
+        }
+    return statuses
+
+
+def select_dispatcher(entrypoints, providers, rows, registry, requested=None, profile="default", ledger=None):
+    """Select exactly one dispatcher per run; explicit valid intake choice wins."""
+    profiles = entrypoints.get("profiles") or {}
+    if requested is None and profile not in profiles:
+        return {"satisfied": False, "requested": requested, "effective": None,
+                "profile": profile, "fallback_used": False,
+                "explanation": f"PARK: unknown dispatcher profile {profile!r}"}
+    disp = entrypoints.get("dispatcher") or {}
+    preferred = requested or (profiles.get(profile) or {}).get("preferred_dispatcher") or disp.get("default_provider")
+    statuses = dispatch_statuses(providers, rows, registry, entrypoints, ledger=ledger)
+    status = statuses.get(preferred)
+    if status is None:
+        return {"satisfied": False, "requested": preferred, "effective": None,
+                "profile": profile, "fallback_used": False,
+                "explanation": f"PARK: requested dispatcher {preferred!r} is not configured"}
+    if not status["configured"]:
+        p = (providers.get("providers") or {}).get(preferred) or {}
+        relay_ids = {
+            pid
+            for surface in (entrypoints.get("entry_surfaces") or {}).values()
+            if not surface.get("can_dispatch")
+            for pid in (surface.get("providers") or [])
+        }
+        # A known non-dispatch entry surface may relay an ordinary brief without gaining
+        # dispatch authority. A provider claiming dispatch eligibility but failing its
+        # evidence/capability/live-route conjunction is misconfigured and fails closed.
+        if (p.get("dispatch_eligible") or preferred not in relay_ids
+                or not disp.get("relay_known_unqualified_intake")):
+            return {"satisfied": False, "requested": preferred, "effective": None,
+                    "profile": profile, "fallback_used": False,
+                    "explanation": f"PARK: requested dispatcher {preferred!r} is not dispatch-qualified on a live route"}
+        candidates = [s for pid, s in statuses.items()
+                      if pid != preferred and s["fallback_order"] < 999 and s["qualified"] and s["usable"]]
+        candidates.sort(key=lambda s: (s["fallback_order"], routing.route_key(s["seat"]),
+                                       -s["prowess"], s["provider"]))
+        if not candidates:
+            return {"satisfied": False, "requested": preferred, "effective": None,
+                    "profile": profile, "fallback_used": False, "intake_relay": True,
+                    "explanation": f"PARK: intake provider {preferred!r} cannot dispatch and no live relay target remains"}
+        chosen = candidates[0]
+        s = chosen["seat"]
+        return {"satisfied": True, "requested": preferred, "effective": chosen["provider"],
+                "profile": profile, "fallback_used": True, "intake_relay": True,
+                "seat": s["seat"], "tier": s["tier"], "family": chosen["family"],
+                "explanation": (f"known intake provider {preferred} is not dispatch-qualified; "
+                                f"relayed ordinary brief to {chosen['provider']} on {s['seat']}")}
+    if status["usable"]:
+        s = status["seat"]
+        return {"satisfied": True, "requested": preferred, "effective": preferred,
+                "profile": profile, "fallback_used": False, "seat": s["seat"],
+                "tier": s["tier"], "family": status["family"],
+                "explanation": f"requested intake provider {preferred} is live and usable"}
+    if not disp.get("fallback_on_recorded_unavailability"):
+        return {"satisfied": False, "requested": preferred, "effective": None,
+                "profile": profile, "fallback_used": False,
+                "explanation": f"PARK: requested dispatcher {preferred} is unavailable and fallback is disabled"}
+    candidates = [s for pid, s in statuses.items()
+                  if pid != preferred and s["fallback_order"] < 999 and s["qualified"] and s["usable"]]
+    candidates.sort(key=lambda s: (s["fallback_order"], routing.route_key(s["seat"]),
+                                   -s["prowess"], s["provider"]))
+    if not candidates:
+        return {"satisfied": False, "requested": preferred, "effective": None,
+                "profile": profile, "fallback_used": False,
+                "explanation": f"PARK: requested dispatcher {preferred} is unavailable and no live fallback remains"}
+    chosen = candidates[0]
+    s = chosen["seat"]
+    return {"satisfied": True, "requested": preferred, "effective": chosen["provider"],
+            "profile": profile, "fallback_used": True, "seat": s["seat"], "tier": s["tier"],
+            "family": chosen["family"],
+            "explanation": (f"{preferred} unavailable by recorded usage/route state; "
+                            f"fell back to {chosen['provider']} on {s['seat']}")}
+
+
+def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=()):
     """Reviewers whose bound catalog route is live. Registry is required; unknown state fails closed."""
     if not registry:
         return []
     by_name = {r["seat"]: r for r in rows}
     prov = providers["providers"]
-    order_index = {pid: i for i, pid in enumerate(providers["review_order"])}
-    live_ids = set(modelreg.live_review_providers(registry, providers))
+    review_ids = list(dict.fromkeys((providers.get("review_order") or []) +
+                                    (providers.get("review_fallbacks") or [])))
+    order_index = {pid: i for i, pid in enumerate(review_ids)}
+    live_ids = {pid for pid in review_ids
+                if modelreg.provider_route_is_live(registry, prov.get(pid) or {})}
+    author_ids = set(authors or ())
+    dispatcher_family = (prov.get(dispatcher) or {}).get("family")
+    dispatcher_group = modelreg.independence_group_of(registry, dispatcher_family)
 
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
     fable_seats = [r for r in rows if r.get("fable") and routing.usable(r) and r["seat"] not in downgraded]
     anthropic_seats = [r for r in rows if r.get("family") == "anthropic" and routing.usable(r)]
 
     out = []
-    for pid in providers["review_order"]:
+    for pid in review_ids:
         p = prov.get(pid, {})
         if not p.get("review_eligible"):
+            continue
+        if pid in author_ids:
             continue
         if pid not in live_ids:
             continue
@@ -142,18 +315,24 @@ def live_reviewers(providers, rows, ledger, registry):
                 seat = {"seat": pid, "tier": "available", "billing": p.get("billing"),
                         "family": fam, "intake": False, "window_kinds": ["none"]}
         if seat is not None:
+            dispatch_independent = not dispatcher_group or group != dispatcher_group
             out.append({"provider": pid, "family": fam, "independence_group": group,
                         "physical": phys, "seat": seat["seat"], "tier": seat["tier"],
-                        "billing": seat.get("billing"), "row": seat, "order": order_index.get(pid, 99)})
-    # preferred first: included/available/non-intake by route_key, then prowess order
-    out.sort(key=lambda e: (routing.route_key(e["row"]), e["order"]))
+                        "billing": seat.get("billing"), "row": seat, "order": order_index.get(pid, 99),
+                        "dispatch_independent": dispatch_independent,
+                        "review_scope": "artifact-and-dispatch" if dispatch_independent else "artifact-only"})
+    # Independent dispatch check first, then different family, then live usage/economic order.
+    out.sort(key=lambda e: (not e["dispatch_independent"],
+                            bool(dispatcher_family and e["family"] == dispatcher_family),
+                            routing.route_key(e["row"]), e["order"]))
     return out
 
 
 def note_for(entry):
     t = entry["tier"]
     tag = "" if t == "available" else " (reserve released — never strand)"
-    return f"{entry['provider']} on {entry['seat']} [{entry['family']}]{tag}"
+    scope = f", {entry.get('review_scope')}" if entry.get("review_scope") else ""
+    return f"{entry['provider']} on {entry['seat']} [{entry['family']}{scope}]{tag}"
 
 
 def pick_review(level, reviewers, review_e_wired, task_seconds):
@@ -169,6 +348,9 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
     warn = f" ⚠ resets mid-task: {', '.join(r['seat'] for r in swap)} — bring in at the next boundary" if swap else ""
     if level == "single-frontier":
         first = reviewers[0]
+        if not first.get("dispatch_independent", True):
+            return {"satisfied": False, "chain": [first],
+                    "explanation": "PARK: only the dispatcher can review; dispatch intent/risk lacks an independent check."}
         rest = ", ".join(r["provider"] for r in reviewers[1:]) or "(none — then park)"
         return {"satisfied": True, "chain": [first],
                 "explanation": f"single-frontier: {note_for(first)}. Fallback: {rest}.{warn}"}
@@ -187,6 +369,9 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
         None,
     )
     if second:
+        if not any(r.get("dispatch_independent", True) for r in (first, second)):
+            return {"satisfied": False, "chain": [first, second],
+                    "explanation": "PARK: review chain lacks an independent dispatch intent/risk check."}
         return {"satisfied": True, "chain": [first, second],
                 "explanation": f"cross-family: {note_for(first)} + {note_for(second)} — one pass each, "
                                f"sequential. blocked wins on disagreement.{warn}"}
@@ -256,7 +441,7 @@ def last_resort_coder(prov, registry, subscription, cap_ok):
 
 
 def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels,
-                   task_seconds, registry):
+                   task_seconds, registry, avoid_provider=None):
     prov = providers["providers"]
     steps = []
     if not registry:
@@ -286,7 +471,16 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         s = best_seat(pid)
         if s and not s.get("intake"):
             workers.append((pid, s))
-    workers.sort(key=lambda ps: routing.route_key(ps[1]))
+    # Preserve dispatcher context/quota when another equally eligible worker is live.
+    # This is a preference, not an absolute: the dispatcher remains a last usable worker.
+    def worker_key(pair):
+        pid, seat = pair
+        economic = routing.route_key(seat)
+        # Included always beats metered. Within a billing class, keep dispatch out
+        # of implementation while any other usable coder remains, even if reserve.
+        return (economic[0], pid == avoid_provider, *economic[1:])
+
+    workers.sort(key=worker_key)
 
     if needs_mcp:
         # MCP bulk to Terra first. Any failed prerequisite PARKS the whole pipeline —
@@ -422,12 +616,20 @@ def main(argv=None):
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--task-seconds", type=int, default=0, help="est. task length; flags seats that reset before it finishes (no mid-turn swaps)")
     ap.add_argument("--user-said-ship", action="store_true")
+    ap.add_argument("--intake-provider", default="",
+                    help="user-selected dispatcher provider for this run; valid usable choice wins")
+    ap.add_argument("--profile", default="default",
+                    help="entrypoints profile used when --intake-provider is omitted")
+    ap.add_argument("--artifacts", default="",
+                    help="comma-separated handoff classes; restricted/unknown classes PARK without asking permission")
     ap.add_argument("--ledger", default=None)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
+    entrypoints = mborch.load_config("entrypoints.json")
+    handoff_policy = mborch.load_config("handoff-policy.json")
     connectors = mborch.load_config("connectors.json", required=False) or {}
     registry = mborch.load_config("model-registry.json")
     if not registry:
@@ -442,18 +644,83 @@ def main(argv=None):
     ledger = json.loads(lp.read_text()) if lp.exists() else {}
 
     level, reasons, extra = compute_depth(depth_conf, args.klass, args.scale, risk_flags)
-    reviewers = live_reviewers(providers, rows, ledger, registry)
+    artifacts = [a.strip() for a in args.artifacts.split(",") if a.strip()]
+    required_artifacts = {"brief"}
+    if level not in ("none", "self-check"):
+        required_artifacts.add("diff")
+    if args.implement:
+        required_artifacts.update(("repo-source", "diff", "test-output"))
+    if not artifacts:
+        artifacts = sorted(required_artifacts)
+    handoff = evaluate_handoff(handoff_policy, artifacts)
+    missing_artifacts = sorted(required_artifacts - set(artifacts))
+    handoff["missing_required"] = missing_artifacts
+    if missing_artifacts and handoff["allowed"]:
+        handoff.update({
+            "allowed": False,
+            "action": "park",
+            "reason": f"PARK: required handoff artifact class(es) not declared: {', '.join(missing_artifacts)}",
+        })
+    dispatcher = select_dispatcher(entrypoints, providers, rows, registry,
+                                   requested=args.intake_provider.strip() or None,
+                                   profile=args.profile, ledger=ledger)
+    if not dispatcher.get("satisfied") and handoff["allowed"]:
+        handoff.update({"allowed": False, "action": "park", "reason": dispatcher["explanation"]})
+    effective_dispatcher = dispatcher.get("effective") if dispatcher.get("satisfied") else None
+    implement = None
+    if args.implement and handoff["allowed"] and dispatcher.get("satisfied"):
+        implement = pick_implement(
+            providers, connectors, rows, args.klass, args.needs_connector.strip(),
+            args.needs_mcp.strip(), args.pixels, args.task_seconds, registry,
+            avoid_provider=effective_dispatcher,
+        )
+    authors = [s.get("seat") for s in (implement or [])
+               if s.get("available", True) and not s.get("input_seat") and s.get("seat") not in (None, "(none)")]
+    reviewers = live_reviewers(providers, rows, ledger, registry,
+                               dispatcher=effective_dispatcher, authors=authors)
     review_e = providers["providers"].get("review-e") or {}
     review_e_wired = modelreg.provider_route_is_live(registry, review_e)
-    review = pick_review(level, reviewers, review_e_wired, args.task_seconds)
-    implement = pick_implement(providers, connectors, rows, args.klass, args.needs_connector.strip(),
-                               args.needs_mcp.strip(), args.pixels, args.task_seconds,
-                               registry) if args.implement else None
+    if not handoff["allowed"]:
+        review = {"satisfied": False, "chain": [], "explanation": handoff["reason"]}
+    elif not dispatcher.get("satisfied"):
+        review = {"satisfied": False, "chain": [], "explanation": dispatcher["explanation"]}
+    else:
+        review = pick_review(level, reviewers, review_e_wired, args.task_seconds)
+    configured_provider_ids = set(providers.get("providers") or {})
+    intake_identity = dispatcher.get("requested") if dispatcher.get("requested") in configured_provider_ids else None
+    participants = ([intake_identity] if intake_identity else []) + ([effective_dispatcher] if effective_dispatcher else []) + authors + [r["provider"] for r in review["chain"]]
+    handoff["participants"] = list(dict.fromkeys(p for p in participants if p))
+    unknown_participants = [p for p in handoff["participants"] if p not in configured_provider_ids]
+    handoff["unknown_participants"] = unknown_participants
+    if unknown_participants:
+        handoff.update({
+            "allowed": False,
+            "action": "park",
+            "reason": f"PARK: handoff participant(s) are not configured: {', '.join(unknown_participants)}",
+        })
+    impl_required_steps = [s for s in (implement or []) if not s.get("input_seat")]
+    implementation_satisfied = (not args.implement or
+                                (bool(impl_required_steps) and all(s.get("available", True) for s in impl_required_steps)))
+    routing_satisfied = bool(handoff["allowed"] and dispatcher.get("satisfied") and
+                             review.get("satisfied") and implementation_satisfied)
+    if not handoff["allowed"]:
+        park_reason = handoff["reason"]
+    elif not dispatcher.get("satisfied"):
+        park_reason = dispatcher["explanation"]
+    elif not review.get("satisfied"):
+        park_reason = review["explanation"]
+    elif not implementation_satisfied:
+        park_reason = "PARK: no complete usable implementation path"
+    else:
+        park_reason = None
 
     decision = {
         "class": args.klass, "scale": args.scale, "risk_flags": risk_flags,
         "review_depth": level, "depth_reasons": reasons, "review": review,
-        "live_reviewers": [{k: e[k] for k in ("provider", "family", "seat", "tier", "billing")} for e in reviewers],
+        "dispatcher": dispatcher, "handoff": handoff, "authors": authors,
+        "routing_satisfied": routing_satisfied, "park_reason": park_reason,
+        "live_reviewers": [{k: e[k] for k in ("provider", "family", "seat", "tier", "billing",
+                                                "dispatch_independent", "review_scope")} for e in reviewers],
         "gates": {
             "review_d_pixels": bool(extra.get("review_d") or args.pixels or args.klass == "storefront-theme"),
             "owner_gate": bool(extra.get("owner")), "human_gate": bool(extra.get("human")),
@@ -471,6 +738,8 @@ def main(argv=None):
     print(f"review depth: {level}")
     for r in reasons:
         print(f"  · {r}")
+    print(f"dispatcher: {'SATISFIED' if dispatcher['satisfied'] else 'NOT SATISFIED'} — {dispatcher['explanation']}")
+    print(f"handoff: {'ALLOWED' if handoff['allowed'] else 'PARK'} — {handoff['reason']} (permission prompt: no)")
     print(f"review: {'SATISFIED' if review['satisfied'] else 'NOT SATISFIED'}")
     print(f"  {review['explanation']}")
     for i, c in enumerate(review["chain"], 1):

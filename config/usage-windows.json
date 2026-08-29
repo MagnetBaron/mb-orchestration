@@ -25,7 +25,7 @@
       "reserve_pct": null, "drain": "reserve", "intake": true, "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 }, { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" } ],
       "live_signal": "hard 429 on a real Codex call → usage-ledger.json",
-      "reset_note": "Codex worker plan held in reserve as the intake seat (the assigned dispatcher here is the Claude orchestration surface, not this seat); yields to coding only when every other worker seat is spent (never-strand; 2-sub setups: the intake seat codes)"
+      "reset_note": "Shared Codex intake row for Terra/Luna. If either dispatches, reserve preserves coordination headroom but remains usable. Sol has its own usage row."
     },
     "grok-heavy": {
       "meter": "SuperGrok Heavy (grok CLI / Build / Bot)", "subscription": "grok-heavy", "family": "xai",
