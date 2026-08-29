@@ -216,7 +216,23 @@
         "routes": { "type": "object", "minProperties": 1 },
         "roles": { "type": "object", "minProperties": 1 },
         "rankings": { "type": "object", "minProperties": 1 },
-        "intake": { "type": "object", "required": ["promote_requires"] }
+        "intake": {
+          "type": "object",
+          "required": ["promote_requires", "legacy_waiver_routes"],
+          "properties": {
+            "promote_requires": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "legacy_waiver_routes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "seat_exec": {

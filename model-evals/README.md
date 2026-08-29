@@ -26,16 +26,24 @@ required promote checklist under `intake.promote_requires`.
    Those six items are `intake.promote_requires`. Each `live_verified` route must carry an
    `attestations` object with one entry per item and a typed `state`: `attested`,
    `missing`, `not_applicable`, or `waived`. Boolean `attested: true` is rejected.
-   `attested` requires a dated supporting source whose semantics match the requirement
-   (absence language such as “no suite” or “not invented” cannot pass). `missing` cannot
-   promote. `not_applicable` needs a structural rationale. `waived` is only for
-   already-operational legacy/standing-provider seats, with `authority`, date, and short
-   expiry; new candidates may never use a legacy waiver. `official_id` requires a direct
-   official https URL — local JSON paths are not sufficient. `local_access_smoke` also
-   requires `signal`: `direct_invocation` (a real host smoke) or `standing_provider`
-   (an already-operational seat; a listing is not an invocation). Do not invent new
-   smokes to fill a checkbox. Validation compares evidence and attestation dates to the
-   **actual current date** unless you pass `--as-of YYYY-MM-DD` (or
+   `attested` requires a field-specific `evidence_kind` and a dated supporting source whose
+   semantics match the requirement (absence language such as “evaluation suite absent”,
+   “missing”, or “no evidence” cannot pass). `missing` cannot promote. `not_applicable`
+   requires a closed `structural_code` validated for that field and route (for example
+   `compatibility_fallback_not_ranked` on Opus 4.8 role evals / independent evidence);
+   free-form rationale never establishes N/A. `waived` is only for exact route ids on
+   `intake.legacy_waiver_routes`, with `authority`, date, and short expiry; mutable
+   host/provider/model/evidence fields never qualify a candidate, and new routes cannot
+   be added to that allowlist automatically. `official_id` requires a direct official
+   https URL on a family domain from `official_sources.allowed_domains_by_family` —
+   local JSON paths, example.com, and another family's domain are not sufficient.
+   `local_access_smoke` also requires `signal` / `evidence_kind`: `direct_invocation`
+   (a real host smoke) or `standing_provider` (an already-operational seat; a listing is
+   not an invocation) with matching live route evidence. Do not invent new smokes to
+   fill a checkbox. Quality rankings: `confidence: high` is only `basis: local_same_harness`
+   with a committed same-role receipt; other bases cap at medium/low and need a
+   basis-appropriate source pointer. Validation compares evidence and attestation dates
+   to the **actual current date** unless you pass `--as-of YYYY-MM-DD` (or
    `validate(..., as_of=)` in tests). `registry.as_of` is a catalog label, not the freshness
    clock. Future-dated, missing, stale, mismatched, semantically contradictory, or
    expired-waiver evidence fails closed. Review E / `open-weight-review-e` is a local
@@ -89,11 +97,13 @@ omitted. `flags: ["invented_metric"]` zeros the evidence-discipline term.
 
 1. Attach the receipt path and date to the route's `evidence` list.
 2. Update per-role `quality` ranks only from the same harness and effort,
-   and only then set `basis` to `local_same_harness`. Without a same-role
-   local receipt, keep the row labeled
-   `independent_external_prior` / `vendor_external_prior` /
-   `operational_prior` and do not imply empirical comparability.
-   Do not merge scores across harnesses into one global leaderboard.
+   and only then set `basis` to `local_same_harness` with `confidence: high`
+   and the receipt path as `source`. Without a same-role local receipt, keep
+   the row labeled `independent_external_prior` / `vendor_external_prior` /
+   `operational_prior`, cap confidence at medium/low, and attach a
+   basis-appropriate URL or policy/config pointer. Do not imply empirical
+   comparability. Do not merge scores across harnesses into one global
+   leaderboard.
 3. Keep `selection` independent of `quality`. A scarce top model can rank
    first on quality while a cheaper live route remains the default.
 4. Token-efficiency of context scouting, evidence audit, and

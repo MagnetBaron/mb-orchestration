@@ -35,14 +35,28 @@
       "cost_context",
       "owner_approval"
     ],
+    "legacy_waiver_routes": [
+      "fable-5-teamclaude",
+      "gpt-5.6-luna-codex",
+      "gpt-5.6-sol-codex",
+      "gpt-5.6-terra-codex",
+      "grok-4.6-build",
+      "grok-4.6-cursor",
+      "grok-bot-heat-map",
+      "grok-bot-visual-qa",
+      "opus-4.8-teamclaude",
+      "opus-5-teamclaude"
+    ],
     "attestation_fields": {
       "state": "attested | missing | not_applicable | waived. Boolean attested is rejected.",
+      "evidence_kind": "required for attested. Field-specific closed enum: official_id official_vendor_catalog|official_vendor_release; local_access_smoke direct_invocation|standing_provider (must match signal and live route evidence); role_evals normalized_receipt; independent_evidence independent_benchmark|independent_source; cost_context provider_receipt|official_pricing|standing_contract|independent_pricing; owner_approval committed_owner_record.",
+      "structural_code": "required for not_applicable. Closed enum validated per field and route role/lifecycle: compatibility_fallback_not_ranked (Opus 4.8 role_evals/independent_evidence); app_only_pixel_walk_not_text_suite; app_only_analytics_input_not_text_suite. Free-form rationale never establishes N/A.",
       "date": "YYYY-MM-DD compared to the validation clock (actual current date unless --as-of / validate(as_of=))",
       "source": "auditable pointer. attested requires a dated direct supporting source/receipt whose semantics support the requirement. Local JSON paths are not sufficient for official_id. waived source must not claim the evidence exists.",
       "signal": "direct_invocation | standing_provider \u2014 required on attested local_access_smoke. A listing is not an invocation.",
       "rationale": "required for not_applicable (structural inapplicability, never a synonym for missing) and waived (honest migration exception).",
       "authority": "required for waived; existing_operational_state unless a committed source establishes a different authority. Do not claim owner approval without that source.",
-      "expires": "required for waived; short time-bounded expiry. After expiry the route fails closed. New candidates may never use a legacy waiver."
+      "expires": "required for waived; short time-bounded expiry. After expiry the route fails closed. New candidates may never use a legacy waiver. Eligibility is exact route id on legacy_waiver_routes only."
     },
     "freshness_clock": "Validation compares evidence and attestation dates to the actual current date. registry.as_of is a catalog label, not the freshness clock. Pass --as-of YYYY-MM-DD (or validate(..., as_of=) in tests) to freeze the clock. Future-dated evidence fails closed. Missing, stale, mismatched, semantically contradictory, expired-waiver, or unattested live_verified evidence fails closed.",
     "future_evaluations": {
@@ -574,28 +588,33 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://www.anthropic.com/news/claude-opus-5"
+          "source": "https://www.anthropic.com/news/claude-opus-5",
+          "evidence_kind": "official_vendor_release"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Direct live smoke: teamclaude resolved claude-opus-5 (canonical, first-party, 1M context)",
-          "signal": "direct_invocation"
+          "signal": "direct_invocation",
+          "evidence_kind": "direct_invocation"
         },
         "role_evals": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl"
+          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl",
+          "evidence_kind": "normalized_receipt"
         },
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/claude-opus-5"
+          "source": "https://artificialanalysis.ai/models/claude-opus-5",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model (vendor list $5/$25 as_of 2026-08-28)"
+          "source": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model (vendor list $5/$25 as_of 2026-08-28)",
+          "evidence_kind": "official_pricing"
         },
         "owner_approval": {
           "state": "waived",
@@ -648,25 +667,29 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model"
+          "source": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model",
+          "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Direct live smoke: teamclaude requested/returned claude-opus-4-8; marker OPUS48_SMOKE_OK",
-          "signal": "direct_invocation"
+          "signal": "direct_invocation",
+          "evidence_kind": "direct_invocation"
         },
         "role_evals": {
           "state": "not_applicable",
           "date": "2026-08-28",
           "source": "route.compatibility_fallback + fallback_until 2026-12-31",
-          "rationale": "Structurally a time-bounded compatibility fallback, not a ranked operational promotion. Role-eval suites apply to ranked seats, not this fallback."
+          "rationale": "Structurally a time-bounded compatibility fallback, not a ranked operational promotion. Role-eval suites apply to ranked seats, not this fallback.",
+          "structural_code": "compatibility_fallback_not_ranked"
         },
         "independent_evidence": {
           "state": "not_applicable",
           "date": "2026-08-28",
           "source": "route.compatibility_fallback; model lifecycle superseded",
-          "rationale": "Structurally a superseded compatibility fallback, not a quality-ranked candidate. Independent quality anchors are not a promotion input for this route."
+          "rationale": "Structurally a superseded compatibility fallback, not a quality-ranked candidate. Independent quality anchors are not a promotion input for this route.",
+          "structural_code": "compatibility_fallback_not_ranked"
         },
         "cost_context": {
           "state": "waived",
@@ -750,28 +773,33 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://www.anthropic.com/news/claude-fable-5-mythos-5"
+          "source": "https://www.anthropic.com/news/claude-fable-5-mythos-5",
+          "evidence_kind": "official_vendor_release"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Direct architecture-critique invocation: canonical claude-fable-5; teamclaude status listing as standing signal",
-          "signal": "direct_invocation"
+          "signal": "direct_invocation",
+          "evidence_kind": "direct_invocation"
         },
         "role_evals": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl"
+          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl",
+          "evidence_kind": "normalized_receipt"
         },
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/claude-fable-5/"
+          "source": "https://artificialanalysis.ai/models/claude-fable-5/",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/claude-fable-5/ usd_per_task 3.14 as_of 2026-08-28; no vendor list price in catalog"
+          "source": "https://artificialanalysis.ai/models/claude-fable-5/ usd_per_task 3.14 as_of 2026-08-28; no vendor list price in catalog",
+          "evidence_kind": "independent_pricing"
         },
         "owner_approval": {
           "state": "waived",
@@ -811,13 +839,15 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://openai.com/index/gpt-5-6/"
+          "source": "https://openai.com/index/gpt-5-6/",
+          "evidence_kind": "official_vendor_release"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing operational Codex Sol provider in providers.json; gpt --models listing (not a direct invocation in this audit)",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "waived",
@@ -830,12 +860,14 @@
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/"
+          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/ usd_per_task 0.67 as_of 2026-08-28"
+          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/ usd_per_task 0.67 as_of 2026-08-28",
+          "evidence_kind": "independent_pricing"
         },
         "owner_approval": {
           "state": "waived",
@@ -875,13 +907,15 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://openai.com/index/gpt-5-6/"
+          "source": "https://openai.com/index/gpt-5-6/",
+          "evidence_kind": "official_vendor_release"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing operational Codex Terra provider in providers.json; gpt --models listing (not a direct invocation in this audit)",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "waived",
@@ -945,13 +979,15 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://openai.com/index/gpt-5-6/"
+          "source": "https://openai.com/index/gpt-5-6/",
+          "evidence_kind": "official_vendor_release"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing operational Codex Luna provider in providers.json; gpt --models listing (not a direct invocation in this audit)",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "waived",
@@ -1107,13 +1143,15 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://docs.x.ai/developers/grok-4-6"
+          "source": "https://docs.x.ai/developers/grok-4-6",
+          "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing operational Grok Build implementer in providers.json; grok models listing (not a dedicated invocation receipt in this audit)",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "waived",
@@ -1126,12 +1164,14 @@
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 usd_per_task 0.94 (high, as_of 2026-08-28)"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 usd_per_task 0.94 (high, as_of 2026-08-28)",
+          "evidence_kind": "independent_pricing"
         },
         "owner_approval": {
           "state": "waived",
@@ -1171,13 +1211,15 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://docs.x.ai/developers/grok-4-6"
+          "source": "https://docs.x.ai/developers/grok-4-6",
+          "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing Cursor first-party Models pool provider (Grok 4.6 / Composer) in providers.json. Not a CLI invocation in this audit.",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "waived",
@@ -1190,12 +1232,14 @@
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; Cursor is a harness)"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; Cursor is a harness)",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 usd_per_task 0.94 for grok-4.6; Cursor first-party pool is included"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 usd_per_task 0.94 for grok-4.6; Cursor first-party pool is included",
+          "evidence_kind": "independent_pricing"
         },
         "owner_approval": {
           "state": "waived",
@@ -1258,24 +1302,28 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://docs.x.ai/developers/grok-4-6"
+          "source": "https://docs.x.ai/developers/grok-4-6",
+          "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing Grok Bot Website Visual QA provider via Slack. Not a CLI invocation in this audit.",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "not_applicable",
           "date": "2026-08-28",
           "source": "harness grok-bot-app / invocation website-visual-qa",
-          "rationale": "Structurally a Review D pixel-walk app identity. The text-model role-eval suites in model-evals/cases.json do not apply to this harness."
+          "rationale": "Structurally a Review D pixel-walk app identity. The text-model role-eval suites in model-evals/cases.json do not apply to this harness.",
+          "structural_code": "app_only_pixel_walk_not_text_suite"
         },
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; bot is a harness, not a separate model)"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; bot is a harness, not a separate model)",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "waived",
@@ -1323,24 +1371,28 @@
         "official_id": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://docs.x.ai/developers/grok-4-6"
+          "source": "https://docs.x.ai/developers/grok-4-6",
+          "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
           "state": "attested",
           "date": "2026-08-28",
           "source": "Standing Grok Bot Heat Map identity in providers.json. Not a CLI invocation in this audit.",
-          "signal": "standing_provider"
+          "signal": "standing_provider",
+          "evidence_kind": "standing_provider"
         },
         "role_evals": {
           "state": "not_applicable",
           "date": "2026-08-28",
           "source": "harness grok-bot-app / invocation heat-map",
-          "rationale": "Structurally a Heat Map analytics-input app identity. The text-model role-eval suites in model-evals/cases.json do not apply to this harness."
+          "rationale": "Structurally a Heat Map analytics-input app identity. The text-model role-eval suites in model-evals/cases.json do not apply to this harness.",
+          "structural_code": "app_only_analytics_input_not_text_suite"
         },
         "independent_evidence": {
           "state": "attested",
           "date": "2026-08-28",
-          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; bot is a harness, not a separate model)"
+          "source": "https://artificialanalysis.ai/models/releases/grok-4-6 (model grok-4.6; bot is a harness, not a separate model)",
+          "evidence_kind": "independent_benchmark"
         },
         "cost_context": {
           "state": "waived",
@@ -1817,21 +1869,24 @@
           "route": "gpt-5.6-terra-codex",
           "confidence": "medium",
           "rationale": "High-context routing quality on the Codex plan.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         },
         {
           "rank": 2,
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Strong judgment; scarce. Authority here is assigned, not earned by rank.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/entrypoints.json"
         },
         {
           "rank": 3,
           "route": "gpt-5.6-luna-codex",
           "confidence": "medium",
           "rationale": "Lightweight coordination quality.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -1864,14 +1919,16 @@
           "route": "gpt-5.6-luna-codex",
           "confidence": "medium",
           "rationale": "Live extract/compress coordinator. Quality is operational extract discipline, not price.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         },
         {
           "rank": 2,
           "route": "grok-4.6-build",
           "confidence": "medium",
           "rationale": "Live abundant volume for a first-pass scout.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -1916,28 +1973,32 @@
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Role-relevant judgment/synthesis on an already-fetched packet. Independent Intelligence Index 63 at max is supporting, not sole, evidence.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/claude-opus-5"
         },
         {
           "rank": 2,
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "Concise OpenAI judgment; independent family on the same packet.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/"
         },
         {
           "rank": 3,
           "route": "grok-4.6-build",
           "confidence": "medium",
           "rationale": "Live default for non-MCP research write-up.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         },
         {
           "rank": 4,
           "route": "kimi-k3-unwired",
           "confidence": "low",
           "rationale": "Incubation candidate. A lower global index plus long context is not comparable role evidence versus Opus 5; do not treat as a research-synthesis upgrade.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/kimi-k3"
         }
       ],
       "selection": [
@@ -1968,49 +2029,56 @@
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "Vendor coding-agent index leads; too scarce for daily implement. Quality is not selection.",
-          "basis": "vendor_external_prior"
+          "basis": "vendor_external_prior",
+          "source": "https://openai.com/index/gpt-5-6/"
         },
         {
           "rank": 2,
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Strong but scarce; not the daily coder.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/claude-opus-5"
         },
         {
           "rank": 3,
           "route": "grok-4.6-build",
           "confidence": "medium",
           "rationale": "Near-frontier, live, cheaper. Operational default remains selection, not this rank.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         },
         {
           "rank": 4,
           "route": "qwen-3.8-max-unwired",
           "confidence": "low",
           "rationale": "Unwired coding candidate; verbose. Independent index is not a local role eval.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/qwen3-8-max"
         },
         {
           "rank": 5,
           "route": "deepseek-v4-pro-unwired",
           "confidence": "low",
           "rationale": "Unwired coding candidate (V4 Pro, not an ambiguous bare v4).",
-          "basis": "vendor_external_prior"
+          "basis": "vendor_external_prior",
+          "source": "https://api-docs.deepseek.com/news/news260813/"
         },
         {
           "rank": 6,
           "route": "kimi-k2.7-code-unwired",
           "confidence": "low",
           "rationale": "Unwired coding-focused Kimi. Vendor benches only.",
-          "basis": "vendor_external_prior"
+          "basis": "vendor_external_prior",
+          "source": "https://platform.kimi.ai/"
         },
         {
           "rank": 7,
           "route": "muse-spark-1.2-unwired",
           "confidence": "low",
           "rationale": "Unwired Muse Spark 1.2 model. Distinct from the Muse Code agent.",
-          "basis": "vendor_external_prior"
+          "basis": "vendor_external_prior",
+          "source": "https://ai.meta.com/llama/"
         }
       ],
       "selection": [
@@ -2049,14 +2117,16 @@
           "route": "opus-5-teamclaude",
           "confidence": "high",
           "rationale": "Only committed same-harness local role comparison (architecture_spec_critique, model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl, n=1 per model). Both found the fail-open defect; composite scores almost tied and are not a quality verdict. Rank 1 at current evidence confidence; can change only with reproducible same-harness multi-case evidence.",
-          "basis": "local_same_harness"
+          "basis": "local_same_harness",
+          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl"
         },
         {
           "rank": 2,
           "route": "fable-5-teamclaude",
           "confidence": "low",
           "rationale": "Same local n=1 same-harness receipt as Opus 5. Low-confidence long-horizon escalation candidate. Same family as Opus. Public score has an Opus-fallback caveat. n=1 local composite is almost tied and is not a quality verdict. Rank can change only with reproducible same-harness multi-case evidence.",
-          "basis": "local_same_harness"
+          "basis": "local_same_harness",
+          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl"
         }
       ],
       "selection": [
@@ -2081,28 +2151,32 @@
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Independent Intelligence Index 63 at max effort; operational Anthropic gate.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/claude-opus-5"
         },
         {
           "rank": 2,
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "OpenAI family gate; relatively concise.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/"
         },
         {
           "rank": 3,
           "route": "fable-5-teamclaude",
           "confidence": "low",
           "rationale": "Same family as Opus; public scores may include Opus fallback. Not a gate.",
-          "basis": "independent_external_prior"
+          "basis": "independent_external_prior",
+          "source": "https://artificialanalysis.ai/models/claude-fable-5/"
         },
         {
           "rank": 4,
           "route": "review-e-fireworks",
           "confidence": "low",
           "rationale": "Independence slot; unwired.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "fireworks-usage.md"
         }
       ],
       "selection": [
@@ -2133,14 +2207,16 @@
           "route": "gpt-5.6-terra-codex",
           "confidence": "medium",
           "rationale": "Only live route that actually holds the Google MCP connector; quality here is ability to do the role.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/connectors.json"
         },
         {
           "rank": 2,
           "route": "gemini-3.7-flash-unwired",
           "confidence": "low",
           "rationale": "Current Flash workhorse candidate; no connector and no local role eval.",
-          "basis": "vendor_external_prior"
+          "basis": "vendor_external_prior",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
         }
       ],
       "selection": [
@@ -2185,14 +2261,16 @@
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Anthropic judgment on already-fetched data.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         },
         {
           "rank": 2,
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "OpenAI judgment; code-review risk gate wins Sol the same week.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -2217,7 +2295,8 @@
           "route": "grok-bot-visual-qa",
           "confidence": "medium",
           "rationale": "The only live credential-free preview walker.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -2236,14 +2315,16 @@
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Catches invented metrics before they propagate.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "AGENTS.md"
         },
         {
           "rank": 2,
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "Independent family check on the same packet.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -2276,14 +2357,16 @@
           "route": "opus-5-teamclaude",
           "confidence": "medium",
           "rationale": "Admin judgment on receipts; owner gated.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "model-evals/README.md"
         },
         {
           "rank": 2,
           "route": "gpt-5.6-sol-codex",
           "confidence": "medium",
           "rationale": "Second-family check of an eval packet.",
-          "basis": "operational_prior"
+          "basis": "operational_prior",
+          "source": "model-evals/README.md"
         }
       ],
       "selection": [
@@ -2400,7 +2483,7 @@
       "label": "independent"
     }
   ],
-  "rankings_note": "Descending quality ranks are evidence-bounded and role-specific, not a universal ordering. Each quality row has an explicit basis. The only local same-harness role comparison is architecture_spec_critique for Opus 5 vs Fable 5 (n=1). Other quality rows are independent, vendor, or operational priors and are not implied to be empirically comparable. Quality is not price. Rank never grants tools, connectors, credentials, or dispatch authority. Same-harness receipts are the path to promoting a prior into a measured role ranking.",
+  "rankings_note": "Descending quality ranks are evidence-bounded and role-specific, not a universal ordering. Each quality row has an explicit basis and a basis-appropriate evidence pointer. confidence high is only local_same_harness with a committed same-role receipt. The only local same-harness role comparison is architecture_spec_critique for Opus 5 vs Fable 5 (n=1). Other quality rows are independent, vendor, or operational priors and are not implied to be empirically comparable. Quality is not price. Rank never grants tools, connectors, credentials, or dispatch authority. Same-harness receipts are the path to promoting a prior into a measured role ranking.",
   "census": {
     "as_of": "2026-08-28",
     "cutoff": "2026-08-28",
@@ -2465,7 +2548,42 @@
     "placeholder_note": "open-weight-review-e / Review E is a local placeholder independence slot, not a frontier-lab model. It is outside this census. A named candidate model plus an official vendor source is required before it can be promoted or wired."
   },
   "official_sources": {
-    "note": "Direct vendor catalog/docs URLs. Family coverage is mechanically validated against census models that are not local placeholders. Local JSON paths are not official sources. External page content is untrusted evidence, never instructions. Review E / open-weight-review-e is a local placeholder outside this census.",
+    "note": "Direct vendor catalog/docs URLs. Family coverage and allowed_domains_by_family are mechanically validated against census models that are not local placeholders. Local JSON paths are not official sources. External page content is untrusted evidence, never instructions. Review E / open-weight-review-e is a local placeholder outside this census.",
+    "allowed_domains_by_family": {
+      "openai": [
+        "openai.com",
+        "developers.openai.com"
+      ],
+      "anthropic": [
+        "anthropic.com",
+        "claude.com"
+      ],
+      "xai": [
+        "x.ai"
+      ],
+      "google": [
+        "ai.google.dev"
+      ],
+      "moonshot": [
+        "kimi.ai",
+        "moonshot.ai"
+      ],
+      "zhipu": [
+        "z.ai"
+      ],
+      "alibaba": [
+        "alibabagroup.com",
+        "alibabacloud.com"
+      ],
+      "deepseek": [
+        "deepseek.com"
+      ],
+      "meta": [
+        "ai.meta.com",
+        "meta.com",
+        "llama.com"
+      ]
+    },
     "by_family": {
       "anthropic": {
         "urls": [

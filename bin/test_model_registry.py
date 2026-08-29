@@ -279,9 +279,17 @@ class RankingClaimTests(unittest.TestCase):
         self.assertEqual(by_route["opus-5-teamclaude"]["rank"], 1)
         self.assertEqual(by_route["opus-5-teamclaude"]["confidence"], "high")
         self.assertEqual(by_route["opus-5-teamclaude"]["basis"], "local_same_harness")
+        self.assertEqual(
+            by_route["opus-5-teamclaude"]["source"],
+            "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl",
+        )
         self.assertEqual(by_route["fable-5-teamclaude"]["rank"], 2)
         self.assertEqual(by_route["fable-5-teamclaude"]["confidence"], "low")
         self.assertEqual(by_route["fable-5-teamclaude"]["basis"], "local_same_harness")
+        self.assertEqual(
+            by_route["fable-5-teamclaude"]["source"],
+            "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl",
+        )
         self.assertNotIn("long-horizon breadth", by_route["fable-5-teamclaude"]["rationale"].lower())
         joined = (
             by_route["opus-5-teamclaude"]["rationale"]
@@ -363,6 +371,11 @@ class RankingClaimTests(unittest.TestCase):
         self.assertIn("hypothesis to measure", report)
         self.assertIn("existing_operational_state", report)
         self.assertIn("temporarily grandfathered", report)
+        self.assertIn("evidence_kind", report)
+        self.assertIn("structural_code", report)
+        self.assertIn("legacy_waiver_routes", report)
+        self.assertIn("allowed_domains_by_family", report)
+        self.assertIn("compatibility_fallback_not_ranked", report)
 
     def test_context_scouting_quality_is_not_price(self):
         rows = live()["rankings"]["context_scouting"]["quality"]
@@ -1180,19 +1193,54 @@ class TypedAttestationTests(unittest.TestCase):
                 if rec["state"] == "attested":
                     src = f"{rec.get('source','')} {rec.get('rationale','')}"
                     self.assertFalse(mr._absence_markers_in(src), f"{rid}.{key} {src}")
+                    self.assertIn(rec.get("evidence_kind"), mr.ATTESTED_EVIDENCE_KINDS[key], f"{rid}.{key}")
+                if rec["state"] == "not_applicable":
+                    self.assertIn(rec.get("structural_code"), mr.STRUCTURAL_CODES, f"{rid}.{key}")
+                    self.assertTrue(
+                        mr._structural_code_allowed(key, rec["structural_code"], registry["routes"][rid]),
+                        f"{rid}.{key}",
+                    )
                 if rec["state"] == "waived":
                     self.assertEqual(rec["authority"], "existing_operational_state")
                     self.assertTrue(rec.get("expires"))
                     self.assertTrue(rec.get("rationale"))
                     self.assertNotIn("owner catalog promotion", (rec.get("source") or "").lower())
+                    self.assertIn(rid, mr.LEGACY_WAIVER_ROUTES)
 
     def test_semantic_contradiction_cannot_be_attested(self):
         data = copy.deepcopy(live())
         rec = data["routes"]["opus-5-teamclaude"]["attestations"]["role_evals"]
         rec["state"] = "attested"
-        rec["source"] = "compatibility smoke only; no suite invented"
+        rec["evidence_kind"] = "normalized_receipt"
+        rec["source"] = "compatibility smoke only; evaluation suite absent"
         errors = mr.validate(data, as_of=date(2026, 8, 28))
         self.assertTrue(any("absence" in e and "role_evals" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_compatibility_smoke_only_cannot_attest_role_evals(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-4.8-teamclaude"]["attestations"]["role_evals"]
+        rec["state"] = "attested"
+        rec["evidence_kind"] = "normalized_receipt"
+        rec["source"] = "compatibility smoke only; evaluation suite absent"
+        rec.pop("structural_code", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        blob = "\n".join(errors)
+        self.assertTrue("role_evals" in blob and ("absence" in blob or "normalized_receipt" in blob or "receipt" in blob), errors)
+        self.assertFalse(mr.route_is_live(data, "opus-4.8-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_not_applicable_missing_eval_without_structural_code_fails(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["role_evals"]
+        rec["state"] = "not_applicable"
+        rec.pop("evidence_kind", None)
+        rec.pop("structural_code", None)
+        rec["rationale"] = "required evaluation is missing"
+        rec["source"] = "none"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        blob = "\n".join(errors)
+        self.assertTrue(any("structural_code" in e and "role_evals" in e for e in errors), errors)
+        self.assertIn("missing", blob)
         self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
 
     def test_attested_missing_source_or_date_fails(self):
@@ -1238,8 +1286,57 @@ class TypedAttestationTests(unittest.TestCase):
         route["attestations"] = copy.deepcopy(data["routes"]["gpt-5.6-sol-codex"]["attestations"])
         errors = mr.validate(data, as_of=date(2026, 8, 28))
         self.assertTrue(
-            any("waiver forbidden" in e and "new/unwired" in e for e in errors),
+            any("waiver forbidden" in e and "legacy_waiver_routes" in e for e in errors),
             errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "kimi-k3-unwired", as_of=date(2026, 8, 28)))
+
+    def test_kimi_cannot_self_qualify_legacy_waiver_by_mutation(self):
+        data = copy.deepcopy(live())
+        self.assertNotIn("kimi-k3-unwired", data["intake"]["legacy_waiver_routes"])
+        self.assertNotIn("kimi-k3-unwired", mr.LEGACY_WAIVER_ROUTES)
+        route = data["routes"]["kimi-k3-unwired"]
+        template = data["routes"]["gpt-5.6-sol-codex"]
+        route["route_state"] = "live_verified"
+        route["host"] = "codex"
+        route["harness"] = "gpt-wrapper"
+        route["provider"] = "codex-sol"
+        route["evidence_strength"] = "local_smoke"
+        route["data_boundary"] = "subscription"
+        route["evidence"] = [
+            {
+                "date": "2026-08-28",
+                "route_state": "live_verified",
+                "kind": "local_smoke",
+                "source": "mutated to look live",
+                "signal": "direct_invocation",
+            }
+        ]
+        waived = copy.deepcopy(template["attestations"])
+        for rec in waived.values():
+            rec["state"] = "waived"
+            rec["authority"] = "existing_operational_state"
+            rec["date"] = "2026-08-28"
+            rec["expires"] = "2026-11-26"
+            rec["source"] = "config/providers.json mutated standing provider"
+            rec["rationale"] = "Looks live after mutation; still not a grandfathered route id."
+            rec.pop("evidence_kind", None)
+            rec.pop("signal", None)
+            rec.pop("structural_code", None)
+        route["attestations"] = waived
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("waiver forbidden" in e and "legacy_waiver_routes" in e for e in errors),
+            errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "kimi-k3-unwired", as_of=date(2026, 8, 28)))
+        data["intake"]["legacy_waiver_routes"] = list(data["intake"]["legacy_waiver_routes"]) + [
+            "kimi-k3-unwired"
+        ]
+        errors_added = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("legacy_waiver_routes must equal the frozen migration" in e for e in errors_added),
+            errors_added,
         )
         self.assertFalse(mr.route_is_live(data, "kimi-k3-unwired", as_of=date(2026, 8, 28)))
 
@@ -1293,8 +1390,37 @@ class QualityBasisTests(unittest.TestCase):
         registry = live()
         for role, rnk in registry["rankings"].items():
             for row in rnk.get("quality") or []:
+                self.assertTrue(row.get("source"), f"{role} {row['route']}")
                 if row.get("basis") != "local_same_harness":
                     self.assertNotEqual(row.get("confidence"), "high", f"{role} {row['route']}")
+
+    def test_high_confidence_requires_local_same_harness_receipt(self):
+        data = copy.deepcopy(live())
+        row = data["rankings"]["architecture_spec_critique"]["quality"][0]
+        row.pop("source", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("local_same_harness" in e and "receipt" in e for e in errors),
+            errors,
+        )
+
+    def test_high_independent_external_prior_without_source_fails(self):
+        data = copy.deepcopy(live())
+        row = data["rankings"]["code_review"]["quality"][0]
+        self.assertEqual(row["basis"], "independent_external_prior")
+        row["confidence"] = "high"
+        row.pop("source", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        blob = "\n".join(errors)
+        self.assertTrue(any("confidence high is only allowed" in e for e in errors), errors)
+        self.assertTrue(any("evidence/source pointer" in e for e in errors), errors)
+        self.assertIn("independent_external_prior", blob)
+        row["source"] = "https://artificialanalysis.ai/models/claude-opus-5"
+        errors_with_source = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("confidence high is only allowed" in e for e in errors_with_source),
+            errors_with_source,
+        )
 
 
 class OfficialSourceAndPlaceholderTests(unittest.TestCase):
@@ -1311,6 +1437,21 @@ class OfficialSourceAndPlaceholderTests(unittest.TestCase):
             urls = mr.official_urls_for_model(registry, mid, model)
             self.assertTrue(urls, mid)
             self.assertTrue(all(u.startswith("https://") for u in urls), mid)
+            family = model.get("family")
+            for url in urls:
+                self.assertTrue(mr._url_allowed_for_family(registry, family, url), (mid, url))
+        domains = registry["official_sources"]["allowed_domains_by_family"]
+        self.assertIn("openai.com", domains["openai"])
+        self.assertIn("anthropic.com", domains["anthropic"])
+        self.assertTrue(any(d.endswith("claude.com") or d == "claude.com" for d in domains["anthropic"]))
+        self.assertIn("x.ai", domains["xai"])
+        self.assertIn("ai.google.dev", domains["google"])
+        self.assertTrue("kimi.ai" in domains["moonshot"] or "moonshot.ai" in domains["moonshot"])
+        self.assertIn("z.ai", domains["zhipu"])
+        self.assertTrue("alibabacloud.com" in domains["alibaba"] or "alibabagroup.com" in domains["alibaba"])
+        self.assertTrue(any("deepseek.com" in d for d in domains["deepseek"]))
+        self.assertTrue("ai.meta.com" in domains["meta"] or "meta.com" in domains["meta"])
+        self.assertEqual(sorted(registry["intake"]["legacy_waiver_routes"]), sorted(mr.LEGACY_WAIVER_ROUTES))
 
     def test_review_e_is_local_placeholder_outside_census(self):
         registry = live()
@@ -1319,6 +1460,42 @@ class OfficialSourceAndPlaceholderTests(unittest.TestCase):
         self.assertIn("open-weight-review-e", registry["census"]["placeholder_model_ids"])
         self.assertEqual(registry["routes"]["review-e-fireworks"]["route_state"], "unwired")
         self.assertFalse(mr.route_is_live(registry, "review-e-fireworks", as_of=date(2026, 8, 28)))
+
+    def test_official_domain_poisoning_is_rejected(self):
+        data = copy.deepcopy(live())
+        data["models"]["claude-opus-5"]["official_sources"] = ["https://example.com/claude-opus-5"]
+        data["official_sources"]["by_family"]["anthropic"]["urls"] = ["https://example.com/claude-opus-5"]
+        data["routes"]["opus-5-teamclaude"]["attestations"]["official_id"]["source"] = (
+            "https://example.com/claude-opus-5"
+        )
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        blob = "\n".join(errors)
+        self.assertIn("example.com", blob)
+        self.assertTrue(any("allowed official domain" in e for e in errors), errors)
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["attestations"]["official_id"]["source"] = (
+            "https://openai.com/index/gpt-5-6/"
+        )
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("not an allowed official domain for family 'anthropic'" in e for e in errors),
+            errors,
+        )
+        data = copy.deepcopy(live())
+        data["models"]["kimi-k3"]["official_sources"] = ["https://www.anthropic.com/news/claude-opus-5"]
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("kimi-k3" in e and "allowed official domain" in e for e in errors),
+            errors,
+        )
+
+    def test_review_e_placeholder_remains_exempt_from_official_domains(self):
+        registry = live()
+        model = registry["models"]["open-weight-review-e"]
+        self.assertTrue(mr._model_is_placeholder(model))
+        self.assertEqual(mr.official_urls_for_model(registry, "open-weight-review-e", model), [])
+        self.assertNotIn("open-weight", registry["official_sources"].get("allowed_domains_by_family", {}))
+        self.assertNotIn("review-e", registry["official_sources"].get("by_family", {}))
 
     def test_placeholder_cannot_be_promoted_or_wired(self):
         data = copy.deepcopy(live())
