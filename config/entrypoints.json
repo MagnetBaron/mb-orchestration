@@ -1,0 +1,39 @@
+{
+  "_note": "ENTRY SURFACES vs DISPATCHER ROLE. An ENTRY SURFACE is where a person TYPES a request (any host they like). The DISPATCHER ROLE (classify, stamp review depth, brief, assign seats, run the risk gate, refill, and fan work OUT to the orchestration tree — sub-agents + specialist seats) is held by exactly ONE provider at a time, recorded in `dispatcher.provider`. DISPATCH IS USER-ASSIGNED, NEVER AN ABSOLUTE VALUE: any dispatch-capable provider the user owns may hold it. Rankings never grant this authority. In THIS owner's setup that assignment is the Claude orchestration surface (opus-5); a user with no Claude seat may assign a Codex/GPT surface (see config/examples/two-sub) — both are legitimate. The assigned dispatcher preserves its own account quota by DISPATCHING, not implementing (read-only legwork via a sub-agent is fine); it delegates. A non-dispatcher surface classifies + drafts a brief and hands it to the assigned dispatcher; it never self-assigns other seats or implements outside its own seat. To move the dispatcher, edit `dispatcher.provider` and the `can_dispatch` flags here; policy prose does not change.",
+  "schema_version": 1,
+  "updated": "2026-08-28",
+  "dispatcher": {
+    "provider": "opus-5",
+    "level": "frontier",
+    "fallback": [],
+    "rule": "Exactly one dispatcher holds the classify/brief/assign/risk-gate and fans work out to the orchestration tree (sub-agents + seats). In this setup the assigned dispatcher is the Claude orchestration surface; it preserves its account by dispatching, not implementing. If the assigned dispatcher's whole pipe is down (here the Anthropic pipe via teamclaude — which also takes the Opus review pass, so it is ONE outage), the owner at the console may hand a COMPLETE brief straight to the implementer for non-gate work; gate work parks. A phone surface never implements."
+  },
+  "entry_surfaces": {
+    "claude-code": {
+      "host": "claude", "provider": "opus-5",
+      "can_dispatch": true, "default": true,
+      "note": "The surface the user assigned as dispatcher here (dispatcher.provider = opus-5) — the Claude orchestration surface. Full dispatch: classify, stamp review depth, brief, assign, gate, refill, and fan work OUT to the orchestration tree of sub-agents (other Claude profiles/seats) + the specialist seats. Preserves its own account quota by dispatching, not implementing (read-only legwork via a sub-agent is fine). This machine's /orchestrate runs in this mode."
+    },
+    "codex-cli": {
+      "host": "codex", "provider": "codex-terra",
+      "can_dispatch": false,
+      "note": "In this setup a worker/review seat: GPT Terra runs Google-MCP volume and Codex Sol is the OpenAI review family (cross-family gate #2). Not the assigned dispatcher here, so if typed into it classifies + drafts a brief and hands it to the assigned dispatcher. Codex is dispatch-capable — a user who owns no Claude seat may legitimately assign it as their dispatcher (see config/examples/two-sub)."
+    },
+    "cursor": {
+      "host": "cursor", "provider": "cursor-grok",
+      "can_dispatch": false, "drafts_and_hands_to_dispatcher": true,
+      "note": "IDE surface, non-dispatcher here: classify + draft a brief, then hand it to the assigned dispatcher. Do not re-home dispatch onto the IDE unless the user assigns it here."
+    },
+    "phone": {
+      "host": "mobile", "provider": null,
+      "can_dispatch": false, "never_implements": true,
+      "note": "Read status, forward briefs/reports to the assigned dispatcher, approve owner gates. Never implements or dispatches."
+    }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "classify + stamp + draft brief, then hand it to the assigned dispatcher (dispatcher.provider); never self-assign other seats or implement outside the surface's own seat",
+    "entry_is_free": "Any surface may be where a request starts. Where a request is TYPED is the user's choice; who DISPATCHES is a single user-assigned provider (dispatcher.provider), not a fixed identity.",
+    "portability": "Dispatch is user-assigned. Point `dispatcher.provider` at any dispatch-capable provider you own and mark that surface `can_dispatch:true` (this setup: the Claude orchestration surface; two-sub: a Codex/GPT surface; solo-pro: the single Claude seat). Exactly one holds it at a time; only the holder moves. See subscriptions.json portability_examples and USER-GUIDE.md §Entry points."
+  }
+}

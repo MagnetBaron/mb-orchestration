@@ -1,0 +1,39 @@
+{
+  "_note": "SKILLS REGISTRY — the single source that VETS which plugin skills a role may bind, exactly as connectors.json vets MCP. The skills themselves live IN-REPO as a Claude Code plugin (plugins/magnet-baron-skills/) shipped via the repo-hosted marketplace (.claude-plugin/marketplace.json), so they are plug-and-play and admin-managed. A role binds a skill by its plugin:skill id under a host block in config/roles.json; bin/generate-roles.py resolves every bound id against THIS registry AND the on-disk SKILL.md and FAILS CLOSED (the H1 pattern used for MCP): a skill absent here is UNVETTED and may not be bound; a kind:write skill may not reach a read_only role; a role's seat that lacks the skill's required_capability aborts generation and the review gate. NO secrets — ids and capability names only. Fields per skill: description (human summary); kind (read|write — write gated off read_only seats); required_capability (a coarse tag from providers.json `capabilities`, OR an MCP/store connector name from connectors.json `mcp_connectors` checked against that connector's `available_on` for the role's seat, OR null for no gate); hosts (which host agents may carry it).",
+  "schema_version": 1,
+  "updated": "2026-08-27",
+  "plugin_source": {
+    "marketplace": ".claude-plugin/marketplace.json",
+    "plugin_dir": "plugins/magnet-baron-skills",
+    "id_prefix": "magnet-baron-skills",
+    "resolves_to": "plugins/<plugin>/skills/<skill>/SKILL.md — bin/generate-roles.py resolves the plugin dir through the repo marketplace, so the in-repo skill is host-discoverable and the id never dangles."
+  },
+  "skills": {
+    "magnet-baron-skills:shopify-theme": {
+      "description": "Conventions and safe-change workflow for the Magnet Baron Sense-based Shopify theme (sections, snippets, blocks, assets, templates, locales).",
+      "kind": "write",
+      "required_capability": "shopify-mb-internal",
+      "hosts": ["claude", "grok"],
+      "note": "Capability-gated, not seat-gated: any implement seat listed in connectors.json shopify-mb-internal.available_on may carry it. Pair with Review D (Website Visual QA) when storefront pixels change."
+    },
+    "magnet-baron-skills:web-coding": {
+      "description": "Modern web-app coding standards: project structure, dependencies, testing, security, and review-ready diffs.",
+      "kind": "write",
+      "required_capability": "code",
+      "hosts": ["claude", "grok"]
+    },
+    "magnet-baron-skills:mobile-app": {
+      "description": "Mobile-app coding standards for iOS, Android, and cross-platform work: architecture, platform conventions, state/data, testing, and store release.",
+      "kind": "write",
+      "required_capability": "code",
+      "hosts": ["claude", "grok"]
+    },
+    "magnet-baron-skills:seo-ops": {
+      "description": "Read-only, brand-separated SEO research and reporting for Magnet Baron and Gadget Duke via Search Console and DataForSEO MCP.",
+      "kind": "read",
+      "required_capability": null,
+      "hosts": ["claude", "grok"],
+      "note": "Read-only invariants are enforced by the binding role (seo-research: read_only + every mutating gsc-indexing tool denied), not by this registry. required_capability is null because the skill's live data access is host-scoped MCP (gsc-indexing/dfs-mcp on the claude host), already vetted by the connectors.json H1 mutation map."
+    }
+  }
+}

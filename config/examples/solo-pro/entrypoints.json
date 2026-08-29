@@ -1,0 +1,15 @@
+{
+  "_note": "SOLO: a single Claude Pro seat — no Codex/Grok/Cursor. The user assigned the dispatcher to their single Claude seat (the only seat they own); with no other seat to fan work out to, that same seat also codes and reviews — the 'dispatcher delegates, never implements on its own account' rule yields only because there is literally no other seat (never-strand). Dispatch is user-assigned; the single-dispatcher invariant is unchanged; only the holder moves.",
+  "schema_version": 1,
+  "dispatcher": { "provider": "opus-5", "level": "frontier", "fallback": [], "rule": "one dispatcher; a phone never implements" },
+  "entry_surfaces": {
+    "claude-code": { "host": "claude", "provider": "opus-5", "can_dispatch": true, "default": true,
+      "note": "dispatches, codes, and reviews — the whole engine on one seat" }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "n/a — single surface",
+    "entry_is_free": "one surface here",
+    "portability": "adding Codex later: add a codex-cli worker/review surface (GPT Terra MCP volume + Sol review); the user may keep the Claude seat as dispatcher or reassign dispatcher.provider — their call"
+  }
+}

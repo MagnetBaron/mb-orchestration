@@ -1,0 +1,23 @@
+{
+  "_note": "EXAMPLE per-user layer \u2014 a SOLO Claude Pro user (no Codex/Grok/Cursor). Validate: `MB_CONFIG_DIR=config/examples/solo-pro python3 bin/doctor.py`. The one Claude seat dispatches, codes, AND reviews \u2014 the 'Claude is never the coder' preference yields because there is no other seat (never-strand). Shared providers/roles/connectors are inherited from config/.",
+  "schema_version": 1,
+  "owner": "you@example.com",
+  "subscriptions": {
+    "claude-solo": {
+      "vendor": "Anthropic",
+      "product": "Claude Pro $25",
+      "monthly_usd": 25,
+      "backs_providers": [
+        "opus-5",
+        "opus-4.8"
+      ],
+      "seat_id": "claude-solo",
+      "tier": "pro",
+      "grants": {
+        "fable": false,
+        "opus": true
+      },
+      "notes": "Only seat. Cross-family gates can't be met (one family) \u2014 they park unless Review E is wired."
+    }
+  }
+}

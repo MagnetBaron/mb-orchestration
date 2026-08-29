@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MagnetBaron/mb-orchestration/config/orchestration.schema.json",
+  "title": "mb-orchestration config contract",
+  "description": "Published contract for the config/ single-source-of-truth files. bin/doctor.py validates each file against the matching $defs entry (using the `jsonschema` library when present, plus its own referential-integrity checks that a schema can't express). Additional properties are allowed on purpose so the config can carry notes and forward-compatible fields.",
+  "$defs": {
+    "providers": {
+      "type": "object",
+      "required": ["schema_version", "capability_levels", "families", "providers", "review_order"],
+      "properties": {
+        "schema_version": { "const": 4 },
+        "capability_levels": {
+          "type": "object",
+          "required": ["frontier", "sole", "terra", "luna"],
+          "propertyNames": { "enum": ["frontier", "sole", "terra", "luna"] },
+          "additionalProperties": { "type": "object", "required": ["job"], "properties": { "job": { "type": "string", "minLength": 1 } } }
+        },
+        "families": { "type": "object", "minProperties": 1 },
+        "providers": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["label", "level", "family", "kind", "functions"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "level": { "enum": ["frontier", "sole", "terra", "luna"] },
+              "family": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["cli", "api", "app", "ide", "local"] },
+              "model": { "type": ["string", "null"] },
+              "functions": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "review_eligible": { "type": "boolean" },
+              "detect": { "type": "object", "required": ["method"], "properties": { "method": { "enum": ["command", "npm", "app", "api", "capability", "local"] } } }
+            }
+          }
+        },
+        "forbidden_models": { "type": "object" },
+        "review_order": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+        "function_vocabulary": { "type": "array", "items": { "type": "string" } },
+        "model_registry": { "type": "string" }
+      }
+    },
+    "subscriptions": {
+      "type": "object",
+      "required": ["schema_version", "owner", "subscriptions"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "subscriptions": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["vendor", "product", "backs_providers"],
+            "properties": {
+              "vendor": { "type": "string" },
+              "product": { "type": "string" },
+              "monthly_usd": { "type": ["number", "null"] },
+              "backs_providers": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "grants": { "type": "object", "properties": { "fable": { "type": "boolean" }, "opus": { "type": "boolean" } } },
+              "tier": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "connectors": {
+      "type": "object",
+      "required": ["schema_version", "mcp_connectors"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "mcp_connectors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["available_on"],
+            "properties": {
+              "available_on": { "type": "array", "items": { "type": "string" } },
+              "mutating_tools": { "type": "array", "items": { "type": "string" } },
+              "status": {
+                "enum": ["active", "ready", "primed"],
+                "description": "Strap-in lifecycle. OPTIONAL and back-compatible: ABSENT = active (existing connectors are LIVE). Only 'active' is live-eligible; 'primed' (bundled/declared, not wired) and 'ready' (validated, awaiting owner activation) are inert scaffolding that is never routed, connected, launched, or probed."
+              },
+              "server": {
+                "type": "object",
+                "description": "OPTIONAL bundled MCP-server DEFINITION carried as DATA for distribution — never executed. Rides only on a non-active (primed/ready) entry. Holds NO credentials: `env_keys` names the env vars the admin sets out of band at activation.",
+                "properties": {
+                  "transport": { "enum": ["stdio", "http", "sse"] },
+                  "command": { "type": "string" },
+                  "args": { "type": "array", "items": { "type": "string" } },
+                  "url": { "type": "string" },
+                  "env_keys": { "type": "array", "items": { "type": "string" } },
+                  "note": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "analytics": { "type": "object" },
+        "stores": { "type": "object" },
+        "slack": { "type": "object" }
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "required": ["schema_version", "dispatcher", "entry_surfaces", "rules"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "dispatcher": {
+          "type": "object", "required": ["provider", "level"],
+          "properties": { "provider": { "type": "string" }, "level": { "enum": ["frontier", "sole", "terra", "luna"] } }
+        },
+        "entry_surfaces": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object", "required": ["host", "can_dispatch"],
+            "properties": { "host": { "type": "string" }, "can_dispatch": { "type": "boolean" } }
+          }
+        },
+        "rules": { "type": "object", "required": ["single_dispatcher"], "properties": { "single_dispatcher": { "const": true } } }
+      }
+    },
+    "usage_windows": {
+      "type": "object",
+      "required": ["schema_version", "consumed_by", "seats"],
+      "properties": {
+        "schema_version": { "const": 3 },
+        "consumed_by": { "type": "string" },
+        "seats": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object", "required": ["meter", "windows"],
+            "properties": {
+              "meter": { "type": "string" },
+              "soft_cap_pct": { "type": ["number", "null"] },
+              "windows": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "required": ["kind"],
+                  "properties": { "kind": { "enum": ["weekly", "monthly", "rolling", "none"] } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "required": ["schema_version", "retention_days"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "retention_days": { "type": "integer", "minimum": 0 },
+        "reserve_defaults": { "type": "object" },
+        "cost_policy": { "type": "object" },
+        "sources": { "type": "object" }
+      }
+    },
+    "review_depth": {
+      "type": "object",
+      "required": ["schema_version", "levels_order", "classes"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "levels_order": { "type": "array", "items": { "type": "string" }, "minItems": 4 },
+        "classes": { "type": "object", "minProperties": 1 }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "required": ["schema_version", "roles"],
+      "properties": {
+        "schema_version": { "const": 3 },
+        "roles": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["description", "level", "seat", "read_only", "deny_tools", "prompt"],
+            "properties": {
+              "description": { "type": "string", "minLength": 1 },
+              "level": { "enum": ["frontier", "sole", "terra", "luna"] },
+              "seat": { "type": "string" },
+              "read_only": { "type": "boolean" },
+              "deny_tools": { "type": "array", "items": { "type": "string" } },
+              "prompt": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "required": ["schema_version", "skills"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "skills": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["description", "kind", "required_capability", "hosts"],
+            "properties": {
+              "description": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["read", "write"] },
+              "required_capability": { "type": ["string", "null"] },
+              "hosts": { "type": "array", "minItems": 1, "items": { "enum": ["claude", "grok", "codex"] } }
+            }
+          }
+        }
+      }
+    },
+    "model_registry": {
+      "type": "object",
+      "required": ["schema_version", "as_of", "families", "models", "routes", "roles", "rankings", "intake"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "as_of": { "type": "string", "minLength": 10 },
+        "families": { "type": "object", "minProperties": 1 },
+        "models": { "type": "object", "minProperties": 1 },
+        "routes": { "type": "object", "minProperties": 1 },
+        "roles": { "type": "object", "minProperties": 1 },
+        "rankings": { "type": "object", "minProperties": 1 },
+        "intake": { "type": "object", "required": ["promote_requires"] }
+      }
+    },
+    "seat_exec": {
+      "type": "object",
+      "required": ["schema_version", "recipes"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "recipes": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["bin", "args_template", "reads", "worktree", "never_metered_host"],
+            "properties": {
+              "bin": { "type": ["string", "null"] },
+              "args_template": { "type": "array", "items": { "type": "string" } },
+              "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "none"] },
+              "worktree": { "type": "boolean" },
+              "never_metered_host": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

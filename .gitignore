@@ -1,5 +1,14 @@
 # Live usage state written by wrappers/probes/owner — not policy, not committed.
-usage-ledger.json
+config/usage-ledger.json
+config/usage-ledger.json.lock
+
+# Runtime data: usage history, learned windows, generated dashboard. Not committed.
+data/
+
+# Generated host-native role artifacts (rendered by bin/generate-roles.py).
+# The model-matrix audit surface is the one generated file that is committed.
+generated/*
+!generated/model-matrix.md
 
 # Python cache
 __pycache__/
@@ -11,5 +20,5 @@ __pycache__/
 .codex/agents/mb-mobile-accessibility-reviewer.toml
 .codex/agents/mb-mobile-tooling.toml
 
-# Generated owner-review proposal; source of truth is roles/roles.json.
-roles/generated/
+# Working notes / handoffs — not distributed
+scratchpad/

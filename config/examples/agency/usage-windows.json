@@ -1,0 +1,20 @@
+{
+  "_note": "AGENCY: Codex intake (reserve) + Grok/Cursor workers (full) + 7 Claude seats (full; 5 Fable-capable). teamclaude rotates the Claude seats. Metered pools (cursor-other-400) drain last.",
+  "schema_version": 3,
+  "updated": "2026-08-27",
+  "consumed_by": "bin/usage-status.py",
+  "seats": {
+    "codex-sol": { "meter": "Codex $200 Sol", "subscription": "codex-200", "family": "openai", "reserve_pct": 90, "drain": "reserve", "billing": "included", "windows": [ { "kind": "weekly", "weekday": "Sun", "time": "22:00", "tz": "America/Chicago" }, { "kind": "rolling", "hours": 5 } ], "live_signal": "429 → ledger", "reset_note": "review-preservation reserve" },
+    "codex-plan": { "meter": "Codex $200 plan (Terra MCP + Sol review + Luna coordination)", "subscription": "codex-200", "family": "openai", "reserve_pct": null, "drain": "reserve", "intake": true, "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "429 → ledger", "reset_note": "intake/reserve worker seat (the assigned dispatcher here is the Claude orchestration surface)" },
+    "grok-heavy": { "meter": "SuperGrok Heavy", "subscription": "grok-heavy", "family": "xai", "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "weekly", "weekday": null, "time": null, "tz": "America/Chicago" } ], "live_signal": "429 → ledger", "reset_note": "worker" },
+    "cursor-models": { "meter": "Cursor Models pool", "subscription": "cursor-ultra", "family": "cursor-pool", "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "monthly", "day": null, "tz": "America/Chicago" } ], "live_signal": "dashboard", "reset_note": "IDE pool" },
+    "cursor-other-400": { "meter": "Cursor Other Models $400", "subscription": "cursor-ultra", "family": "cursor-pool", "limit_usd_per_month": 400, "reserve_pct": null, "drain": "full", "billing": "metered", "windows": [ { "kind": "monthly", "day": null, "tz": "America/Chicago" } ], "live_signal": "dashboard $", "reset_note": "metered — drain last" },
+    "claude-max": { "meter": "Claude Max", "subscription": "claude-max-200", "family": "anthropic", "fable": true, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "fable-capable" },
+    "claude-team-a": { "meter": "Claude Team A", "subscription": "claude-team-a", "family": "anthropic", "fable": true, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "fable-capable" },
+    "claude-team-b": { "meter": "Claude Team B", "subscription": "claude-team-b", "family": "anthropic", "fable": true, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "fable-capable" },
+    "claude-team-c": { "meter": "Claude Team C", "subscription": "claude-team-c", "family": "anthropic", "fable": true, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "fable-capable" },
+    "claude-team-d": { "meter": "Claude Team D", "subscription": "claude-team-d", "family": "anthropic", "fable": true, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "fable-capable" },
+    "claude-pro-a": { "meter": "Claude Pro A", "subscription": "claude-pro-a", "family": "anthropic", "fable": false, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "overflow" },
+    "claude-pro-b": { "meter": "Claude Pro B", "subscription": "claude-pro-b", "family": "anthropic", "fable": false, "reserve_pct": null, "drain": "full", "billing": "included", "windows": [ { "kind": "rolling", "hours": 5 } ], "live_signal": "teamclaude", "reset_note": "overflow" }
+  }
+}

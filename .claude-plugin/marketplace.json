@@ -1,0 +1,13 @@
+{
+  "name": "magnet-baron",
+  "owner": {
+    "name": "Magnet Baron"
+  },
+  "plugins": [
+    {
+      "name": "magnet-baron-skills",
+      "source": "./plugins/magnet-baron-skills",
+      "description": "Plug-and-play, versioned coding skills: Shopify theme, web app, mobile app, and read-only SEO ops."
+    }
+  ]
+}

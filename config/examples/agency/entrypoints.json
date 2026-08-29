@@ -1,0 +1,17 @@
+{
+  "_note": "AGENCY: the user assigned the dispatcher to the Claude orchestration surface; multiple people type from Codex/Claude/Cursor; ONE dispatcher fans work out to the tree of sub-agents + seats. Add surfaces per person, keep ONE dispatcher. Codex is the worker/review family here (Terra MCP volume + Sol review) — not the assigned dispatcher; dispatch is user-assigned, and any dispatch-capable seat could hold it.",
+  "schema_version": 1,
+  "dispatcher": { "provider": "opus-5", "level": "frontier", "fallback": [], "rule": "one dispatcher (the Claude orchestration surface); it fans work to sub-agents + seats and preserves its account by dispatching, not implementing; a phone never implements" },
+  "entry_surfaces": {
+    "claude-code": { "host": "claude", "provider": "opus-5", "can_dispatch": true, "default": true, "note": "the Claude orchestration surface — dispatches and fans work to the tree of sub-agents + seats" },
+    "codex-cli": { "host": "codex", "provider": "codex-terra", "can_dispatch": false, "note": "worker/review seat here: GPT Terra MCP volume + Sol review — not the assigned dispatcher; drafts + hands to the dispatcher if typed into (Codex is dispatch-capable)" },
+    "cursor": { "host": "cursor", "provider": "cursor-grok", "can_dispatch": false, "drafts_and_hands_to_dispatcher": true },
+    "phone": { "host": "mobile", "provider": null, "can_dispatch": false, "never_implements": true }
+  },
+  "rules": {
+    "single_dispatcher": true,
+    "non_dispatcher_hosts": "classify + draft brief, hand to THE DISPATCHER (the Claude orchestration surface)",
+    "entry_is_free": "each teammate types from their own surface",
+    "portability": "more people → more entry_surfaces; more load → more Claude Team seats (add to subscriptions + usage-windows); the single Claude-orchestration dispatcher is unchanged"
+  }
+}

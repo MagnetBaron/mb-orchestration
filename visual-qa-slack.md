@@ -1,6 +1,6 @@
 # How Website Visual QA gets the Slack ticket
 
-Grok Build and Codex do **not** call Grok Bot. They drop a ticket in Slack. The Bot wakes from a **Slack event routine** on the cloud computer. Grok Bot.app can stay quit.
+Grok Build and the dispatcher do **not** call Grok Bot. They drop a ticket in Slack. The Bot wakes from a **Slack event routine** on the cloud computer. Grok Bot.app can stay quit.
 
 Official split (do not mix these up):
 
@@ -15,10 +15,10 @@ Docs: event triggers are Slack/GitHub via Cursor account integrations, not the p
 ## Delivery path
 
 ```
-Codex (entry)
+Dispatcher (assigned)
   → Grok Build implements theme/layout (if any)
   → Human or Build mints visitor Share Preview (shopifypreview.com)
-  → Codex or Grok Build posts the ticket in Slack #visual-qa
+  → Dispatcher or Grok Build posts the ticket in Slack #visual-qa
   → Slack event integration matches the rule
   → Website Visual QA routine runs on the xAI cloud PC
   → Bot reads the thread via Slack plugin, walks the preview, replies in the same thread

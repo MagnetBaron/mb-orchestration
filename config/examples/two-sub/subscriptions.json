@@ -1,0 +1,17 @@
+{
+  "_note": "EXAMPLE per-user layer — TWO subscriptions: Codex (worker/review family + the user's assigned dispatcher) + Grok (implement). Validate: `MB_CONFIG_DIR=config/examples/two-sub python3 bin/doctor.py`. The intake Codex plan reserves headroom but codes when Grok is spent (never-strand). Only one review family (OpenAI) → cross-family gates park unless Review E is wired.",
+  "schema_version": 1,
+  "owner": "you@example.com",
+  "subscriptions": {
+    "codex-200": {
+      "vendor": "OpenAI", "product": "ChatGPT Pro / Codex $200", "monthly_usd": 200,
+      "backs_providers": ["codex-luna", "codex-terra", "codex-sol"], "grants": { "fable": false },
+      "notes": "worker/review family (Terra MCP volume + Sol review + Luna coordination) + the user's assigned dispatcher; reserves headroom, codes as last resort"
+    },
+    "grok-heavy": {
+      "vendor": "xAI", "product": "SuperGrok Heavy", "monthly_usd": null,
+      "backs_providers": ["grok-build"], "grants": {},
+      "notes": "the implementer"
+    }
+  }
+}

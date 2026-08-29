@@ -15,7 +15,7 @@ Opposite auth boundaries. Website Visual QA **never logs in** (approved preview 
 
 - Signs in to `clarity.microsoft.com` as **`server@themagnetbaron.com`** (the invited **Member** — Clarity has no read-only role). Login is **Google SSO** (redirect `clarity.microsoft.com/callback-g`), not a Microsoft password. Not `constantine@` — keep the human account out of the bot loop.
 - **`server@` must be least-privilege:** it carries **no Google-service data or roles** (Drive, Gmail, GSC, Workspace admin) beyond the two Clarity invites. The bot holds a live Google session; if that account had broader access, a prompt-injected session could reach it. The instruction-layer allowlist is not a substitute for a bare account.
-- Projects (both invites accepted): **Magnet Baron** (id `wpxqdpcski`, themagnetbaron.com) + **Gadget Duke** (id `wpxjicd0hx`, gadgetduke.com). Both ids verified against the live Clarity MCP. The bot **selects the project by name matching the ticket's site** — never operate on a project whose name doesn't match.
+- Projects (both invites accepted): **Magnet Baron** + **Gadget Duke**. The **project IDs, hosts, and login identity are live bindings in `config/connectors.json` `analytics.clarity`** (`bin/connectors.py --render clarity`) — not pasted here, so they cannot go stale. The bot **selects the project by name matching the ticket's site** — never operate on a project whose name doesn't match.
 - Read-only. Member can view; the bot never changes settings, deletes/masks data, or manages members.
 
 ## The group chat — how Heat Map and Website Visual QA coexist
@@ -37,7 +37,7 @@ The mirror clauses (Visual QA ignoring `clarity deep-dive:`, never emitting it) 
 
 ## Operating model — how the two work together (via Dispatch)
 
-The bots never hand work to each other directly; **Dispatch (Codex) is the hub.** The loop:
+The bots never hand work to each other directly; **Dispatch (the assigned dispatcher) is the hub.** The loop:
 
 1. **Heat Map** finds UX friction (heatmap / replay / Summarize) → posts a `digest` + **recommended briefs** (brief fields only, no preview URL).
 2. **Dispatch** turns a recommended brief into a job under the normal risk gate → **Grok Build** implements the fix in a worktree.

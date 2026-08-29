@@ -1,0 +1,15 @@
+{
+  "_note": "SOLO: one Claude seat = worker + dispatcher + reviewer. drain:full (it IS the worker); intake:true is only a label. No reserve — nothing else to prefer.",
+  "schema_version": 3,
+  "updated": "2026-08-27",
+  "consumed_by": "bin/usage-status.py",
+  "seats": {
+    "claude-solo": {
+      "meter": "Claude Pro $25", "subscription": "claude-solo", "family": "anthropic", "fable": false,
+      "reserve_pct": null, "drain": "full", "intake": true, "billing": "included",
+      "windows": [ { "kind": "rolling", "hours": 5 } ],
+      "live_signal": "hard limit on a real call → usage-ledger.json",
+      "reset_note": "only seat; codes + dispatches + reviews"
+    }
+  }
+}

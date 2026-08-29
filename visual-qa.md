@@ -4,7 +4,11 @@ Grok Bot named **Website Visual QA**. Cloud computer only. Dispatch via Slack, n
 
 **How the ticket reaches the Bot:** [visual-qa-slack.md](./visual-qa-slack.md).
 
-## Allowlist (edit this block only to add a site)
+## Allowlist
+
+**Canonical source: `config/connectors.json` `stores.*`** — render the paste-ready block with
+`bin/connectors.py --render visual-qa-allowlist`. The summary below mirrors it for reading; add a
+site in the config, not here.
 
 ### 1) Magnet Baron
 - Live: themagnetbaron.com, www.themagnetbaron.com, the-magnet-baron.myshopify.com
@@ -63,18 +67,15 @@ Review only storefront **pixels** (theme/section/layout/CSS, PDP/collection temp
 
 **Never:** Admin / `/admin` / admin.shopify.com / partners.shopify.com / SimGym / collaborator accounts; publish; live-theme switch; checkout submit; minting preview URLs; credentials/tokens/Admin cookies.
 
-## Gadget Duke preview staging (owner instruction, 2026-08-24)
+## Gadget Duke preview staging (owner instruction)
 
-When Review D (Grok Bot Website Visual QA) needs storefront pixels for Gadget Duke work that is not
-yet approved for `main`, do NOT merge to `main`. Merge the PR branch into **`experimental`** in
-`MagnetBaron/GD-Horizon-Shopify-Theme` and push. The store has a GitHub-connected theme per branch:
+When Review D needs storefront pixels for Gadget Duke work not yet approved for `main`, do NOT merge
+to `main`. Merge the PR branch into **`experimental`** in the theme repo and push; the store has a
+GitHub-connected theme per branch and Shopify syncs within seconds.
 
-- `main` -> theme 151997710406 (the owner's review preview; only owner-approved merges land here)
-- `experimental` -> theme 151997775942 (Review D staging; safe to merge candidate branches anytime)
-- `production` -> theme 151997743174 (live cutover only; owner publishes)
-
-Preview URL for the Review D ticket: `https://gadgetduke.com/?preview_theme_id=151997775942`
-(storefront is public, the link works for a visitor; a shopifypreview.com share link from the theme
-admin also works). Shopify syncs the connected theme within seconds of the push. After the review,
-`experimental` may accumulate preview merges; it is a staging lane, never a source of truth — the
-canonical change still lands via its own PR to `main`.
+**The concrete repo, branch→theme-id map, and Review D preview URL are live bindings in
+`config/connectors.json`** (`stores.gadget-duke.theme_map` / `review_d_preview_url`). Do not paste
+theme IDs into prose — print the current values with `bin/connectors.py --render visual-qa-ticket gadget-duke`.
+Roles: `main` = owner review preview (owner-approved merges only); `experimental` = Review D staging
+(safe to merge candidates anytime); `production` = live cutover (owner publishes). `experimental` is a
+staging lane, never a source of truth — the canonical change still lands via its own PR to `main`.

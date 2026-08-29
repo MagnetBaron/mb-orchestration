@@ -1,0 +1,18 @@
+{
+  "_note": "EXAMPLE of the live-state file usage-status reads. Copy to usage-ledger.json (gitignored) and let wrappers/probes/the owner write it — never an LLM. Two ways to mark a seat spent: a `spent_until` reset instant (authoritative, e.g. written by bin/record-429.sh on a real 429), or a `pct` the owner notes from the provider UI (compared to soft_cap_pct). Keys are SEAT names from config/usage-windows.json. Delete an entry when the seat is healthy again.",
+  "codex-sol": {
+    "pct": 92,
+    "note": "weekly UI showed 92% — over 90 soft cap; route code review to a live Claude Fable/Opus seat",
+    "updated": "2026-08-27T09:00:00-05:00"
+  },
+  "claude-max": {
+    "spent_until": "2026-08-27T14:30:00-05:00",
+    "note": "hard limit on a real review call; next 5h window starts then — teamclaude rotates to claude-team-a",
+    "updated": "2026-08-27T09:30:00-05:00"
+  },
+  "fable-downgrade:claude-team-b": {
+    "note": "EXAMPLE downgrade marker written by bin/detect-capability.py when a seat that should carry Fable no longer does; resolve-route drops that seat from Fable-capable until cleared (an upgrade clears it)",
+    "grant_lost": "fable",
+    "updated": "2026-08-27T09:45:00-05:00"
+  }
+}

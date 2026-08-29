@@ -1,0 +1,207 @@
+# Model matrix
+
+Generated from `config/model-registry.json` as of 2026-08-28.
+Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.
+
+A catalog entry is not a usable route. Only `live_verified` routes resolve.
+Quality rank is not selection priority. Rank never grants tools or data.
+
+## Models
+
+| id | family | lab | lifecycle | official ids | excluded |
+|---|---|---|---|---|---|
+| `claude-fable-5` | anthropic | Anthropic | restricted | claude-fable-5, fable-5 | no |
+| `claude-opus-4-8` | anthropic | Anthropic | superseded | claude-opus-4-8, opus-4.8, claude-opus-4.8 | no |
+| `claude-opus-5` | anthropic | Anthropic | stable | claude-opus-5, opus-5 | no |
+| `deepseek-v4` | deepseek | DeepSeek | stable | deepseek-v4, deepseek-chat | no |
+| `gemini-3.7-flash` | google | Google | preview | gemini-3.7-flash | no |
+| `glm-5.2` | zhipu | Z.AI | stable | glm-5.2, glm-5-2 | no |
+| `glm-5.3-flash` | zhipu | Z.AI | preview | glm-5.3-flash | no |
+| `gpt-5.3-codex-spark` | openai | OpenAI | stable | gpt-5.3-codex-spark | no |
+| `gpt-5.4` | openai | OpenAI | stable | gpt-5.4 | no |
+| `gpt-5.4-mini` | openai | OpenAI | stable | gpt-5.4-mini | no |
+| `gpt-5.5` | openai | OpenAI | stable | gpt-5.5 | no |
+| `gpt-5.6-luna` | openai | OpenAI | stable | gpt-5.6-luna | no |
+| `gpt-5.6-sol` | openai | OpenAI | stable | gpt-5.6-sol | no |
+| `gpt-5.6-terra` | openai | OpenAI | stable | gpt-5.6-terra | no |
+| `grok-4.5` | xai | xAI | superseded | grok-4.5 | no |
+| `grok-4.6` | xai | xAI | stable | grok-4.6, grok-4.6-build | no |
+| `kimi-k3` | moonshot | Moonshot | stable | kimi-k3, kimi-k3-max | no |
+| `muse-spark-1.2` | meta | Meta | preview | muse-spark-1.2 | no |
+| `open-weight-review-e` | open-weight | unspecified | restricted | review-e | no |
+| `qwen-3.8-max` | alibaba | Alibaba | stable | qwen-3.8-max, qwen3-8-max | no |
+
+## Routes
+
+| route | model | state | lifecycle | host | harness | invocation | evidence | provider |
+|---|---|---|---|---|---|---|---|---|
+| `deepseek-v4-unwired` | `deepseek-v4` | unwired | stable | none | none | `deepseek-v4` | 2026-08-28 vendor_self_reported | — |
+| `fable-5-teamclaude` | `claude-fable-5` | live_verified | restricted | teamclaude | claude-cli | `claude-fable-5` | 2026-08-28 local_smoke | fable-5 |
+| `gemini-3.7-flash-unwired` | `gemini-3.7-flash` | unwired | preview | none | none | `gemini-3.7-flash` | 2026-08-28 vendor_self_reported | — |
+| `glm-5.2-unwired` | `glm-5.2` | unwired | stable | none | none | `glm-5.2` | 2026-08-28 independent_benchmark | — |
+| `glm-5.3-flash-unwired` | `glm-5.3-flash` | unwired | preview | none | none | `glm-5.3-flash` | 2026-08-28 vendor_self_reported | — |
+| `gpt-5.3-codex-spark-codex` | `gpt-5.3-codex-spark` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.3-codex-spark` | 2026-08-28 local_smoke | — |
+| `gpt-5.4-codex` | `gpt-5.4` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4` | 2026-08-28 local_smoke | — |
+| `gpt-5.4-mini-codex` | `gpt-5.4-mini` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4-mini` | 2026-08-28 local_smoke | — |
+| `gpt-5.5-codex` | `gpt-5.5` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.5` | 2026-08-28 local_smoke | — |
+| `gpt-5.6-luna-codex` | `gpt-5.6-luna` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-luna` | 2026-08-28 local_smoke | codex-luna |
+| `gpt-5.6-sol-codex` | `gpt-5.6-sol` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-sol` | 2026-08-28 local_smoke | codex-sol |
+| `gpt-5.6-terra-codex` | `gpt-5.6-terra` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-terra` | 2026-08-28 local_smoke | codex-terra |
+| `grok-4.5-cli` | `grok-4.5` | catalog_verified | superseded | grok-cli | grok | `grok-4.5` | 2026-08-28 local_smoke | — |
+| `grok-4.6-build` | `grok-4.6` | live_verified | stable | grok-cli | grok | `grok-4.6` | 2026-08-28 local_smoke | grok-build |
+| `grok-4.6-cursor` | `grok-4.6` | live_verified | stable | cursor | cursor-agent | `grok-4.6` | 2026-08-28 local_smoke | cursor-grok |
+| `grok-bot-heat-map` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | grok-bot-heat-map |
+| `grok-bot-visual-qa` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | grok-bot-review-d |
+| `kimi-k3-unwired` | `kimi-k3` | unwired | stable | none | none | `kimi-k3` | 2026-08-28 independent_benchmark | — |
+| `muse-spark-1.2-unwired` | `muse-spark-1.2` | unwired | preview | none | none | `muse-spark-1.2` | 2026-08-28 vendor_self_reported | — |
+| `opus-4.8-teamclaude` | `claude-opus-4-8` | live_verified | superseded | teamclaude | claude-cli | `claude-opus-4-8` | 2026-08-28 local_smoke | opus-4.8 |
+| `opus-5-direct-claude` | `claude-opus-5` | auth_blocked | stable | claude-cli-direct | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | — |
+| `opus-5-teamclaude` | `claude-opus-5` | live_verified | stable | teamclaude | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | opus-5 |
+| `qwen-3.8-max-unwired` | `qwen-3.8-max` | unwired | stable | none | none | `qwen-3.8-max` | 2026-08-28 independent_benchmark | — |
+| `review-e-fireworks` | `open-weight-review-e` | unwired | restricted | fireworks | http | `review-e` | 2026-08-28 none | review-e |
+
+## Per-role rankings (selection vs quality)
+
+### `dispatch`
+
+Classify, stamp review, brief, assign. Authority is entrypoints.json, not model rank. Luna/Terra rank for dispatch work quality.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `gpt-5.6-terra-codex` | medium |
+| quality | 2 | `opus-5-teamclaude` | medium |
+| quality | 3 | `gpt-5.6-luna-codex` | medium |
+| selection | 1 | `gpt-5.6-luna-codex` | high |
+| selection | 2 | `gpt-5.6-terra-codex` | high |
+| selection | 3 | `opus-5-teamclaude` | high |
+
+### `context_scouting`
+
+Cheap first pass to compress or extract facts before expensive seats. Added because it reduces expensive context.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `glm-5.3-flash-unwired` | low |
+| quality | 2 | `gpt-5.6-luna-codex` | medium |
+| quality | 3 | `grok-4.6-build` | medium |
+| selection | 1 | `gpt-5.6-luna-codex` | medium |
+| selection | 2 | `grok-4.6-build` | medium |
+
+### `research_synthesis`
+
+Long-context synthesis from already-fetched packets. Does not invent Google metrics.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `kimi-k3-unwired` | medium |
+| quality | 2 | `opus-5-teamclaude` | high |
+| quality | 3 | `gpt-5.6-sol-codex` | high |
+| quality | 4 | `grok-4.6-build` | medium |
+| selection | 1 | `grok-4.6-build` | high |
+| selection | 2 | `gpt-5.6-terra-codex` | high |
+| selection | 3 | `opus-5-teamclaude` | medium |
+
+### `implementation`
+
+Repo/app code in an isolated worktree.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `gpt-5.6-sol-codex` | medium |
+| quality | 2 | `opus-5-teamclaude` | medium |
+| quality | 3 | `grok-4.6-build` | high |
+| quality | 4 | `qwen-3.8-max-unwired` | low |
+| quality | 5 | `deepseek-v4-unwired` | low |
+| selection | 1 | `grok-4.6-build` | high |
+| selection | 2 | `grok-4.6-cursor` | high |
+
+### `architecture_spec_critique`
+
+Rare long-horizon / spec critique. Fable is the escalation; Opus 5 covers normal Anthropic judgment.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `fable-5-teamclaude` | medium |
+| quality | 2 | `opus-5-teamclaude` | high |
+| selection | 1 | `opus-5-teamclaude` | high |
+| selection | 2 | `fable-5-teamclaude` | medium |
+
+### `code_review`
+
+Diff review. Cross-family pair is Opus 5 + Sol. Fable is not a second family.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `opus-5-teamclaude` | high |
+| quality | 2 | `gpt-5.6-sol-codex` | high |
+| quality | 3 | `fable-5-teamclaude` | low |
+| quality | 4 | `review-e-fireworks` | low |
+| selection | 1 | `opus-5-teamclaude` | high |
+| selection | 2 | `gpt-5.6-sol-codex` | high |
+| selection | 3 | `opus-4.8-teamclaude` | medium |
+
+### `mcp_volume`
+
+High-volume connector fetches. Connector presence is required; public models do not create connectors.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `gpt-5.6-terra-codex` | high |
+| quality | 2 | `gemini-3.7-flash-unwired` | low |
+| quality | 3 | `glm-5.3-flash-unwired` | low |
+| selection | 1 | `gpt-5.6-terra-codex` | high |
+| selection | 2 | `gpt-5.6-luna-codex` | medium |
+
+### `mcp_judgment`
+
+Interpret already-fetched MCP output. Never row-dump fetch loops.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `opus-5-teamclaude` | high |
+| quality | 2 | `gpt-5.6-sol-codex` | high |
+| selection | 1 | `gpt-5.6-sol-codex` | high |
+| selection | 2 | `opus-5-teamclaude` | high |
+
+### `visual_qa`
+
+Storefront pixel review of a visitor preview URL.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `grok-bot-visual-qa` | high |
+| selection | 1 | `grok-bot-visual-qa` | high |
+
+### `evidence_audit`
+
+Check claims against snapshots and sources. Catches invented metrics before they propagate.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `opus-5-teamclaude` | high |
+| quality | 2 | `gpt-5.6-sol-codex` | high |
+| quality | 3 | `glm-5.3-flash-unwired` | low |
+| selection | 1 | `opus-5-teamclaude` | medium |
+| selection | 2 | `gpt-5.6-sol-codex` | medium |
+
+### `model_evaluation_admin`
+
+Administer candidate evals and receipts. Owner/admin gated; scores do not auto-wire routes.
+
+| kind | n | route | confidence |
+|---|---:|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium |
+| quality | 2 | `gpt-5.6-sol-codex` | medium |
+| selection | 1 | `opus-5-teamclaude` | low |
+| selection | 2 | `gpt-5.6-sol-codex` | low |
+
+## Invariants
+
+- `catalog_is_not_a_route`: true
+- `cross_family_requires_distinct_families`: true
+- `fable_is_same_family_as_opus`: true
+- `only_live_verified_resolves`: true
+- `quality_rank_is_not_selection_priority`: true
+- `single_dispatcher`: entrypoints.json dispatcher.provider is the only authority assignment; rankings never grant dispatch
+- `tools_never_follow_rank`: true
+- `unknown_availability_fails_closed`: true

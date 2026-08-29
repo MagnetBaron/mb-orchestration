@@ -1,19 +1,24 @@
-# Fireworks Review E — last-resort review fallback
+# Review E — independent-family review fallback (Fireworks today)
 
-Review E is a **metered, review-only** seat on the Fireworks API. It is **not wired** (no CLI, no key on the Mini). Until the owner wires it, any brief that would route here **parks** with `blocked: Review E unwired`. It is never an implementer, dispatcher, MCP seat, or architecture reviewer.
+Review E is the **frontier independent-family review slot** (`config/providers.json` provider
+`review-e`). It is a **replaceable backing**: Fireworks open-weight API today, a local open-weight
+LLM (or another off-family CLI) later — the slot and its rules don't change when the backing does.
+It is **metered, review-only**, and **not wired** (no key on the Mini). Until the owner wires it,
+any brief that would route here **parks** with `blocked: Review E unwired`. Never an implementer,
+dispatcher, MCP seat, or architecture reviewer.
 
-Its value is **independence**, not capacity: Fable + Opus 4.8 are one family (Anthropic), Sol is OpenAI. A Fireworks open-weight model (DeepSeek / Moonshot / Alibaba / Zhipu labs) is the first review family that is none of Anthropic / OpenAI / xAI. See `DOCTRINE.md` §Correlated failure.
+Its value is **independence**, not capacity: Fable + Opus 5 are one family (Anthropic), Sol is OpenAI. A Fireworks open-weight model (DeepSeek / Moonshot / Alibaba / Zhipu labs) is the first review family that is none of Anthropic / OpenAI / xAI. See `DOCTRINE.md` §Correlated failure.
 
 ## Two roles (both review-only)
 
-1. **Last resort.** All native review seats (Fable, Sol, Opus 4.8) are quota-confirmed spent **and** the brief is time-critical (owner said ship, prod incident, security fix). One advisory pass. Otherwise the correct move is to **park to the earliest reset** (`usage-status --earliest-reset`) — a rested native seat beats an open-weight fallback.
+1. **Last resort.** All native GATING seats (Opus 5, Sol — Fable is not a gate) are quota-confirmed spent **and** the brief is time-critical (owner said ship, prod incident, security fix). One advisory pass. Otherwise the correct move is to **park to the earliest reset** (`usage-status --earliest-reset`) — a rested native seat beats an open-weight fallback.
 2. **Cross-family second slot.** A safety-gate-5 item needs one pass from each of two families, but one native family is **quota-spent** so only one remains (e.g. post-downgrade Sol spent, or teamclaude spent). Review E fills the **second** family slot so the gate is satisfiable instead of parking. A family merely *down* (outage) is not spent — that parks, it does not open Review E.
 
 Role 2 fires more often than role 1 and is the real reason to wire this.
 
 ## No reset — it is dollars
 
-There is no weekly window to drain. Every engagement is metered spend, so the drain law never applies here (`DOCTRINE.md` Economics). Owner sets a monthly cap at wiring time (`monthly_cap_usd` in `usage-windows.json`, e.g. **$20/mo**); over cap → park, do not silently overspend.
+There is no weekly window to drain. Every engagement is metered spend, so the drain law never applies here (`DOCTRINE.md` Economics). Owner sets a monthly cap at wiring time (`monthly_cap_usd` in `config/usage-windows.json`, e.g. **$20/mo**); over cap → park, do not silently overspend.
 
 ## Engage trigger — QUOTA opens it, OUTAGE never does
 
@@ -22,11 +27,11 @@ Only **positive quota evidence** opens Review E. Record the state in `usage-ledg
 | Signal | Class | Effect |
 |--------|-------|--------|
 | `usage-status` shows the seat spent / soft-capped (recorded **429** or ledger %) | **QUOTA** | counts toward exhaustion |
-| Fable absent by plan (downgrade) | **QUOTA** | Fable slot is spent |
+| Fable absent by plan (downgrade) | **N/A** | Fable is NOT a gating seat — its absence never opens Review E; the gate seats are Opus 5 + Sol |
 | Probe failure, timeout, 5xx, DNS, auth-expired, "command not found" | **OUTAGE** | **park** — says nothing about quota |
 
 - A probe result can **park** work but can **never** route it to Review E (`EDGE-CASES.md` probe rule).
-- **Correlated pipes:** teamclaude down = one Claude outage (try Claude CLI direct before calling Fable *and* Opus 4.8 dead). Codex down = Sol *and* dispatch — not "reviewers exhausted."
+- **Correlated pipes:** teamclaude down = one Claude outage that also takes the assigned dispatcher when it is a Claude seat (direct Claude CLI is auth_blocked in this setup — do not treat it as a working route). Codex down = Sol *and* Terra MCP — not "reviewers exhausted."
 - **All three reviewers erroring at once = local Mini fault.** Diagnose the box; do not engage Review E — it would mask the fault or fail identically.
 
 ## Dispatch check (all five, mirrors Sol)
@@ -45,7 +50,7 @@ Any **no** → do not engage. Park.
 - Model id is account-scoped: `accounts/fireworks/models/<model>`. The serverless catalogue **rotates** — a 404 means retired; **re-pin**, do not hardcode one id forever.
 - Class: **open-frontier reasoning, 128K+ context, structured-output support, serverless tier.** Pin one exact id + one named alternate below.
 - **Ban** ≤70B instruct tiers, "Scout"-class, and "fast"/distilled variants — that is the quality cliff arriving through a default parameter.
-- Candidates to verify against the live catalogue at wiring time: DeepSeek V3.x-reasoning / R1-class, Kimi K2(-thinking), Qwen3-235B-thinking or Qwen3-Coder-480B, GLM-4.x-class.
+- Candidates seen in third-party code (NOT confirmed live — the catalogue rotates, **verify each at wiring**): `accounts/fireworks/models/deepseek-r1-0528`, `…/deepseek-v3p1`, `…/kimi-k2-instruct-0905`, `…/qwen3-coder-480b-a35b-instruct`. Families to confirm: DeepSeek R1/V3(+later), Kimi K2(-thinking), Qwen3-235B-thinking / Qwen3-Coder-480B, GLM-4.x. A 404 = retired → re-pin.
 
 ```
 PINNED  : accounts/fireworks/models/<owner fills at wiring>

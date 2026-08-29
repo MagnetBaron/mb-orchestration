@@ -7,72 +7,70 @@ git clone https://github.com/MagnetBaron/mb-orchestration.git
 git clone https://github.com/MagnetBaron/teamclaude.git
 ```
 
-GitHub Desktop: File → Clone repository → MagnetBaron → `mb-orchestration` and `teamclaude`.
+Open **mb-orchestration** as the workspace. Claude Code reads `CLAUDE.md` and is the dispatcher in this
+setup (the user-assigned Claude orchestration surface); Codex reads `AGENTS.md` as a worker/review seat.
+Then follow `SETUP-BOTS.md` for the machine wire-up — the dispatcher fans the setup work out to the
+worker seats.
 
-Open **mb-orchestration** as the workspace. Codex reads `AGENTS.md`. Claude Code reads `CLAUDE.md`.
-
-Then Codex follows [SETUP-BOTS.md](./SETUP-BOTS.md) — dispatch only.
-
-## 1. Copy policy into other project folders (optional)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/AGENTS.md -o AGENTS.md
-curl -fsSL https://raw.githubusercontent.com/MagnetBaron/mb-orchestration/main/CLAUDE.md -o CLAUDE.md
-```
-
-Optional global:
+## 1. Validate the setup first
 
 ```bash
-mkdir -p ~/.codex ~/.claude
-cp AGENTS.md ~/.codex/AGENTS.md
-cp CLAUDE.md ~/.claude/CLAUDE.md
+cd mb-orchestration
+python3 bin/doctor.py        # config integrity + prose hygiene
+python3 bin/smoketest.py     # walk the whole path
+python3 bin/detect-agents.py # which providers are live on THIS machine
+python3 bin/model-registry.py inventory
 ```
 
-## 2. teamclaude (Claude seats)
+`doctor` green means the registry is internally consistent; `smoketest` green means the routing,
+metering, fallback, and role generation all work. Do this before wiring anything else.
 
-Source: https://github.com/MagnetBaron/teamclaude
+## 2. Configure for THIS user (the portability layer)
 
-Runtime is the npm package (self-updates). The org fork holds the clone URL plus `mb/` overlay.
+Everything user-specific is in `config/` — edit these, not prose:
+
+1. `config/subscriptions.json` — the plans you pay for. Fable grants live here (`grants.fable`).
+2. `config/entrypoints.json` — your entry surfaces and the one dispatcher (`dispatcher.provider`).
+   The dispatcher is user-assigned (the Claude orchestration surface in this reference setup); point
+   `dispatcher.provider` at any dispatch-capable provider you own and flip that surface's `can_dispatch`.
+3. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
+4. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
+5. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
+
+## 3. teamclaude (Claude seats)
+
+Source: https://github.com/KarpelesLab/teamclaude — multi-account Claude proxy with automatic
+quota-based rotation (tracks per-model caps, so a seat out of one model still serves others). The
+MagnetBaron fork adds the clone URL + `mb/` overlay.
 
 1. `npm install -g @karpeleslab/teamclaude`
 2. From the clone: `./mb/install-local.sh`
-3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat
+3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat (Max + 2 Team-premium + 2 Pro = five seats total)
 4. `teamclaude service install` and `teamclaude alias --install`
-5. `teamclaude run -- --model opus-4.8`
+5. `teamclaude run -- --model claude-opus-5`
 
-Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit.
+Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit — and `bin/detect-capability.py` cross-checks it. No four Claude desktop apps. Direct `claude` without teamclaude is not a working route.
 
-No four Claude desktop apps.
+## 4. Review D + Heat Map (Grok Bots)
 
-## 3. Review D (Website Visual QA)
+Policy: `visual-qa.md` / `analytics-clarity.md`. Owner creates the named bots and the one public
+`#visual-qa` channel once (binding in `config/connectors.json`). Daily handoff is Slack. Render the
+paste-ready allowlist/ticket with `bin/connectors.py --render …`. Delivery details: `visual-qa-slack.md`.
 
-Policy: [visual-qa.md](./visual-qa.md). Owner creates the named Bot and Slack channel once. Daily handoff is Slack, not Grok Bot.app on the Mini, not `grok` CLI. Delivery: [visual-qa-slack.md](./visual-qa-slack.md). Second bot **Heat Map** (Clarity analytics) shares `#visual-qa` — separate identity/auth, content-based coexistence with Visual QA; policy + owner setup in [analytics-clarity.md](./analytics-clarity.md).
+## 5. Google MCP
 
-## 4. Google MCP (for mcp-routing)
-
-Owner connects Search Console, Drive, and DataForSEO (or equivalent) on **Codex GPT** and **Claude/Opus** seats so bulk analytics and product research briefs can run. Grok is not assumed to have these connectors.
-
-## 5. Ordered adoption
-
-1. Buckets classified — Grok abundant; GPT Terra for Google MCP volume; Claude+Sol scarce; Codex Terra/Luna dispatch; Cursor $400 last
-2. AGENTS.md live
-3. Brief schema enforced (`effort` included)
-4. Worktrees for parallel Grok jobs
-5. Risk gate + reviewer order (Fable if present → Sol → Opus → Review E if wired)
-6. teamclaude (login + plan-sync agent; no exclusive Fable route)
-7. Slack `#visual-qa` + Website Visual QA Bot (owner)
-8. Google MCP on Codex/Claude (owner)
-9. Usage metering: set anchors in `usage-windows.json`; read seat state with `usage-status` (`usage-metering.md`) — script-computed resets and recorded signals, not LLM/manual-only
-10. EDGE-CASES.md known to dispatcher for outages
+Owner connects Search Console, Drive, and DataForSEO (or equivalent) on the providers listed in
+`config/connectors.json` `mcp_connectors.*.available_on` (today Codex GPT + Claude/Opus). Grok is not
+assumed to have these. Route per `mcp-routing.md`.
 
 ## 6. Slash command `/orchestrate` (Claude Code · Codex · Cursor)
 
 One canonical file, symlinked into each CLI's command dir — **edit the canonical, never the copies**.
 
-- Canonical (edit here): [`.claude/commands/orchestrate.md`](./.claude/commands/orchestrate.md)
+- Canonical (edit here): `.claude/commands/orchestrate.md`
 - Claude Code — repo `.claude/commands/` (+ `~/.claude/commands/` global). `/orchestrate <task>`
 - Codex — `~/.codex/prompts/orchestrate.md`. `/orchestrate <task>`
-- Cursor — repo `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
+- Cursor — `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
 
 Provision or repair the symlinks on any machine:
 
@@ -80,16 +78,30 @@ Provision or repair the symlinks on any machine:
 ./sync-commands.sh
 ```
 
-No-arg `/orchestrate` prints the live seat map (`usage-status`); with a task it classifies, stamps review depth, picks the seat, and routes reviews. **Entry point stays Codex** — a non-Codex host may show status and draft a brief, then hands it to Codex; it never assigns other seats or implements outside its own seat.
+No-arg `/orchestrate` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
+stamps depth (`bin/resolve-route.py`), and routes. **Only the assigned dispatcher surface assigns
+seats** — any other host (Codex included) shows status and drafts a brief, then hands it to the
+assigned dispatcher.
 
-## 7. Optional heavy harnesses
+## 7. Ordered adoption
+
+1. `bin/doctor.py` + `bin/smoketest.py` green
+2. `config/` filled for this user; `AGENTS.md` live
+3. Brief schema enforced (`effort` and `skills` included)
+4. Worktrees for parallel Grok jobs
+5. Risk gate + `bin/resolve-route.py` for the review chain
+6. teamclaude (login + plan-sync agent; no exclusive Fable route)
+7. Slack `#visual-qa` + Website Visual QA / Heat Map bots (owner)
+8. Google MCP on the providers `connectors.json` lists (owner)
+9. Usage metering: anchors in `config/usage-windows.json`; read state with `bin/usage-status.py`
+10. `EDGE-CASES.md` known to the dispatcher for outages
 
 Prefer this repo’s thin files until context pressure forces a plugin.
 
-## 8. Selective iOS, Flutter, and Dart skills
+## 8. Selective iOS, Flutter, Dart, Cloudflare, vault, and engineering skills
 
 Install the pinned skills listed in `skills/registry.json`. For an existing
-24-link installation, migrate the leaf playbooks behind the router once:
+leaf-link installation, migrate the leaf playbooks behind the routers once:
 
 ```bash
 python3 skills/sync.py --migrate-library
@@ -102,9 +114,9 @@ python3 skills/sync.py
 python3 skills/sync.py --check
 ```
 
-The sync keeps all 24 leaf playbooks in a private non-discovery library and
-links only `mobile-dev-router` into `~/.agents/skills`. Existing
-Grok/Claude/Cursor implementation seats receive the router only on mobile
+The sync keeps the 44 leaf playbooks in private non-discovery libraries and
+links only the four routers into `~/.agents/skills`. Existing
+Grok/Claude/Cursor implementation seats receive a router only on matching
 briefs; it reads at most the one or two matching leaf playbooks. Generated
 Codex role profiles directly scope iOS accessibility or Dart MCP tools without
 placing those instructions or tool schemas in Dispatch. The skill tree does

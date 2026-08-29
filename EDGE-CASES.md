@@ -19,13 +19,17 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 |---------|----|
 | Grok Build / Heavy outage | Probe once. If still down: park volume. Do **not** move legwork to Sol, Opus, or Cursor $400. |
 | GPT Terra MCP auth expired / connector missing | Park MCP brief. Report `blocked: Google MCP unavailable on Terra`. Do not invent GSC/keyword numbers. Do not burn Sol/Opus on fetches. |
-| Codex Sol over soft cap (`usage-status`, not a hardcoded 90) | Code review → Opus 4.8, then Review E (if wired), else park to earliest reset. Volume still Grok. |
-| Fable missing (downgrade) | Review order starts at **Codex Sol**. Then Opus 4.8. Then **Review E (if wired)**, else park after 4.8. |
-| Opus / teamclaude exhausted | Sol if under its soft cap (`usage-status`) and not already used on this change-set. Else park review — or, **if Review E is wired**, engage it only when the brief is time-critical and `usage-status` shows all native seats spent (`fireworks-usage.md`); its `ship` on a risk class is advisory, owner lands. Unwired → park after 4.8. |
+| Codex Sol over its reserve line (`usage-status` shows tier `reserve`, not a hardcoded 90) | Code review PREFERS a live Fable/Opus seat (Sol is deprioritized, **not** removed). If Sol is the only usable reviewer, Sol reviews — a reserve/soft cap never strands real quota. Park only on genuine exhaustion (a recorded 429). Volume still Grok. |
+| Metered $ seat considered while included capacity is live | Do not touch Cursor Other Models / Review E while any `included` seat is usable (`usage-status` billing) — that is API spend the system should avoid. Metered is a last resort only. |
+| Fable missing (downgrade) | `bin/detect-capability.py` records `fable-downgrade:<seat>`; `resolve-route` drops it. When NO Fable-capable seat is live, review order is unchanged: **Opus 5** (on any live Claude seat), then **Codex Sol**, then **Review E (if wired)**, else park after Opus 5. Fable absence never opens Review E. |
+| One Claude seat capped | teamclaude rotates to another of the five seats (`usage-status` per seat). Only when ALL Claude seats are spent is the Anthropic pipe down — check per-seat before calling Fable+Opus dead. |
+| **teamclaude absent — degraded mode (no rotation)** | `bin/detect-agents.py` reports `rotation: unavailable` (also surfaced by `usage-status`). The "five Claude seats" become **one**: a single Claude account serves with **no failover**, so a real 429 on it **parks** the Anthropic pipe (dispatch + Opus review) until that seat's 5h window resets (`usage-status --earliest-reset`) — it does not silently roll to another account, because there is none. This is a *runtime* gap, not a config error (teamclaude is a dep wired on the worker Mini, `install.md` §3) — detection is informational, so `doctor`/`smoketest` stay green without it. Restore failover by installing teamclaude across the five seats. |
+| Opus / all Claude seats exhausted | Sol if under its soft cap (`usage-status`) and not already used on this change-set. Else park review — or, **if Review E is wired**, engage it only when the brief is time-critical and `usage-status` shows all native seats spent (`fireworks-usage.md`); its `ship` on a risk class is advisory, owner lands. Unwired → park after 4.8. |
 | All native review seats quota-spent (`usage-status`, not probes) | Time-critical brief → one advisory Review E pass **if wired**; else park to the earliest reset (`usage-status --earliest-reset`) — a rested native seat beats the fallback. |
 | Cross-family item, one native family quota-spent | The remaining native family gives one pass; **Review E (if wired)** gives the independent second family. Review E unwired → one pass, then park the gate. |
 | All three reviewers erroring at once | Near-certain **local** fault (Mini network, keychain, token). Diagnose the box. Never engage Review E on outage signals — it would mask the fault or fail identically. |
-| Codex dispatcher (Terra/Luna) down | Owner at the Mini console may hand a **complete** brief straight to Grok Build for non-gate work; gate work parks. Phone still never implements; do not promote Implement/Review to Dispatch. |
+| Assigned dispatcher down (here the Claude orchestration surface — a teamclaude/Claude outage, which also takes the Opus review pass: ONE outage, do not cascade) | Owner at the console may hand a **complete** brief straight to Grok Build for non-gate work; gate work parks. Phone still never implements; do not promote a worker/review seat to Dispatch unless the owner reassigns `dispatcher.provider`. |
+| Codex pipe down (Sol + Terra MCP together) | ONE Codex outage, not two — Sol review AND Terra MCP volume are affected together (the assigned dispatcher is NOT, unless the user assigned a Codex surface as dispatcher). Park MCP volume; route code review to Opus 4.8 (native Anthropic gate). Do not cascade to Review E on an outage. |
 | Slack / Visual QA routine dead | Ticket stays in `#visual-qa`. Fallback: owner or iPhone Grok Bot runs the thread. Do not open Bot.app on the Mini. Do not block Grok implement on Visual QA being offline — park only the Review D step. |
 | Cursor Models drained | IDE: stop or Tab-only. Orchestration implement stays Grok Build (Heavy), not Cursor Other Models. |
 | Cursor $400 Other Models gone | Last $ closed unless owner enables on-demand. Fall back to Cursor Grok / Grok Build / teamclaude. |
@@ -49,7 +53,7 @@ Correction happens where Dispatch already looks — at assignment and on every c
 | Lane past its `effort` budget, no completion or park note | completion sweep | Mark `stalled: <branch>`. Resume from git status (partial-completion rule) or park with a reason. No second worktree. |
 | Return outside named file scope, or touched `must_not_touch` | review gate (git diff) + completion check | Reject the change-set; re-scope the brief; do not land. |
 | Past the two-fix-loop cap, no novel defect | review verdict | Park + escalate to owner. |
-| Several seats look down at once | before any reroute | Run `usage-status`. A whole-pipe drop (teamclaude = Fable+Opus; Codex = Sol+dispatch) is **one** outage — diagnose the box, do not cascade to Review E or Cursor. |
+| Several seats look down at once | before any reroute | Run `usage-status`. A whole-pipe drop (teamclaude = the assigned dispatcher + Opus review + Fable; Codex = Sol + Terra MCP) is **one** outage — diagnose the box, do not cascade to Review E or Cursor. |
 | Gate-risk item, all review seats spent | `usage-status` at routing | Escalate to owner; do not silently park a risk item forever. |
 
 Not a meta-agent, no polling for makework. The gates in this file plus the refill law are the mechanism.
@@ -73,7 +77,7 @@ Not a meta-agent, no polling for makework. The gates in this file plus the refil
 ## Resets mid-job
 
 - Sol weekly reset (instant per `usage-status`): in-flight Sol review may finish; **new** Sol reviews follow the post-reset 0% ledger.
-- Cursor billing month roll (date in `usage-windows.json`): Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
+- Cursor billing month roll (date in `config/usage-windows.json`): Other Models $400 refreshes; do not start Last $ jobs speculative before real need.
 - Claude 5h window: teamclaude rotates seats; do not stack all reviews on one account.
 
 ## Owner unreachable
@@ -82,7 +86,7 @@ Safe to continue without owner:
 
 - Grok implement on non-risk, in-scope briefs with complete fields
 - GPT Terra MCP fetch to `output_path` when connector works
-- Luna forwarding completed `done_when` reports (`luna-close-loop.md`)
+- The dispatcher forwarding completed `done_when` reports (`luna-close-loop.md`)
 
 Must park until owner:
 
@@ -117,4 +121,10 @@ Parked work is a brief that stays in the queue with status `parked: <reason>`. P
 
 ## When docs go stale
 
-Model names and plan tiers change. Update `AGENTS.md` seat table and the specialty file for that meter. Do not leave agents on deleted model IDs. Pin what the owner currently pays for (today: Opus 4.8, GPT-5.6 Sol/Terra/Luna, Grok 4.6 / Build, Cursor Ultra Other Models $400). Once Review E is wired, pin its model ID in `fireworks-usage.md`. Reset windows live in `usage-windows.json`.
+Model names and plan tiers change. **Edit `config/`, not prose** — `config/providers.json`
+(models/families/detection), `config/subscriptions.json` (plans + Fable grants),
+`config/connectors.json` (MCP/store bindings), `config/usage-windows.json` (reset anchors) — then run
+`bin/doctor.py`. The seat table in `AGENTS.md` is by-reference (roles are invariant; providers come
+from config), so it does not need editing when a provider changes. Do not leave a provider on a
+deleted model ID; `bin/doctor.py` fails if any provider selects a model listed in `providers.json` `forbidden_models`, and if `config/model-registry.json` is stale or contradictory. Opus 5 is the operational Anthropic gate (not forbidden). A catalog entry is not a usable route — only `live_verified` routes resolve. Once
+Review E is wired, pin its model ID in `config/providers.json` (`review-e.model`) per `fireworks-usage.md`.
