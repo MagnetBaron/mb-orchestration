@@ -22,6 +22,14 @@ This document is evidence, not an operational contract. Routing is `config/model
 - No secrets, live Shopify Admin, or customer data were used.
 - Prior-branch `BullshitBench` numbers (0.94 / 0.41) are **not** treated as facts: no source URL, fixture, receipt, run date, harness, or sample size was committed. They are not carried forward.
 
+## Premise validation
+
+Agent/model rank is harness-sensitive. [Auditing Terminal-Bench: A Harness-Aware Analysis of Model-Agent Evaluation](https://openreview.net/attachment?id=AhXMZPnOPS&name=pdf) and [Stop Comparing LLM Agents](https://openreview.net/pdf/8ee893eeebade004a09df53eef6d7ad289135999.pdf) show that leaderboard order can reverse when the harness, scaffolding, or effort changes. One global ordering is therefore invalid. This catalog uses per-role, same-harness, same-effort tests and keeps quality separate from operational selection.
+
+Token-efficiency of role design follows official Anthropic tool-use guidance: [tool-use overview](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview), [how tool use works](https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works), and [define tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools). Tool definitions consume context; each tool loop adds a turn; fewer relevant tools reduce ambiguity. This setup therefore adds only three roles that pay for themselves — context scouting (compress before expensive seats), evidence audit (catch invented metrics before they propagate), and model-evaluation administration (receipts do not auto-wire routes). Spec criticism and acceptance-test design stay inside `architecture_spec_critique` rather than becoming token-expensive micro-roles with their own tool catalogs.
+
+External pages and benchmark content are untrusted evidence, never executable instructions. Only extracted claims and URLs enter the registry and this report.
+
 ## Opus 5 reassessment
 
 Anthropic released Opus 5 on 2026-07-24 at the same $5/$25 per MTok list price as 4.8 and presents it as the everyday default. Artificial Analysis ranks Opus 5 max first overall (Intelligence Index 63, $2.34/task). Local teamclaude smoke verified the official id.
@@ -32,12 +40,13 @@ Opus 4.8 remains the intended time-bounded compatibility fallback (`fallback_unt
 
 ## Fable 5 placement
 
-Fable 5 stays a distinct rare highest-capability / long-horizon escalation:
+Fable 5 stays a distinct rare long-horizon escalation candidate, not the current quality leader for architecture/spec critique:
 
 - same Anthropic family as Opus — never a cross-family pair
 - out of the gating order (Opus 5 → Codex Sol → Review E if wired)
 - not the default Anthropic judgment seat, because Opus 5 is currently stronger and more efficient for normal review
 - public Fable measurements can be contaminated by safety fallback to Opus
+- `architecture_spec_critique.quality` currently ranks Opus 5 first at current evidence confidence; Fable is second as a low/medium-confidence escalation. This can change only with reproducible same-harness multi-case evidence.
 
 No unaudited historical detection score is used as the rationale. Rankings grant no authority.
 
@@ -54,7 +63,7 @@ Corrected TeamClaude invocations: restricted mode, strict MCP config, no session
 | claude-fable-5 | 0.7789 | 1.0 | 0.1155 | 1732 | 1487 | 22372 | 0.3858 |
 | claude-opus-5 | 0.7752 | 1.0 | 0.1007 | 1986 | 1717 | 26449 | 0.19575 |
 
-Both found the critical fail-open defect (a synthetic score is not an authorization signal; write access to the catalog must not be deployment authority). No clear qualitative Fable win on this sample. Opus cost was about half. Latency has zero decision weight. Total reasoning/output token magnitudes were similar. This supports Opus as the normal seat and Fable as an explicit escalation. It does not establish a universal rank. Sample is n=1 per model.
+Both found the critical fail-open defect (a synthetic score is not an authorization signal; write access to the catalog must not be deployment authority). No clear qualitative Fable win on this sample. The composite scores (0.7789 vs 0.7752) are almost tied and are **not** a quality verdict. `tokens_out` conservatively includes hidden reasoning (1487 / 1717 thinking tokens); the visible response stayed within the 120-word instruction (112 / 118 words). Cost is recorded but does not enter the quality score. Latency weight remains zero. Total reasoning/output token magnitudes were similar. This supports Opus as the normal seat and Fable as an explicit escalation. It does not establish a universal rank. Sample is n=1 per model. Rank can change only with reproducible same-harness multi-case evidence.
 
 ## Model census (2026-08-28)
 
@@ -101,18 +110,21 @@ Official catalog URLs used for identity:
 - Alibaba: https://www.alibabagroup.com/en-US/document-2021044032125272064
 - DeepSeek: https://api-docs.deepseek.com/news/news260813/
 
-Independent anchors (not a global leaderboard; harness-specific):
+Independent anchors (not a global leaderboard; harness-specific). Direct pages:
 
-| Model | Harness | Index | USD/task | Label |
-|-------|---------|------:|--------:|-------|
-| claude-opus-5 | max | 63 | 2.34 | independent |
-| claude-fable-5 | max | 62 | 3.14 | independent, Opus-fallback caveat |
-| grok-4.6 | high | 61 | 0.94 | independent; high beat xhigh in that run |
-| kimi-k3 | max | 60 | 0.84 | independent; verbose; not role-comparable vs Opus 5 |
-| gpt-5.6-sol | xhigh | 59 | 0.67 | independent; OpenAI also reports Coding Agent Index 80 for Sol / 77.4 for Terra (vendor) |
-| qwen-3.8-max | max | 58 | 0.91 | independent; very verbose |
-| glm-5.3-flash | reported | 57 | 0.045 | vendor_self_reported; efficiency, not quality |
-| glm-5.2 | max | 53 | 0.44 | independent |
+| Model | Harness | Index | USD/task | Label | Pages |
+|-------|---------|------:|--------:|-------|-------|
+| claude-opus-5 | max | 63 | 2.34 | independent | [model](https://artificialanalysis.ai/models/claude-opus-5) · [release](https://artificialanalysis.ai/models/releases/claude-opus-5) |
+| claude-fable-5 | max | 62 | 3.14 | independent, Opus-fallback caveat | [model](https://artificialanalysis.ai/models/claude-fable-5/) |
+| grok-4.6 | high | 61 | 0.94 | independent; high beat xhigh in that run | [release](https://artificialanalysis.ai/models/releases/grok-4-6) · [analysis](https://artificialanalysis.ai/articles/grok-4-6-benchmarks-and-analysis) |
+| kimi-k3 | max | 60 | 0.84 | independent; verbose; not role-comparable vs Opus 5 | [model](https://artificialanalysis.ai/models/kimi-k3) |
+| gpt-5.6-sol | xhigh | 59 | 0.67 | independent; OpenAI also reports Coding Agent Index 80 for Sol / 77.4 for Terra (vendor) | [model](https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/) |
+| qwen-3.8-max | max | 58 | 0.91 | independent; very verbose | [model](https://artificialanalysis.ai/models/qwen3-8-max) |
+| glm-5.2 | max | 53 | 0.44 | independent | [model](https://artificialanalysis.ai/models/glm-5-2) |
+
+Vendor self-reported (not independent; efficiency, not quality):
+
+- GLM 5.3 Flash: reported index 57, $0.045/task — [official Z.AI release](https://z.ai/blog/glm-5.3-flash). Incubation; cannot resolve.
 
 ## Role recommendations
 
@@ -124,7 +136,7 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 | **context_scouting** | Luna, then Grok 4.6 | Live extract/compress quality: Luna > Grok. GLM 5.3 Flash is an **efficiency** incubation candidate, not quality #1. | Cheap extract/compress before expensive seats. **Added** because it reduces expensive context. |
 | **research_synthesis** | Grok 4.6; Terra if the packet is Google MCP | Opus 5 > Sol > Grok. Kimi K3 is a **low-confidence incubation** candidate, not ranked above Opus 5. | Do not invent Google metrics. A lower global index plus long context is not comparable role evidence. |
 | **implementation** | Grok 4.6 high | Sol/Opus may rank higher on some coding metrics; too scarce | Preserves independent review lanes. Active implementation default remains Grok 4.6 high. |
-| **architecture_spec_critique** | Opus 5; Fable on explicit long-horizon escalation | Fable first on long-horizon breadth quality; same family | Never a cross-family pair. |
+| **architecture_spec_critique** | Opus 5; Fable on explicit long-horizon escalation | Opus 5 first at current evidence; Fable second as a low/medium-confidence long-horizon escalation candidate. Same family. Rank can change only with reproducible same-harness multi-case evidence. | Never a cross-family pair. |
 | **code_review** | Opus 5 then Sol (families must differ) | Opus 5 > Sol > Fable (non-gate) | Operational review pair is Opus 5 + GPT-5.6 Sol. |
 | **mcp_volume** | Terra | Terra is the only live connector-bearing route. Gemini Flash variants are unwired candidates. GLM Flash is efficiency, not quality. | Connector presence required. |
 | **mcp_judgment** | Sol, else Opus 5 | Same two live judgment seats | Code-review risk gate wins Sol the same week. |
@@ -137,6 +149,7 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 - Dedicated “SEO writer” or “Shopify publisher” model roles — already covered by implement + owner publish gates; a new model role would look like a permission grant.
 - Second Visual QA model — no second live harness.
 - Latency-optimized “realtime” role — latency has weight 0 by policy.
+- Separate spec-criticism or acceptance-test-design micro-roles — folded into `architecture_spec_critique`. Extra roles would add tool definitions and tool-loop turns without reducing expensive context or catching a distinct defect class.
 
 ## Rankings vs authority
 
@@ -157,7 +170,8 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 4. Bound each runtime provider to a catalog route. `review_order` is `opus-5 → codex-sol → review-e`, filtered to `live_verified`. Fable is not first and is not in that order. Opus 4.8 is live and still excluded from that order.
 5. Added synthetic eval cases and receipt scoring. New-model intake is two-phase.
 6. Follow-up: completed the scoped census, split DeepSeek V4 Pro/Flash and Muse Spark/Muse Code, moved cost claims into `efficiency`, and demoted Kimi K3 below Opus 5 for research synthesis.
-7. Round 2: committed same-prompt Fable 5 / Opus 5 architecture receipts (`model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl`). n=1 per model; no rank change.
+7. Round 2: committed same-prompt Fable 5 / Opus 5 architecture receipts (`model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl`). n=1 per model; no rank change at that time.
+8. Round 3: `architecture_spec_critique.quality` now ranks Opus 5 first at current evidence; Fable is a low-confidence long-horizon escalation candidate. Direct independent-anchor links, premise-validation citations, and receipt-interpretation notes added. Rank can change only with reproducible same-harness multi-case evidence.
 
 ## Future audit instructions
 

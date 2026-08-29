@@ -1229,7 +1229,7 @@
       ]
     },
     "architecture_spec_critique": {
-      "description": "Rare long-horizon / spec critique. Fable is the escalation; Opus 5 covers normal Anthropic judgment.",
+      "description": "Rare long-horizon / spec critique. Opus 5 first at current evidence; Fable is a low-confidence long-horizon escalation candidate. Same family.",
       "required_capabilities": [
         "architecture"
       ]
@@ -1488,15 +1488,15 @@
       "quality": [
         {
           "rank": 1,
-          "route": "fable-5-teamclaude",
-          "confidence": "medium",
-          "rationale": "Long-horizon breadth; not automatically better per token than Opus 5. n=1 local same-prompt critique (2026-08-28) found the same fail-open defect with no clear qualitative win."
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Current independent evidence ranks Opus 5 above Fable overall and indicates better normal-review efficiency. Local n=1 same-prompt critique found no qualitative Fable win. Rank 1 at current evidence confidence; can change only with reproducible same-harness multi-case evidence."
         },
         {
           "rank": 2,
-          "route": "opus-5-teamclaude",
-          "confidence": "high",
-          "rationale": "Stronger/more efficient for normal Anthropic judgment."
+          "route": "fable-5-teamclaude",
+          "confidence": "low",
+          "rationale": "Low/medium-confidence long-horizon escalation candidate. Same family as Opus. Public score has an Opus-fallback caveat. n=1 local composite is almost tied and is not a quality verdict. Rank can change only with reproducible same-harness multi-case evidence."
         }
       ],
       "selection": [
@@ -1735,6 +1735,10 @@
       "model": "claude-opus-5",
       "harness": "max",
       "source": "https://artificialanalysis.ai/models/claude-opus-5",
+      "sources": [
+        "https://artificialanalysis.ai/models/claude-opus-5",
+        "https://artificialanalysis.ai/models/releases/claude-opus-5"
+      ],
       "intelligence_index": 63,
       "usd_per_task": 2.34,
       "label": "independent"
@@ -1743,6 +1747,9 @@
       "model": "claude-fable-5",
       "harness": "max",
       "source": "https://artificialanalysis.ai/models/claude-fable-5/",
+      "sources": [
+        "https://artificialanalysis.ai/models/claude-fable-5/"
+      ],
       "intelligence_index": 62,
       "usd_per_task": 3.14,
       "label": "independent",
@@ -1752,6 +1759,10 @@
       "model": "grok-4.6",
       "harness": "high",
       "source": "https://artificialanalysis.ai/models/releases/grok-4-6",
+      "sources": [
+        "https://artificialanalysis.ai/models/releases/grok-4-6",
+        "https://artificialanalysis.ai/articles/grok-4-6-benchmarks-and-analysis"
+      ],
       "intelligence_index": 61,
       "usd_per_task": 0.94,
       "label": "independent",
@@ -1761,6 +1772,9 @@
       "model": "gpt-5.6-sol",
       "harness": "xhigh",
       "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/",
+      "sources": [
+        "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/"
+      ],
       "intelligence_index": 59,
       "usd_per_task": 0.67,
       "label": "independent"
@@ -1769,6 +1783,9 @@
       "model": "kimi-k3",
       "harness": "max",
       "source": "https://artificialanalysis.ai/models/kimi-k3",
+      "sources": [
+        "https://artificialanalysis.ai/models/kimi-k3"
+      ],
       "intelligence_index": 60,
       "usd_per_task": 0.84,
       "label": "independent",
@@ -1778,6 +1795,9 @@
       "model": "qwen-3.8-max",
       "harness": "max",
       "source": "https://artificialanalysis.ai/models/qwen3-8-max",
+      "sources": [
+        "https://artificialanalysis.ai/models/qwen3-8-max"
+      ],
       "intelligence_index": 58,
       "usd_per_task": 0.91,
       "label": "independent",
@@ -1787,14 +1807,21 @@
       "model": "glm-5.3-flash",
       "harness": "reported",
       "source": "https://z.ai/blog/glm-5.3-flash",
+      "sources": [
+        "https://z.ai/blog/glm-5.3-flash"
+      ],
       "intelligence_index": 57,
       "usd_per_task": 0.045,
-      "label": "vendor_self_reported"
+      "label": "vendor_self_reported",
+      "caveat": "vendor self-reported; efficiency/incubation only, not an independent quality rank"
     },
     {
       "model": "glm-5.2",
       "harness": "max",
       "source": "https://artificialanalysis.ai/models/glm-5-2",
+      "sources": [
+        "https://artificialanalysis.ai/models/glm-5-2"
+      ],
       "intelligence_index": 53,
       "usd_per_task": 0.44,
       "label": "independent"

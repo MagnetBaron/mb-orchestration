@@ -150,12 +150,12 @@ Repo/app code in an isolated worktree.
 
 ### `architecture_spec_critique`
 
-Rare long-horizon / spec critique. Fable is the escalation; Opus 5 covers normal Anthropic judgment.
+Rare long-horizon / spec critique. Opus 5 first at current evidence; Fable is a low-confidence long-horizon escalation candidate. Same family.
 
 | kind | n | route | confidence |
 |---|---:|---|---|
-| quality | 1 | `fable-5-teamclaude` | medium |
-| quality | 2 | `opus-5-teamclaude` | high |
+| quality | 1 | `opus-5-teamclaude` | high |
+| quality | 2 | `fable-5-teamclaude` | low |
 | selection | 1 | `opus-5-teamclaude` | high |
 | selection | 2 | `fable-5-teamclaude` | medium |
 

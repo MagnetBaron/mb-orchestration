@@ -273,6 +273,90 @@ class RankingClaimTests(unittest.TestCase):
         kimi = next(row for row in rows if row["route"] == "kimi-k3-unwired")
         self.assertEqual(kimi["confidence"], "low")
 
+    def test_architecture_quality_ranks_opus5_before_fable(self):
+        quality = live()["rankings"]["architecture_spec_critique"]["quality"]
+        by_route = {row["route"]: row for row in quality}
+        self.assertEqual(by_route["opus-5-teamclaude"]["rank"], 1)
+        self.assertEqual(by_route["opus-5-teamclaude"]["confidence"], "high")
+        self.assertEqual(by_route["fable-5-teamclaude"]["rank"], 2)
+        self.assertEqual(by_route["fable-5-teamclaude"]["confidence"], "low")
+        self.assertNotIn("long-horizon breadth", by_route["fable-5-teamclaude"]["rationale"].lower())
+        joined = (
+            by_route["opus-5-teamclaude"]["rationale"]
+            + " "
+            + by_route["fable-5-teamclaude"]["rationale"]
+        ).lower()
+        self.assertIn("same-harness", joined)
+        self.assertIn("multi-case", joined)
+        selection = live()["rankings"]["architecture_spec_critique"]["selection"]
+        self.assertEqual([row["route"] for row in selection[:2]], [
+            "opus-5-teamclaude",
+            "fable-5-teamclaude",
+        ])
+        desc = live()["roles"]["architecture_spec_critique"]["description"].lower()
+        self.assertIn("opus 5 first", desc)
+        self.assertNotIn("fable is the escalation; opus 5 covers", desc)
+
+    def test_independent_anchor_sources_are_direct_urls(self):
+        required = {
+            "claude-opus-5": [
+                "https://artificialanalysis.ai/models/claude-opus-5",
+                "https://artificialanalysis.ai/models/releases/claude-opus-5",
+            ],
+            "claude-fable-5": [
+                "https://artificialanalysis.ai/models/claude-fable-5/",
+            ],
+            "grok-4.6": [
+                "https://artificialanalysis.ai/models/releases/grok-4-6",
+                "https://artificialanalysis.ai/articles/grok-4-6-benchmarks-and-analysis",
+            ],
+            "gpt-5.6-sol": [
+                "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/",
+            ],
+            "kimi-k3": [
+                "https://artificialanalysis.ai/models/kimi-k3",
+            ],
+            "qwen-3.8-max": [
+                "https://artificialanalysis.ai/models/qwen3-8-max",
+            ],
+            "glm-5.2": [
+                "https://artificialanalysis.ai/models/glm-5-2",
+            ],
+        }
+        by_model = {row["model"]: row for row in live()["independent_anchors"]}
+        for model, urls in required.items():
+            row = by_model[model]
+            found = set(filter(None, [row.get("source"), *(row.get("sources") or [])]))
+            for url in urls:
+                self.assertIn(url, found, model)
+            self.assertEqual(row["label"], "independent")
+        glm_flash = by_model["glm-5.3-flash"]
+        self.assertEqual(glm_flash["label"], "vendor_self_reported")
+        self.assertEqual(glm_flash["source"], "https://z.ai/blog/glm-5.3-flash")
+
+    def test_audit_report_has_direct_evidence_links_and_opus_first_architecture(self):
+        report = (REPO / "docs" / "frontier-model-role-audit-2026-08-28.md").read_text()
+        self.assertNotIn("Fable first on long-horizon breadth quality", report)
+        self.assertIn("Opus 5 first at current evidence", report)
+        self.assertIn("https://artificialanalysis.ai/models/claude-opus-5", report)
+        self.assertIn("https://artificialanalysis.ai/models/releases/claude-opus-5", report)
+        self.assertIn("https://artificialanalysis.ai/models/claude-fable-5/", report)
+        self.assertIn("https://artificialanalysis.ai/models/releases/grok-4-6", report)
+        self.assertIn("https://artificialanalysis.ai/articles/grok-4-6-benchmarks-and-analysis", report)
+        self.assertIn("https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/", report)
+        self.assertIn("https://artificialanalysis.ai/models/kimi-k3", report)
+        self.assertIn("https://artificialanalysis.ai/models/qwen3-8-max", report)
+        self.assertIn("https://artificialanalysis.ai/models/glm-5-2", report)
+        self.assertIn("https://z.ai/blog/glm-5.3-flash", report)
+        self.assertIn("https://openreview.net/attachment?id=AhXMZPnOPS&name=pdf", report)
+        self.assertIn("https://openreview.net/pdf/8ee893eeebade004a09df53eef6d7ad289135999.pdf", report)
+        self.assertIn("https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview", report)
+        self.assertIn("https://platform.claude.com/docs/en/agents-and-tools/tool-use/how-tool-use-works", report)
+        self.assertIn("https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools", report)
+        self.assertIn("almost tied", report)
+        self.assertIn("does not enter the quality score", report)
+        self.assertIn("untrusted evidence", report)
+
     def test_context_scouting_quality_is_not_price(self):
         rows = live()["rankings"]["context_scouting"]["quality"]
         self.assertNotEqual(rows[0]["route"], "glm-5.3-flash-unwired")
