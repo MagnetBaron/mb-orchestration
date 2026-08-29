@@ -36,6 +36,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -43,6 +44,7 @@ sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import routing  # noqa: E402
 import dispatch_evidence  # noqa: E402
+import observe  # noqa: E402
 
 
 def _load_module(name, path):
@@ -624,7 +626,17 @@ def main(argv=None):
                     help="comma-separated handoff classes; restricted/unknown classes PARK without asking permission")
     ap.add_argument("--ledger", default=None)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--run-id", default="",
+                    help="correlates observability events for this run (generated if omitted)")
+    ap.add_argument("--actor-id", default="",
+                    help="explicit pseudonymous actor/profile id; never inferred from USER/HOME/git")
+    rec = ap.add_mutually_exclusive_group()
+    rec.add_argument("--record", action="store_true",
+                     help="force-emit an observability event even if emit_on_resolve is false")
+    rec.add_argument("--no-record", action="store_true",
+                     help="suppress observability emit (routing is unchanged either way)")
     args = ap.parse_args(argv)
+    started = time.perf_counter()
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
@@ -728,6 +740,18 @@ def main(argv=None):
         },
         "user_said_ship": args.user_said_ship, "implement": implement, "usage_updated": updated,
     }
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    obs_meta = observe.try_emit_route_decision(
+        decision, source="resolve-route", record=args.record, no_record=args.no_record,
+        run_id=args.run_id.strip() or None, actor_id=args.actor_id.strip() or None,
+        profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_resolve",
+    )
+    # Metadata only. routing_satisfied / park_reason / seats are already frozen.
+    decision["observability"] = obs_meta
+    if obs_meta.get("write_error") and not args.json:
+        print(f"observability write failed (routing unchanged): {obs_meta['write_error']}",
+              file=sys.stderr)
 
     if args.json:
         print(json.dumps(decision, indent=2))

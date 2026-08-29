@@ -219,6 +219,38 @@ quota first, included before metered, reserves last-but-usable).
   you *pay for* against what you *used* — flagging under-used plans to drop and frequently-capped ones
   to grow.
 
+## 10b. Routing-quality observability (decision log, not task contents)
+
+Admins can evaluate routing quality over time without storing briefs, diffs, or identity.
+
+- **What is collected:** requested vs effective intake and profile, fallback reason, task class /
+  risk / review depth, selected implementer and reviewers (plus independence groups and author
+  exclusion), handoff decision and artifact *classes*, recorded usage tier evidence, timing,
+  terminal status, test/review verdicts, fix-loop and retraction counts, and provider-reported
+  token/cost figures **only when a provider actually reported them**.
+- **What is never collected:** raw prompts, task bodies, diffs, credentials, tokens/secrets,
+  customer data, production exports, email addresses, or absolute user paths. Multi-user
+  tracking uses an explicit pseudonym (`--actor-id team-a`) or `profile:<name>` — the tools
+  never read `$USER`, `$HOME`, or git identity.
+- **Where it lives:** `data/orchestration-events.jsonl` under `$MB_DATA_DIR` (gitignored).
+  Retention is `monitoring.json` → `observability.retention_days` (default 365, same control
+  as usage history). Synthetic fixtures used in tests are committed under
+  `model-evals/fixtures/observability/`.
+- **How to read it:** `python3 bin/observe.py report` (add `--json` for machine output).
+  Coverage/missingness, success/park/fallback rates, token-per-success *where measured*,
+  usage starvation, handoff parks, reviewer disagreement, and per-role/provider/actor
+  outcomes are all labeled **observational, not causal**. Missing token/cost fields stay
+  empty; they are never filled with zeros or estimates.
+- **Failure policy:** a malformed observability config fails `bin/doctor.py`. A disk/write
+  failure never converts a parked routing decision into success. Observability does not
+  grant tools, credentials, or review authority.
+- **Adding a metric for a future model:** bump or extend the event schema
+  (`config/observability-event.schema.json`; `additionalProperties` is already true so
+  unknown fields are readable), record the new field only when it is actually available,
+  add a synthetic fixture line, teach `bin/observe.py` analyze to *display* it without
+  treating it as a cause, and add a unit test that a missing value stays `null`. Do not
+  backfill invented token or quality numbers.
+
 ## 11. Keeping model choice current as models change
 
 Capabilities and model strength are data, so newer/older models slot in cleanly:

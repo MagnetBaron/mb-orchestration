@@ -4,7 +4,8 @@ The router (`bin/resolve-route.py`) is a stateless per-decision function: *class
 seat state → depth, review chain, implement seat, gates*. This file is the other half —
 the **stateful** lifecycle a brief moves through, made a machine object instead of prose in
 the dispatcher's head. The durable record is `bin/runledger.py` (append-only
-`data/run-ledger.jsonl`); the dry-run view is `bin/run-brief.py`; the invocation recipes are
+`data/run-ledger.jsonl`); routing-quality telemetry is `bin/observe.py`
+(`data/orchestration-events.jsonl`, privacy-safe, never authority); the dry-run view is `bin/run-brief.py`; the invocation recipes are
 `config/seat-exec.json`. The event/status vocabulary and the fix-loop cap below are the
 constants in `bin/runledger.py` (`EVENTS`, `FIX_LOOP_CAP`) — that script is the source of
 truth; this doc explains it.

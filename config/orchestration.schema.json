@@ -214,7 +214,28 @@
         "retention_days": { "type": "integer", "minimum": 0 },
         "reserve_defaults": { "type": "object" },
         "cost_policy": { "type": "object" },
-        "sources": { "type": "object" }
+        "sources": { "type": "object" },
+        "observability": {
+          "type": "object",
+          "required": ["enabled", "events_path", "retention_days"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "events_path": { "type": "string", "minLength": 1, "pattern": "^[^~]*$" },
+            "retention_days": { "type": "integer", "minimum": 0 },
+            "emit_on_resolve": { "type": "boolean" },
+            "emit_on_run_brief": { "type": "boolean" },
+            "require_explicit_actor_id": { "type": "boolean" },
+            "privacy": {
+              "type": "object",
+              "properties": {
+                "forbid_task_bodies": { "const": true },
+                "forbid_absolute_paths": { "const": true },
+                "forbid_credentials": { "const": true },
+                "pseudonymous_actors_only": { "const": true }
+              }
+            }
+          }
+        }
       }
     },
     "review_depth": {

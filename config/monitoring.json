@@ -1,10 +1,25 @@
 {
-  "_note": "MONITORING + DRAIN-ECONOMICS POLICY. Controls the usage history store (bin/usage-record.py), retention (user-controlled, default 1 year), the reserve sizing defaults, the cost policy (maximize subscription tokens, minimize API $), the data sources to gather from, and window auto-learning. Nothing here is per-account layout — it is policy that scales to any number of subscriptions.",
+  "_note": "MONITORING + DRAIN-ECONOMICS POLICY. Controls the usage history store (bin/usage-record.py), orchestration-event observability (bin/observe.py; privacy-safe, never authority), retention (user-controlled, default 1 year), the reserve sizing defaults, the cost policy (maximize subscription tokens, minimize API $), the data sources to gather from, and window auto-learning. Nothing here is per-account layout — it is policy that scales to any number of subscriptions.",
   "schema_version": 1,
   "updated": "2026-08-27",
   "retention_days": 365,
   "retention_note": "History older than this is pruned by bin/usage-record.py --prune (or on each --snapshot). Set to 0 to keep forever (not recommended — infinite log growth). This is the user's control over how long usage data is kept.",
   "history_path": "usage-history.jsonl",
+  "observability": {
+    "enabled": true,
+    "events_path": "orchestration-events.jsonl",
+    "retention_days": 365,
+    "emit_on_resolve": true,
+    "emit_on_run_brief": true,
+    "require_explicit_actor_id": false,
+    "privacy": {
+      "forbid_task_bodies": true,
+      "forbid_absolute_paths": true,
+      "forbid_credentials": true,
+      "pseudonymous_actors_only": true
+    },
+    "note": "Append-only routing-quality telemetry. Never grants authority, never logs prompts/task bodies/diffs/credentials/customer data/absolute user paths. Write failure does not change a routing decision. Actor ids are explicit pseudonyms (or profile:<name>); identity is never inferred from USER/HOME/git. Runtime log is gitignored; synthetic fixtures are committed under model-evals/fixtures/observability/."
+  },
   "reserve_defaults": {
     "intake_reserve_pct": 15,
     "margin_factor": 1.5,

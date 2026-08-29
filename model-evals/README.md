@@ -82,6 +82,10 @@ Weights (from `cases.json`, overridable there only):
 
 Latency may be recorded on every receipt. It must not decide ranking.
 
+Orchestration *decision* telemetry (routing quality, fallback, review outcomes) is a
+separate log: `bin/observe.py` and `model-evals/fixtures/observability/`. Those events
+never include eval outputs or prompts, and they never promote a model.
+
 Synthetic suites that every new coding/review/research candidate should hit:
 
 - `routing_brief_quality`

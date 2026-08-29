@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MagnetBaron/mb-orchestration/config/observability-event.schema.json",
+  "title": "mb-orchestration observability event",
+  "description": "Versioned, privacy-safe, append-only event for one correlated orchestration run. additionalProperties is true so unknown/future fields are readable without breaking older analyzers. Never contains raw prompts, task bodies, diffs, credentials, customer data, or absolute user paths.",
+  "type": "object",
+  "required": ["schema_version", "event_id", "run_id", "ts", "kind"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "event_id": { "type": "string", "minLength": 8, "pattern": "^obs-v[0-9]+-[a-f0-9]+$" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string", "minLength": 10 },
+    "kind": {
+      "type": "string",
+      "enum": ["route_decision", "run_plan", "review_verdict", "test_verdict", "terminal", "tokens"]
+    },
+    "source": { "type": "string", "enum": ["resolve-route", "run-brief", "observe-cli"] },
+    "actor_id": { "type": ["string", "null"] },
+    "profile_id": { "type": ["string", "null"] },
+    "dry_run": { "type": "boolean" },
+    "intake": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "requested": { "type": ["string", "null"] },
+        "effective": { "type": ["string", "null"] },
+        "fallback_used": { "type": "boolean" },
+        "fallback_reason": { "type": ["string", "null"] },
+        "intake_relay": { "type": "boolean" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "class": { "type": ["string", "null"] },
+        "scale": { "type": ["string", "null"] },
+        "risk_flags": { "type": "array", "items": { "type": "string" } },
+        "review_depth": { "type": ["string", "null"] }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "providers": { "type": "array", "items": { "type": "string" } },
+        "authors": { "type": "array", "items": { "type": "string" } },
+        "last_resort": { "type": "boolean" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "satisfied": { "type": "boolean" },
+        "chain": { "type": "array" },
+        "author_exclusion": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "action": { "type": "string" },
+        "artifact_classes": { "type": "array", "items": { "type": "string" } },
+        "requires_user_permission": { "const": false }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "measured": { "type": "boolean" },
+        "starvation": { "type": ["boolean", "null"] }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "duration_ms": { "type": ["integer", "null"] }
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "park_reason_code": { "type": ["string", "null"] }
+      }
+    },
+    "outcomes": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "test_verdict": { "type": ["string", "null"] },
+        "review_verdicts": { "type": "array" },
+        "fix_loops": { "type": ["integer", "null"] },
+        "retractions": { "type": ["integer", "null"] }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "measured": { "type": "boolean" },
+        "input": { "type": ["number", "null"] },
+        "output": { "type": ["number", "null"] },
+        "total": { "type": ["number", "null"] },
+        "cost_usd": { "type": ["number", "null"] },
+        "source": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

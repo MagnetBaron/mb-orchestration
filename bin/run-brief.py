@@ -26,12 +26,14 @@ import importlib.util
 import io
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
+import observe  # noqa: E402
 
 
 def _load(name, path):
@@ -60,7 +62,8 @@ def _now_iso() -> str:
 
 def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
                    task_seconds, user_said_ship, ledger, intake_provider="",
-                   profile="default", artifacts="") -> dict:
+                   profile="default", artifacts="", run_id="", actor_id="",
+                   record_observability=False, no_record_observability=False) -> dict:
     """Consume resolve-route.py's JSON decision verbatim (exact shape — never reshaped).
     Called in-process with stdout captured; this is not a subprocess and shells nothing."""
     argv = ["--class", klass, "--scale", scale, "--implement", "--json"]
@@ -84,6 +87,14 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
         argv += ["--profile", profile]
     if artifacts:
         argv += ["--artifacts", artifacts]
+    if run_id:
+        argv += ["--run-id", run_id]
+    if actor_id:
+        argv += ["--actor-id", actor_id]
+    if no_record_observability:
+        argv.append("--no-record")
+    elif record_observability:
+        argv.append("--record")
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = resolve_route.main(argv)
@@ -135,7 +146,11 @@ def build_plan(args) -> dict:
     decision = build_decision(args.klass, args.scale, args.risk, args.pixels,
                               args.needs_mcp.strip(), args.needs_connector.strip(),
                               args.task_seconds, args.user_said_ship, args.ledger,
-                              args.intake_provider.strip(), args.profile, args.artifacts.strip())
+                              args.intake_provider.strip(), args.profile, args.artifacts.strip(),
+                              getattr(args, "run_id", "") or "",
+                              getattr(args, "actor_id", "") or "",
+                              getattr(args, "record_observability", False),
+                              getattr(args, "no_record_observability", False))
     lane = args.lane or f"lane-{args.klass}"
     recipes = mborch.load_config("seat-exec.json")["recipes"]
     ctx = {
@@ -285,6 +300,13 @@ def main(argv=None):
     ap.add_argument("--run-ledger", default=None, help="run-ledger path (default data_dir/run-ledger.jsonl)")
     ap.add_argument("--dry-run", action="store_true", help="REQUIRED — this planner only ever dry-runs")
     ap.add_argument("--record", action="store_true", help="append the decision-trace event to the run-ledger (default: a dry-run is side-effect-free)")
+    ap.add_argument("--run-id", default="", help="correlates observability events (generated if omitted)")
+    ap.add_argument("--actor-id", default="", help="explicit pseudonymous actor id; never inferred")
+    obsrec = ap.add_mutually_exclusive_group()
+    obsrec.add_argument("--record-observability", action="store_true",
+                        help="force-emit an observability run_plan event")
+    obsrec.add_argument("--no-record-observability", action="store_true",
+                        help="suppress observability emit (does not change the plan)")
     ap.add_argument("--json", action="store_true")
     for f in _LIVE_FLAGS:  # any live-execution intent is refused, loudly
         ap.add_argument(f"--{f}", action="store_true", help=argparse.SUPPRESS)
@@ -297,9 +319,23 @@ def main(argv=None):
         print(f"run-brief: --brief path does not exist: {args.brief}", file=sys.stderr)
         return 2
 
+    started = time.perf_counter()
+    if not args.run_id:
+        args.run_id = observe.new_run_id()
     plan = build_plan(args)
+    duration_ms = int((time.perf_counter() - started) * 1000)
     if args.record:
         record_trace(plan, args.run_ledger)
+    obs_meta = observe.try_emit_route_decision(
+        plan, source="run-brief",
+        record=args.record_observability, no_record=args.no_record_observability,
+        run_id=args.run_id, actor_id=args.actor_id.strip() or None,
+        profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_run_brief",
+    )
+    plan["observability"] = obs_meta
+    if obs_meta.get("write_error") and not args.json:
+        print(f"observability write failed (plan unchanged): {obs_meta['write_error']}",
+              file=sys.stderr)
 
     print(json.dumps(plan, indent=2)) if args.json else _print_plan(plan)
     return 0

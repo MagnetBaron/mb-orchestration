@@ -51,7 +51,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `handoff-policy.json` | Ordinary preauthorization and restricted-data fail-closed classes |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
 | `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
-| `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources |
+| `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources, observability |
 | `roles.json` | Role definitions that load inside seats (not a model catalog) |
 | `skills.json` | Registry that vets which in-repo plugin skills (`plugins/magnet-baron-skills/`, via `.claude-plugin/marketplace.json`) a role may bind — kind, required capability, hosts; fail-closed in `generate-roles.py` |
 | `orchestration.schema.json` | Published JSON-Schema contract (validated by doctor) |
@@ -70,6 +70,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `detect-agents.py` | Auto-detect installed CLI agents; discover/register unregistered ones (modular) |
 | `detect-capability.py` | Bidirectional (downgrade+upgrade) capability detection; disable-auto-downgrade levers |
 | `usage-record.py` | Gather usage history (retained, default 1yr); learn reset windows; prune |
+| `observe.py` | Append-only routing-quality log + analysis (privacy-safe; never grants authority) |
 | `dashboard.py` | Self-contained HTML telemetry dashboard (usage, drain order, health score) |
 | `subscription-calculator.py` | Recommend a plan from habits or `--from-history` utilization |
 | `generate-roles.py` | Render host-native Claude/Grok agent files + Codex TOML from the registry |
@@ -78,6 +79,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `mborch.py` · `routing.py` | Shared: layered config resolution (`MB_CONFIG_DIR`) · drain/allocation scoring |
 | `test_generate.py` | Unit tests for the role registry |
 | `test_model_registry.py` | Unit tests for fail-closed routing, independence, stale evidence, receipt scoring |
+| `test_observability.py` | Unit tests for the event schema, redaction, concurrent append, and analysis honesty |
 
 ## Quick start
 
@@ -97,4 +99,4 @@ Port to a different user: edit `config/subscriptions.json` (your plans), `config
 (your profiles/surfaces/fallbacks), `config/connectors.json` (your MCP/stores), set anchors in
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
-Daily: pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. When something breaks, agents read `EDGE-CASES.md`.
+Daily: pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.

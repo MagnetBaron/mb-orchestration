@@ -501,6 +501,86 @@ def check_seat_exec(seat_exec, provs, provider_ids):
             err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
 
 
+def check_observability(monitoring):
+    """Observability config is fail-closed when present and malformed. The privacy
+    boundary cannot be switched off. Telemetry write failure is a runtime concern
+    and must not be confused with a routing decision."""
+    schema_path = CONFIG / "observability-event.schema.json"
+    if not schema_path.exists():
+        err("missing config/observability-event.schema.json")
+    else:
+        try:
+            schema = json.loads(schema_path.read_text())
+            if schema.get("required") != ["schema_version", "event_id", "run_id", "ts", "kind"]:
+                err("observability-event.schema.json required fields drifted")
+            if schema.get("additionalProperties") is not True:
+                err("observability-event.schema.json must allow additionalProperties (future fields)")
+        except Exception as exc:
+            err(f"observability-event.schema.json: {exc}")
+    try:
+        obs_mod = load_module("observe_doc", HERE / "observe.py")
+    except Exception as exc:
+        err(f"observe.py cannot import: {exc}")
+        return
+    block = (monitoring or {}).get("observability") if monitoring is not None else None
+    if monitoring is not None and not block:
+        info("monitoring.json has no observability block — routing-quality telemetry is off")
+    if block:
+        for e in obs_mod.validate_config(block):
+            err(e)
+        privacy = block.get("privacy") or {}
+        for key in ("forbid_task_bodies", "forbid_absolute_paths",
+                    "forbid_credentials", "pseudonymous_actors_only"):
+            if key in privacy and privacy[key] is not True:
+                err(f"observability.privacy.{key} must remain true")
+    try:
+        ev = obs_mod.make_event(
+            "route_decision", run_id="lane-doctor-obs", ts="2026-01-01T00:00:00+00:00",
+            source="observe-cli", actor_id="profile:default", profile_id="default",
+            intake={"requested": "opus-5", "effective": "opus-5", "fallback_used": False},
+            task={"class": "repo-code", "scale": "routine", "risk_flags": [],
+                  "review_depth": "single-frontier"},
+            routing_satisfied=True,
+            tokens={"measured": False},
+        )
+        eid = ev["event_id"]
+        again = obs_mod.make_event(
+            "route_decision", run_id="lane-doctor-obs", ts="2026-01-01T00:00:01+00:00",
+            source="observe-cli", actor_id="profile:default", profile_id="default",
+            intake={"requested": "opus-5", "effective": "opus-5", "fallback_used": False},
+            task={"class": "repo-code", "scale": "routine", "risk_flags": [],
+                  "review_depth": "single-frontier"},
+            routing_satisfied=True,
+            tokens={"measured": False},
+        )
+        if again["event_id"] != eid:
+            err("observe event_id is not idempotent for the same decision fingerprint")
+        folded = obs_mod.fold_run([ev, again])
+        if folded["event_count"] != 1:
+            err(f"observe fold did not dedupe idempotent event ids: {folded}")
+        report = obs_mod.analyze([ev])
+        if report.get("causal_claim") is not False:
+            err("observe analyze must label results as non-causal")
+        if report.get("tokens", {}).get("token_per_success") is not None:
+            err("observe analyze fabricated token-per-success from unmeasured data")
+    except Exception as exc:
+        err(f"observe core round-trip raised: {exc}")
+    fixture = ROOT / "model-evals" / "fixtures" / "observability" / "v1-correlated-runs.jsonl"
+    if not fixture.exists():
+        err("missing committed synthetic observability fixture "
+            "model-evals/fixtures/observability/v1-correlated-runs.jsonl")
+    else:
+        events = obs_mod.read(fixture)
+        if len(events) < 4:
+            err("observability fixture is too small to exercise multi-run analysis")
+        for ev in events:
+            for problem in obs_mod.validate_event(ev):
+                err(f"observability fixture {ev.get('event_id')}: {problem}")
+            blob = json.dumps(ev)
+            if "/Users/" in blob or "/home/" in blob:
+                err("observability fixture contains an absolute user path")
+
+
 def check_runledger():
     """The stateful spine must import and its pure fold must round-trip deterministically —
     a broken ledger silently loses run-state (fix-loop cap, starvation guard become vibes)."""
@@ -705,6 +785,7 @@ def main(argv=None):
         rd = monitoring.get("retention_days")
         if not isinstance(rd, int) or rd < 0:
             err(f"monitoring.retention_days must be a non-negative integer, got {rd!r}")
+    check_observability(monitoring)
 
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)

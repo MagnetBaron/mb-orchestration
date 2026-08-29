@@ -2,7 +2,8 @@
 config/usage-ledger.json
 config/usage-ledger.json.lock
 
-# Runtime data: usage history, learned windows, generated dashboard. Not committed.
+# Runtime data: usage history, learned windows, orchestration events, generated dashboard.
+# Not committed. Synthetic observability fixtures live under model-evals/fixtures/.
 data/
 
 # Generated host-native role artifacts (rendered by bin/generate-roles.py).

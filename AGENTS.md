@@ -15,7 +15,8 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 - `config/entrypoints.json` — entry surfaces, user profiles, and per-run dispatcher fallback order
 - `config/handoff-policy.json` — preauthorized ordinary artifacts + fail-closed restricted classes
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
-- `bin/usage-status.py` · `bin/resolve-route.py` · `bin/model-registry.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/dashboard.py` · `bin/smoketest.py`
+- `config/monitoring.json` — usage-history + observability retention/privacy (events never grant authority)
+- `bin/usage-status.py` · `bin/resolve-route.py` · `bin/model-registry.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/observe.py` · `bin/dashboard.py` · `bin/smoketest.py`
 - Config layers by `$MB_CONFIG_DIR` then `config/` — the reference `config/` is ONE example; a user points `MB_CONFIG_DIR` at their own subscriptions/entrypoints/windows (`config/examples/` shows 1→N).
 
 > `USER-GUIDE.md` is for humans choosing plans. It is NOT operational and must never be loaded into an agent's context.

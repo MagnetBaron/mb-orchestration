@@ -263,9 +263,11 @@ def c_examples():
 def c_unit_tests():
     a = run([PY, "bin/test_generate.py"])
     b = run([PY, "bin/test_model_registry.py"])
-    ok = a.returncode == 0 and b.returncode == 0
+    c = run([PY, "bin/test_observability.py"])
+    ok = a.returncode == 0 and b.returncode == 0 and c.returncode == 0
     detail = "generate=" + (a.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " registry=" + (b.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " observability=" + (c.stderr.strip().splitlines() or ["ok"])[-1]
     return ok, detail
 
 
@@ -357,6 +359,64 @@ def c_skills():
                 f"write-on-readonly→err={n2}, missing-capability→err={n3}")
 
 
+def c_observability():
+    """Decision telemetry emits the v1 schema without changing routing, parks stay
+    parks when the log cannot be written, and analysis refuses to invent tokens."""
+    spec = importlib.util.spec_from_file_location("observe_smoke", HERE / "observe.py")
+    obs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(obs)
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"MB_DATA_DIR": tmp}
+        routed = json.loads(run(
+            [PY, "bin/resolve-route.py", "--class", "internal-notes", "--json",
+             "--record", "--run-id", "smoke-obs-1", "--actor-id", "team-a"],
+            env=env,
+        ).stdout)
+        parked = json.loads(run(
+            [PY, "bin/resolve-route.py", "--class", "repo-code", "--json",
+             "--artifacts", "brief,credentials", "--record",
+             "--run-id", "smoke-obs-park", "--actor-id", "team-a"],
+            env=env,
+        ).stdout)
+        planned = json.loads(run(
+            [PY, "bin/run-brief.py", "--dry-run", "--class", "repo-code", "--json",
+             "--record-observability", "--run-id", "smoke-obs-plan",
+             "--actor-id", "team-b"],
+            env=env,
+        ).stdout)
+        events = obs.read(str(Path(tmp) / "orchestration-events.jsonl"))
+        report = json.loads(run(
+            [PY, "bin/observe.py", "--path", str(Path(tmp) / "orchestration-events.jsonl"),
+             "report", "--json"],
+            env=env,
+        ).stdout)
+        cfg = json.loads(run([PY, "bin/observe.py", "validate-config", "--json"], env=env).stdout)
+        fixture = json.loads(run(
+            [PY, "bin/observe.py", "--path",
+             "model-evals/fixtures/observability/v1-correlated-runs.jsonl",
+             "validate-events", "--json"],
+            env=env,
+        ).stdout)
+        decision_unchanged = routed.get("routing_satisfied") is True
+        park_holds = (not parked.get("routing_satisfied")
+                      and parked.get("handoff", {}).get("requires_user_permission") is False
+                      and parked.get("handoff", {}).get("action") == "park")
+        emitted = (routed.get("observability", {}).get("recorded")
+                   and planned.get("observability", {}).get("recorded")
+                   and len(events) >= 2)
+        analysis_honest = report.get("causal_claim") is False
+        # smoke runs do not include provider-reported tokens — must not invent them
+        tok = report.get("tokens") or {}
+        no_fabricated_tokens = tok.get("measured_runs") == 0 and tok.get("token_per_success") is None
+        privacy = all("/Users/" not in json.dumps(e) and "prompt" not in e for e in events)
+        ok = (decision_unchanged and park_holds and emitted and analysis_honest
+              and no_fabricated_tokens and privacy and cfg.get("ok") and fixture.get("ok"))
+        return ok, (f"routed={decision_unchanged} park-no-prompt={park_holds} "
+                    f"emitted={len(events)} causal={report.get('causal_claim')} "
+                    f"tokens={report.get('tokens', {}).get('token_per_success')} "
+                    f"config={cfg.get('ok')} fixture={fixture.get('ok')}")
+
+
 def c_runledger():
     """Append-only run-ledger: events append to the file and the fold recovers lane state."""
     spec = importlib.util.spec_from_file_location("runledger_smoke", HERE / "runledger.py")
@@ -420,6 +480,7 @@ def main(argv=None):
     check("last-resort parks without a coding-capable intake provider", c_dispatch_codes())
     check("last-resort names a concrete coding-capable provider", c_last_resort_names_coder)
     check("run-brief dry-run plans + fails closed (shells nothing)", c_run_brief)
+    check("observability emit + analysis (privacy, no token fabrication)", c_observability)
     check("run-ledger append→fold round-trip", c_runledger)
     check("drain-plan: metered last + reserve sizing", c_drain_plan)
     check("detect-agents", c_detect_agents)

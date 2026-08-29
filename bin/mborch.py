@@ -12,7 +12,7 @@ Resolution order for a config file:
   1. $MB_CONFIG_DIR/<name>   (per-user override layer, if set)
   2. <repo>/config/<name>    (shared defaults)
 
-Data (history/observed windows) lives under $MB_DATA_DIR or <repo>/data (gitignored).
+Data (history/observed windows/orchestration events) lives under $MB_DATA_DIR or <repo>/data (gitignored).
 """
 from __future__ import annotations
 import json
@@ -117,6 +117,20 @@ def history_path(monitoring: dict | None = None) -> Path:
     if monitoring is None:
         monitoring = load_config("monitoring.json", required=False)
     rel = (monitoring or {}).get("history_path", "usage-history.jsonl")
+    p = Path(rel)
+    return p if p.is_absolute() else (data_dir() / p.name)
+
+
+def observability_path(monitoring: dict | None = None) -> Path:
+    """Runtime orchestration-event JSONL — override-aware via MB_DATA_DIR.
+
+    Relative names stay inside data_dir (basename only, matching history_path)
+    so a configured path cannot escape into the repo or a home directory.
+    """
+    if monitoring is None:
+        monitoring = load_config("monitoring.json", required=False)
+    obs = (monitoring or {}).get("observability") or {}
+    rel = obs.get("events_path", "orchestration-events.jsonl")
     p = Path(rel)
     return p if p.is_absolute() else (data_dir() / p.name)
 
