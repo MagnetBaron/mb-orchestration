@@ -54,7 +54,7 @@ Descending ranks are evidence-bounded and role/harness-specific, not a universal
 |---|---|---|---|---|---|---|---|---|
 | `deepseek-v4-flash-unwired` | `deepseek-v4-flash` | unwired | stable | none | none | `deepseek-v4-flash` | 2026-08-28 vendor_self_reported | — |
 | `deepseek-v4-pro-unwired` | `deepseek-v4-pro` | unwired | stable | none | none | `deepseek-v4-pro` | 2026-08-28 vendor_self_reported | — |
-| `fable-5-teamclaude` | `claude-fable-5` | live_verified | restricted | teamclaude | claude-cli | `claude-fable-5` | 2026-08-28 cli_listing | fable-5 |
+| `fable-5-teamclaude` | `claude-fable-5` | live_verified | restricted | teamclaude | claude-cli | `claude-fable-5` | 2026-08-28 local_smoke | fable-5 |
 | `gemini-3-flash-preview-unwired` | `gemini-3-flash-preview` | unwired | preview | none | none | `gemini-3-flash-preview` | 2026-08-28 vendor_self_reported | — |
 | `gemini-3.1-flash-lite-unwired` | `gemini-3.1-flash-lite` | unwired | stable | none | none | `gemini-3.1-flash-lite` | 2026-08-28 vendor_self_reported | — |
 | `gemini-3.1-pro-preview-unwired` | `gemini-3.1-pro-preview` | unwired | preview | none | none | `gemini-3.1-pro-preview` | 2026-08-28 vendor_self_reported | — |
@@ -81,7 +81,7 @@ Descending ranks are evidence-bounded and role/harness-specific, not a universal
 | `kimi-k3-unwired` | `kimi-k3` | unwired | stable | none | none | `kimi-k3` | 2026-08-28 independent_benchmark | — |
 | `muse-code-unwired` | `muse-code` | unwired | preview | none | none | `muse-code` | 2026-08-28 vendor_self_reported | — |
 | `muse-spark-1.2-unwired` | `muse-spark-1.2` | unwired | preview | none | none | `muse-spark-1.2` | 2026-08-28 vendor_self_reported | — |
-| `opus-4.8-teamclaude` | `claude-opus-4-8` | catalog_verified | superseded | teamclaude | claude-cli | `claude-opus-4-8` | 2026-08-28 none | opus-4.8 |
+| `opus-4.8-teamclaude` | `claude-opus-4-8` | live_verified | superseded | teamclaude | claude-cli | `claude-opus-4-8` | 2026-08-28 local_smoke | opus-4.8 |
 | `opus-5-direct-claude` | `claude-opus-5` | auth_blocked | stable | claude-cli-direct | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | — |
 | `opus-5-teamclaude` | `claude-opus-5` | live_verified | stable | teamclaude | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | opus-5 |
 | `qwen-3.8-max-unwired` | `qwen-3.8-max` | unwired | stable | none | none | `qwen-3.8-max` | 2026-08-28 independent_benchmark | — |

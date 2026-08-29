@@ -65,13 +65,30 @@ class FailClosedTests(unittest.TestCase):
         self.assertNotIn("gpt-5.5-codex", ids)
         self.assertNotIn("grok-4.5-cli", ids)
 
-    def test_opus_48_is_catalog_verified_and_does_not_resolve(self):
+    def test_opus_48_is_live_from_direct_smoke_and_excluded_from_review_order(self):
         registry = live()
-        self.assertEqual(registry["routes"]["opus-4.8-teamclaude"]["route_state"], "catalog_verified")
-        review = mr.resolve(registry, "code_review", n=5)
+        providers = json.loads((REPO / "config" / "providers.json").read_text())
+        route = registry["routes"]["opus-4.8-teamclaude"]
+        self.assertEqual(route["route_state"], "live_verified")
+        self.assertEqual(route["evidence_strength"], "local_smoke")
+        self.assertTrue(route["compatibility_fallback"])
+        self.assertEqual(route["fallback_until"], "2026-12-31")
+        self.assertEqual(registry["models"]["claude-opus-4-8"]["lifecycle"], "superseded")
+        evidence = route["evidence"][0]
+        self.assertEqual(evidence["kind"], "local_smoke")
+        self.assertEqual(evidence["route_state"], "live_verified")
+        self.assertIn("OPUS48_SMOKE_OK", evidence["source"])
+        self.assertIn("claude-opus-4-8", evidence["source"])
+        self.assertEqual(providers["review_order"], ["opus-5", "codex-sol", "review-e"])
+        self.assertNotIn("opus-4.8", providers["review_order"])
+        live_review = mr.live_review_providers(registry, providers)
+        self.assertNotIn("opus-4.8", live_review)
+        self.assertEqual(live_review, ["opus-5", "codex-sol"])
+        review = mr.resolve(registry, "code_review", n=3)
         ids = [r["route"] for r in review["routes"]]
-        self.assertNotIn("opus-4.8-teamclaude", ids)
-        impl = mr.resolve(registry, "implementation", n=5)
+        self.assertEqual(ids[0], "opus-5-teamclaude")
+        self.assertIn("opus-4.8-teamclaude", ids)
+        impl = mr.resolve(registry, "implementation", n=2)
         self.assertNotIn("opus-4.8-teamclaude", [r["route"] for r in impl["routes"]])
 
     def test_auth_blocked_never_resolves(self):
@@ -146,7 +163,7 @@ class RouteStateSeparationTests(unittest.TestCase):
         self.assertEqual(states["opus-5-teamclaude"], "live_verified")
         self.assertEqual(states["opus-5-direct-claude"], "auth_blocked")
         self.assertEqual(states["gpt-5.5-codex"], "catalog_verified")
-        self.assertEqual(states["opus-4.8-teamclaude"], "catalog_verified")
+        self.assertEqual(states["opus-4.8-teamclaude"], "live_verified")
         self.assertNotIn("deepseek-v4-unwired", states)
         self.assertEqual(states["deepseek-v4-pro-unwired"], "unwired")
         self.assertEqual(states["deepseek-v4-flash-unwired"], "unwired")
@@ -233,6 +250,20 @@ class ReceiptScoringTests(unittest.TestCase):
         self.assertFalse(blob["authority_grants"])
         self.assertGreater(blob["mean_correctness"], 0.5)
 
+    def test_architecture_receipts_score_fail_closed_gold(self):
+        path = REPO / "model-evals" / "receipts" / "2026-08-28-architecture-spec-critique.jsonl"
+        blob = ev.score_file(path, ev.load_cases())
+        self.assertEqual(blob["n"], 2)
+        self.assertEqual(blob["latency_weight"], 0.0)
+        self.assertFalse(blob["authority_grants"])
+        by_model = {s["model"]: s for s in blob["results"]}
+        self.assertEqual(by_model["claude-fable-5"]["correctness"], 1.0)
+        self.assertEqual(by_model["claude-opus-5"]["correctness"], 1.0)
+        self.assertEqual(by_model["claude-fable-5"]["tokens_out"], 1732)
+        self.assertEqual(by_model["claude-opus-5"]["tokens_out"], 1986)
+        cases = {c["id"]: c for c in ev.load_cases()["cases"]}
+        self.assertEqual(cases["arch-spec-1"]["role"], "architecture_spec_critique")
+
 
 class RankingClaimTests(unittest.TestCase):
     def test_kimi_k3_is_not_above_opus5_for_research_quality(self):
@@ -293,10 +324,13 @@ class CensusTests(unittest.TestCase):
 
     def test_opus5_direct_smoke_is_the_only_local_smoke_anthropic_gate(self):
         registry = live()
+        providers = json.loads((REPO / "config" / "providers.json").read_text())
         self.assertEqual(registry["routes"]["opus-5-teamclaude"]["evidence_strength"], "local_smoke")
         self.assertIn("Direct live smoke", registry["routes"]["opus-5-teamclaude"]["evidence"][0]["source"])
-        self.assertEqual(registry["routes"]["opus-4.8-teamclaude"]["evidence_strength"], "none")
+        self.assertEqual(registry["routes"]["opus-4.8-teamclaude"]["evidence_strength"], "local_smoke")
         self.assertEqual(registry["routes"]["gpt-5.6-sol-codex"]["evidence_strength"], "cli_listing")
+        self.assertNotIn("opus-4.8", providers["review_order"])
+        self.assertEqual(mr.live_review_providers(registry, providers)[0], "opus-5")
 
 
 class FableEvalLabelTests(unittest.TestCase):

@@ -11,9 +11,8 @@ This document is evidence, not an operational contract. Routing is `config/model
 ## Limitations
 
 - Local access was sampled on 2026-08-28.
-  - **Direct invocation in this audit:** a live `teamclaude run -- --model claude-opus-5` call resolved to canonical `claude-opus-5`, first-party, 1M context.
+  - **Direct invocation in this audit:** `teamclaude` smokes of `claude-opus-5`, `claude-opus-4-8`, and `claude-fable-5` (restricted mode, strict MCP config, no session persistence, synthetic prompts). Each returned the requested canonical id, first-party, 1M context. See **Local evidence (round 2)** below.
   - **CLI listings, not invocations:** `gpt --models` listed `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`. `grok models` listed `grok-4.6` and `grok-4.5` (cached authenticated registry readable; settings refresh produced network warnings). `teamclaude status` listed usable Opus and Fable on at least one account.
-  - **Not directly invoked in this audit:** Opus 4.8. It is cataloged as the intended time-bounded compatibility fallback and is `catalog_verified` (non-resolvable) until a direct smoke receipt exists.
   - Direct `claude` without teamclaude was auth-blocked.
 - Pre-existing operational provider routes (Codex Sol/Terra/Luna, Grok Build, Cursor Grok, Grok Bot Review D / Heat Map, Fable architecture seat) stay `live_verified` on the independent standing-provider signal in `providers.json`, with evidence wording that distinguishes a listing from an invocation.
 - Independent anchors are Artificial Analysis pages dated in the 2026-08-28 evidence packet. They are not this repo's eval harness. Effort (max / high / xhigh) is not comparable across labs. Descending ranks below are evidence-bounded and role/harness-specific, not a universal ordering.
@@ -29,7 +28,7 @@ Anthropic released Opus 5 on 2026-07-24 at the same $5/$25 per MTok list price a
 
 That supports migrating the Anthropic **review/judgment** seat from 4.8 to 5. It does **not** support making Opus a daily bulk implementer. Scarce-seat, independence, and legwork boundaries stay.
 
-Opus 4.8 remains the intended time-bounded compatibility fallback (`fallback_until` 2026-12-31). It is not in `review_order`. In this audit it was not directly invoked, so its route is `catalog_verified` and fails closed until a smoke receipt exists.
+Opus 4.8 remains the intended time-bounded compatibility fallback (`fallback_until` 2026-12-31). It is not in `review_order`. A 2026-08-28 direct smoke restored `opus-4.8-teamclaude` to `live_verified`; live status does not put it in the gating order.
 
 ## Fable 5 placement
 
@@ -42,6 +41,21 @@ Fable 5 stays a distinct rare highest-capability / long-horizon escalation:
 
 No unaudited historical detection score is used as the rationale. Rankings grant no authority.
 
+## Local evidence (round 2, 2026-08-28)
+
+Corrected TeamClaude invocations: restricted mode, strict MCP config, no session persistence, synthetic prompts only. America/Chicago.
+
+**Compatibility smokes.** Opus 4.8 requested `claude-opus-4-8` and returned canonical `claude-opus-4-8`, firstParty, 1M context, marker `OPUS48_SMOKE_OK`, completed in one model turn. That direct smoke is why `opus-4.8-teamclaude` is `live_verified`; it stays superseded, out of `review_order`, and time-bounded through 2026-12-31. Opus 5 requested `claude-opus-5` and returned canonical `claude-opus-5`, firstParty, 1M context; it answered that Opus 5 is the operational Anthropic review seat. That route stays live.
+
+**Architecture/spec critique (same prompt, both max effort, n=1).** Prompt: auto-promote any newly cataloged model from unwired to live routing when its synthetic eval score is ≥0.80; identify the principal architecture/safety defect and the minimum fail-closed correction; ≤120 words; do not discuss latency. Receipts: `model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl`. `bin/model-eval.py` scores:
+
+| Model | total | correctness | token efficiency | tokens_out (incl. thinking) | thinking | latency_ms | cost USD |
+|-------|------:|------------:|-----------------:|----------------------------:|---------:|-----------:|---------:|
+| claude-fable-5 | 0.7789 | 1.0 | 0.1155 | 1732 | 1487 | 22372 | 0.3858 |
+| claude-opus-5 | 0.7752 | 1.0 | 0.1007 | 1986 | 1717 | 26449 | 0.19575 |
+
+Both found the critical fail-open defect (a synthetic score is not an authorization signal; write access to the catalog must not be deployment authority). No clear qualitative Fable win on this sample. Opus cost was about half. Latency has zero decision weight. Total reasoning/output token magnitudes were similar. This supports Opus as the normal seat and Fable as an explicit escalation. It does not establish a universal rank. Sample is n=1 per model.
+
 ## Model census (2026-08-28)
 
 Labs in scope: OpenAI, Anthropic, xAI, Google, Moonshot, Z.AI, Alibaba, DeepSeek, Meta, Review E / open-weight.
@@ -50,8 +64,9 @@ Live-verified (may resolve). Evidence kind is exact:
 
 | Route | Model | Host | Evidence |
 |-------|-------|------|----------|
-| `opus-5-teamclaude` | claude-opus-5 | teamclaude | **direct live smoke** of `claude-opus-5` |
-| `fable-5-teamclaude` | claude-fable-5 | teamclaude | teamclaude **status listing** of a usable Fable route; standing architecture provider |
+| `opus-5-teamclaude` | claude-opus-5 | teamclaude | **direct live smoke** of `claude-opus-5` (seat-policy + architecture receipt) |
+| `opus-4.8-teamclaude` | claude-opus-4-8 | teamclaude | **direct live smoke** (`OPUS48_SMOKE_OK`); superseded compatibility fallback; **not** in `review_order` |
+| `fable-5-teamclaude` | claude-fable-5 | teamclaude | **direct live smoke** of `claude-fable-5` (architecture receipt); standing architecture provider |
 | `gpt-5.6-sol-codex` | gpt-5.6-sol | gpt wrapper | `gpt --models` **listing**; standing Codex Sol provider |
 | `gpt-5.6-terra-codex` | gpt-5.6-terra | gpt wrapper | `gpt --models` **listing**; standing Codex Terra provider |
 | `gpt-5.6-luna-codex` | gpt-5.6-luna | gpt wrapper | `gpt --models` **listing**; standing Codex Luna provider |
@@ -60,7 +75,7 @@ Live-verified (may resolve). Evidence kind is exact:
 | `grok-bot-visual-qa` | grok-4.6 (app) | Grok Bot | standing Review D provider |
 | `grok-bot-heat-map` | grok-4.6 (app) | Grok Bot | standing Heat Map provider |
 
-Catalog-verified (listed or documented; does **not** resolve): gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex-spark, grok-4.5, **Opus 4.8** (intended fallback; no direct smoke in this audit).
+Catalog-verified (listed or documented; does **not** resolve): gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex-spark, grok-4.5.
 
 Auth-blocked: `opus-5-direct-claude` (bare `claude` without teamclaude).
 
@@ -138,14 +153,15 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 
 1. Merged the config-driven engine (`config/*.json`, `bin/resolve-route.py`, `bin/doctor.py`, `bin/smoketest.py`) with main's selective skill routers (`skills/`) and idle-mini QA policy.
 2. Removed the redundant legacy role-registry directory. Role *loading* remains `config/roles.json` + `bin/generate-roles.py` (not coupled to model releases). Model identity lives only in `config/model-registry.json`.
-3. Replaced the Opus 5 hard ban with Opus 5 as the Anthropic gate. Kept Opus 4.8 as a documented compatibility fallback; this audit did not smoke it, so it is `catalog_verified` and fails closed.
-4. Bound each runtime provider to a catalog route. `review_order` is `opus-5 → codex-sol → review-e`, filtered to `live_verified`. Fable is not first and is not in that order.
+3. Replaced the Opus 5 hard ban with Opus 5 as the Anthropic gate. Kept Opus 4.8 as a documented, time-bounded compatibility fallback. Round 2 restored it to `live_verified` after a direct smoke; it remains out of `review_order`.
+4. Bound each runtime provider to a catalog route. `review_order` is `opus-5 → codex-sol → review-e`, filtered to `live_verified`. Fable is not first and is not in that order. Opus 4.8 is live and still excluded from that order.
 5. Added synthetic eval cases and receipt scoring. New-model intake is two-phase.
 6. Follow-up: completed the scoped census, split DeepSeek V4 Pro/Flash and Muse Spark/Muse Code, moved cost claims into `efficiency`, and demoted Kimi K3 below Opus 5 for research synthesis.
+7. Round 2: committed same-prompt Fable 5 / Opus 5 architecture receipts (`model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl`). n=1 per model; no rank change.
 
 ## Future audit instructions
 
-1. Re-run local smokes: `gpt --models`, `grok models`, `teamclaude status`, one `teamclaude run -- --model claude-opus-5`. Record the date on each live route. A listing is not an invocation; promote Opus 4.8 only after a direct smoke.
+1. Re-run local smokes: `gpt --models`, `grok models`, `teamclaude status`, and direct `teamclaude` invocations for each live Anthropic id. Record the date on each live route. A listing is not an invocation. Opus 4.8 is already live-smoked (2026-08-28); keep it out of `review_order`.
 2. Refresh independent anchors from the same harness pages; do not mix effort levels into one table of "winners." Do not rank on price in the quality column.
 3. Score `model-evals/cases.json` receipts with `bin/model-eval.py`. Latency may be recorded; it must not decide rank.
 4. Catalog new models as `unwired` or `catalog_verified`. Promote to `live_verified` only after official-id, local smoke, role evals, independent evidence, cost/context, and owner approval (`intake.promote_requires`).

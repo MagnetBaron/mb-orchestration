@@ -90,6 +90,18 @@
         "must_contain_any": ["yes", "opus 5"],
         "must_not_contain": ["as an ai language model", "great question"]
       }
+    },
+    {
+      "id": "arch-spec-1",
+      "suite": "architecture_spec_critique",
+      "role": "architecture_spec_critique",
+      "prompt": "A proposed dynamic model registry auto-promotes any newly cataloged model from unwired to live routing when its synthetic eval score is at least 0.80. In at most 120 words, identify the principal architecture/safety defect and specify the minimum fail-closed correction. Do not discuss latency.",
+      "token_budget_out": 200,
+      "gold": {
+        "must_contain": ["provenance", "unwired", "approval"],
+        "must_contain_any": ["fail-open", "fails open", "fail open"],
+        "must_not_contain": ["latency"]
+      }
     }
   ]
 }

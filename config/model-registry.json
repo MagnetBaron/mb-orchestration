@@ -112,12 +112,13 @@
       "family": "anthropic",
       "lab": "Anthropic",
       "lifecycle": "superseded",
+      "context_window": 1000000,
       "official_ids": [
         "claude-opus-4-8",
         "opus-4.8",
         "claude-opus-4.8"
       ],
-      "notes": "Intended time-bounded compatibility fallback while genuinely available. Not the operational Anthropic gate. Not live_verified in the 2026-08-28 audit."
+      "notes": "Intended time-bounded compatibility fallback while genuinely available. Not the operational Anthropic gate. Not in review_order."
     },
     "claude-fable-5": {
       "label": "Claude Fable 5",
@@ -433,7 +434,13 @@
           "date": "2026-08-28",
           "route_state": "live_verified",
           "kind": "local_smoke",
-          "source": "Direct live smoke: teamclaude run -- claude ... --model claude-opus-5 resolved to canonical claude-opus-5, first-party, 1M context."
+          "source": "Direct live smoke: teamclaude run -- claude ... --model claude-opus-5 resolved to canonical claude-opus-5, first-party, 1M context. Seat-policy smoke (restricted, strict MCP, no persistence, synthetic prompt) answered that Opus 5 is the operational Anthropic review seat; completed, one model turn."
+        },
+        {
+          "date": "2026-08-28",
+          "route_state": "live_verified",
+          "kind": "owner_eval",
+          "source": "model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl (architecture_spec_critique, max effort, n=1)"
         }
       ],
       "notes": "Operational Anthropic review/judgment seat."
@@ -444,11 +451,11 @@
       "host": "teamclaude",
       "harness": "claude-cli",
       "invocation_id": "claude-opus-4-8",
-      "route_state": "catalog_verified",
+      "route_state": "live_verified",
       "compatibility_fallback": true,
       "fallback_until": "2026-12-31",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "none",
+      "evidence_strength": "local_smoke",
       "capabilities": [
         "review",
         "mcp_judgment",
@@ -468,12 +475,12 @@
       "evidence": [
         {
           "date": "2026-08-28",
-          "route_state": "catalog_verified",
-          "kind": "none",
-          "source": "Not directly invoked in the 2026-08-28 audit. Documented as the intended time-bounded compatibility fallback. Fail closed until a direct smoke receipt exists."
+          "route_state": "live_verified",
+          "kind": "local_smoke",
+          "source": "Direct live smoke: teamclaude requested claude-opus-4-8; provider receipt canonical model claude-opus-4-8, firstParty, 1M context; exact requested/returned marker OPUS48_SMOKE_OK; completed, one model turn. Restricted mode, strict MCP config, no session persistence, synthetic prompt only."
         }
       ],
-      "notes": "Intended compatibility fallback only. Not in review_order. catalog_verified — does not resolve until live-smoked."
+      "notes": "Intended compatibility fallback only. live_verified from a 2026-08-28 direct smoke. Not in review_order. Time-bounded through 2026-12-31. Same family as Opus 5."
     },
     "opus-5-direct-claude": {
       "model": "claude-opus-5",
@@ -511,7 +518,7 @@
       "route_state": "live_verified",
       "lifecycle_override": "restricted",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "cli_listing",
+      "evidence_strength": "local_smoke",
       "capabilities": [
         "architecture"
       ],
@@ -522,7 +529,13 @@
           "date": "2026-08-28",
           "route_state": "live_verified",
           "kind": "cli_listing",
-          "source": "teamclaude status listed usable Fable on at least one configured account (status listing, not a direct invocation in this audit). Standing architecture-escalation provider in providers.json."
+          "source": "teamclaude status listed usable Fable on at least one configured account (status listing). Standing architecture-escalation provider in providers.json."
+        },
+        {
+          "date": "2026-08-28",
+          "route_state": "live_verified",
+          "kind": "local_smoke",
+          "source": "Direct architecture-critique invocation: canonical claude-fable-5, firstParty, 1M context. Receipt: model-evals/receipts/2026-08-28-architecture-spec-critique.jsonl (max effort, n=1)."
         }
       ],
       "notes": "Architecture/long-horizon only. Never a gating reviewer. Never a second family with Opus."
@@ -1477,7 +1490,7 @@
           "rank": 1,
           "route": "fable-5-teamclaude",
           "confidence": "medium",
-          "rationale": "Long-horizon breadth; not automatically better per token than Opus 5."
+          "rationale": "Long-horizon breadth; not automatically better per token than Opus 5. n=1 local same-prompt critique (2026-08-28) found the same fail-open defect with no clear qualitative win."
         },
         {
           "rank": 2,
@@ -1545,7 +1558,7 @@
           "priority": 3,
           "route": "opus-4.8-teamclaude",
           "confidence": "low",
-          "rationale": "Intended time-bounded fallback. catalog_verified in this audit, so it fails closed until a direct smoke exists. Same family as Opus 5."
+          "rationale": "Intended time-bounded fallback. live_verified from a 2026-08-28 direct smoke; still excluded from review_order. Same family as Opus 5."
         }
       ]
     },

@@ -96,7 +96,7 @@
       "route": "opus-4.8-teamclaude",
       "compatibility_fallback": true, "fallback_until": "2026-12-31",
       "backed_by": "claude-any-seat", "detect": { "method": "command", "cmd": "claude" },
-      "notes": "Intended time-bounded compatibility fallback. Not the operational Anthropic gate and not in review_order. Same family as Opus 5. Catalog-verified only until a direct smoke exists; runtime fails closed."
+      "notes": "Intended time-bounded compatibility fallback. Not the operational Anthropic gate and not in review_order. Same family as Opus 5. live_verified from a 2026-08-28 direct smoke; still excluded from the gating order."
     },
     "review-e": {
       "label": "Review E (independent-family review slot)", "level": "frontier", "family": "open-weight", "kind": "api",
