@@ -27,13 +27,19 @@ import io
 import json
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
-import observe  # noqa: E402
+try:
+    import observe  # noqa: E402
+except Exception as _OBS_IMPORT_ERROR:
+    observe = None
+else:
+    _OBS_IMPORT_ERROR = None
 
 
 def _load(name, path):
@@ -93,8 +99,8 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
         argv += ["--actor-id", actor_id]
     if no_record_observability:
         argv.append("--no-record")
-    elif record_observability:
-        argv.append("--record")
+    # --record-observability records the run_plan only; it does not force the
+    # inner resolve-route emit (so emit-on-run-brief-only remains possible).
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = resolve_route.main(argv)
@@ -167,6 +173,8 @@ def build_plan(args) -> dict:
         role = "review-d-input" if step.get("input_seat") else "implement"
         p = plan_for_seat(step.get("seat"), recipes, ctx, role)
         p["why"] = step.get("why")
+        p["available"] = step.get("available", True)
+        p["input_seat"] = bool(step.get("input_seat"))
         if step.get("last_resort"):
             p["last_resort"] = True
         if step.get("on"):
@@ -203,6 +211,9 @@ def build_plan(args) -> dict:
         "implement": impl_plans, "review_plan": review_plans, "transition": trans,
         "implement_seat": implement_seat,
         "review_chain": [c["provider"] for c in decision["review"]["chain"]],
+        "implement_decision": decision.get("implement"),
+        "implement_requested": True,
+        "park_reason": decision.get("park_reason"),
     }
 
 
@@ -321,17 +332,26 @@ def main(argv=None):
 
     started = time.perf_counter()
     if not args.run_id:
-        args.run_id = observe.new_run_id()
+        args.run_id = observe.new_run_id() if observe else str(uuid.uuid4())
     plan = build_plan(args)
     duration_ms = int((time.perf_counter() - started) * 1000)
     if args.record:
         record_trace(plan, args.run_ledger)
-    obs_meta = observe.try_emit_route_decision(
-        plan, source="run-brief",
-        record=args.record_observability, no_record=args.no_record_observability,
-        run_id=args.run_id, actor_id=args.actor_id.strip() or None,
-        profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_run_brief",
-    )
+    routing_ok = bool(plan.get("routing_satisfied"))
+    obs_meta = {"recorded": False, "event_id": None, "run_id": args.run_id,
+                "write_error": None, "routing_satisfied_unchanged": routing_ok}
+    if observe is None:
+        obs_meta["write_error"] = f"observe import failed: {_OBS_IMPORT_ERROR}"
+    else:
+        try:
+            obs_meta = observe.try_emit_route_decision(
+                plan, source="run-brief",
+                record=args.record_observability, no_record=args.no_record_observability,
+                run_id=args.run_id, actor_id=args.actor_id.strip() or None,
+                profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_run_brief",
+            )
+        except Exception as exc:
+            obs_meta["write_error"] = f"{type(exc).__name__}: {exc}"
     plan["observability"] = obs_meta
     if obs_meta.get("write_error") and not args.json:
         print(f"observability write failed (plan unchanged): {obs_meta['write_error']}",

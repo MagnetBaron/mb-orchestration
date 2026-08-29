@@ -44,7 +44,12 @@ sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import routing  # noqa: E402
 import dispatch_evidence  # noqa: E402
-import observe  # noqa: E402
+try:
+    import observe  # noqa: E402
+except Exception as _OBS_IMPORT_ERROR:  # observability must not take routing down
+    observe = None
+else:
+    _OBS_IMPORT_ERROR = None
 
 
 def _load_module(name, path):
@@ -645,9 +650,12 @@ def main(argv=None):
     connectors = mborch.load_config("connectors.json", required=False) or {}
     registry = mborch.load_config("model-registry.json")
     if not registry:
+        _emit_bootstrap(args, "missing_registry",
+                        "model-registry.json is required (unknown registry state fails closed)", started)
         sys.exit("resolve-route: model-registry.json is required (unknown registry state fails closed)")
     reg_errors = modelreg.validate(registry, providers=providers)
     if reg_errors:
+        _emit_bootstrap(args, "invalid_registry", "model-registry invalid (fail closed)", started)
         sys.exit("resolve-route: model-registry invalid (fail closed):\n  - " + "\n  - ".join(reg_errors))
     risk_flags = [f.strip() for f in args.risk.split(",") if f.strip()]
 
@@ -655,7 +663,11 @@ def main(argv=None):
     lp = Path(args.ledger) if args.ledger else mborch.ledger_path()
     ledger = json.loads(lp.read_text()) if lp.exists() else {}
 
-    level, reasons, extra = compute_depth(depth_conf, args.klass, args.scale, risk_flags)
+    try:
+        level, reasons, extra = compute_depth(depth_conf, args.klass, args.scale, risk_flags)
+    except SystemExit as exc:
+        _emit_bootstrap(args, "invalid_class_or_scale", str(exc), started)
+        raise
     artifacts = [a.strip() for a in args.artifacts.split(",") if a.strip()]
     required_artifacts = {"brief"}
     if level not in ("none", "self-check"):
@@ -739,14 +751,11 @@ def main(argv=None):
             "landing_lock": True, "tip_bound_green_test": True,
         },
         "user_said_ship": args.user_said_ship, "implement": implement, "usage_updated": updated,
+        "implement_requested": bool(args.implement),
     }
 
     duration_ms = int((time.perf_counter() - started) * 1000)
-    obs_meta = observe.try_emit_route_decision(
-        decision, source="resolve-route", record=args.record, no_record=args.no_record,
-        run_id=args.run_id.strip() or None, actor_id=args.actor_id.strip() or None,
-        profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_resolve",
-    )
+    obs_meta = _emit_decision(decision, args, duration_ms)
     # Metadata only. routing_satisfied / park_reason / seats are already frozen.
     decision["observability"] = obs_meta
     if obs_meta.get("write_error") and not args.json:
@@ -784,6 +793,40 @@ def main(argv=None):
     print("-" * 72)
     print("deterministic: same class + recorded state → same decision. Reserves yield (never strand); metered $ last.")
     return 0
+
+
+def _emit_decision(decision, args, duration_ms):
+    routing_ok = bool((decision or {}).get("routing_satisfied"))
+    meta = {"recorded": False, "event_id": None, "run_id": args.run_id.strip() or None,
+            "write_error": None, "routing_satisfied_unchanged": routing_ok}
+    if observe is None:
+        meta["write_error"] = f"observe import failed: {_OBS_IMPORT_ERROR}"
+        return meta
+    try:
+        return observe.try_emit_route_decision(
+            decision, source="resolve-route", record=args.record, no_record=args.no_record,
+            run_id=args.run_id.strip() or None, actor_id=args.actor_id.strip() or None,
+            profile_id=args.profile, duration_ms=duration_ms, emit_key="emit_on_resolve",
+        )
+    except Exception as exc:
+        meta["write_error"] = f"{type(exc).__name__}: {exc}"
+        return meta
+
+
+def _emit_bootstrap(args, reason_code, message, started):
+    if observe is None:
+        return
+    try:
+        observe.try_emit_bootstrap_failure(
+            reason_code=reason_code, message=message, source="resolve-route",
+            record=getattr(args, "record", False), no_record=getattr(args, "no_record", False),
+            run_id=(getattr(args, "run_id", "") or "").strip() or None,
+            actor_id=(getattr(args, "actor_id", "") or "").strip() or None,
+            profile_id=getattr(args, "profile", None),
+            duration_ms=int((time.perf_counter() - started) * 1000),
+        )
+    except Exception:
+        return
 
 
 if __name__ == "__main__":

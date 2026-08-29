@@ -117,6 +117,25 @@ Use one of: `setup` · `low` · `medium` · `high` · `review`.
 
 Missing `effort` → no dispatch (same as other required fields).
 
+## Observability log failures
+
+Routing quality telemetry (`bin/observe.py`, `data/orchestration-events.jsonl`) never
+grants authority and must not change a park into a success.
+
+| Failure | Do |
+|---------|----|
+| `observe.py` import error or disk/write failure | Routing continues unchanged. `observability.recorded=false` and `write_error` are attached. A park stays a park. |
+| Malformed `monitoring.json` observability block | `bin/doctor.py` fails closed. Runtime skips emit and leaves the routing decision intact. |
+| `MB_OBSERVABILITY=0` | Disables **default/config** emit only. `--record` / `--record-observability` still emit. `--no-record` always suppresses. |
+| Invalid `--class` / unknown scale after parse | Bounded `bootstrap_failure` event is recorded (sanitized, no task body), then the process still fails closed. |
+| Argparse failure (missing `--class`, invalid `--scale` choice) | **Unobservable bootstrap.** The process exits before a run exists; nothing is logged. Re-run with a valid invocation. |
+| Invalid registry before a decision is computed | Bounded `bootstrap_failure` (`invalid_registry` / `missing_registry`), then fail closed as today. |
+| Concurrent prune vs append | Both take the same exclusive lock; accepted events are not dropped. Truncated tails are isolated, then skipped on read. |
+| Retention | Emit does **not** auto-prune. Run `bin/observe.py prune` (cron/LaunchAgent is the bounded safe point). Do not treat this as `usage-record.py --snapshot`. |
+
+Never log prompts, diffs, credentials, customer data, or absolute user paths. Actor/run
+ids that look like paths or secrets are hashed; UUIDs and explicit pseudonyms stay as-is.
+
 ## Park location
 
 Parked work is a brief that stays in the queue with status `parked: <reason>`. Prefer the same backlog the dispatcher already uses (Trello card, queue file, or session note). Do not invent makework to fill idle. Empty useful queue → idle is correct.

@@ -26,6 +26,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,8 +34,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
 
 EVENT_SCHEMA_VERSION = 1
-KINDS = ("route_decision", "run_plan", "review_verdict", "test_verdict", "terminal", "tokens")
+KINDS = ("route_decision", "run_plan", "review_verdict", "test_verdict",
+         "terminal", "tokens", "bootstrap_failure")
 SOURCES = ("resolve-route", "run-brief", "observe-cli")
+HANDOFF_PARK_CODES = frozenset({
+    "restricted_artifact", "unknown_artifact", "missing_required_artifact",
+    "unknown_participant",
+})
+EVENT_ID_RE = re.compile(r"^obs-v[0-9]+-[a-f0-9]+$")
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 TERMINAL_STATUSES = ("routed", "parked", "planned", "landed")
 VERDICTS = ("ship", "fix-list", "blocked")
 TEST_VERDICTS = ("pass", "fail", "error", "skip")
@@ -58,14 +66,23 @@ _FORBIDDEN_KEYS = frozenset({
 _TOKEN_ALLOW = frozenset({"tokens", "token_input", "token_output", "token_total"})
 
 _ABS_PATH_RE = re.compile(
-    r"(?i)(?:(?:/Users|/home|/private/var/folders|/var/folders|/tmp|/opt|/etc|"
-    r"/Library|/System|/[A-Za-z]:\\|/root)[^\s\"']+)"
+    r"(?i)(?:(?:/Users|/home|/private/var/folders|/var/folders|/root)[^\s\"']+"
+    r"|(?:[A-Za-z]:[\\/][^\s\"']+)"
+    r"|(?:\\\\[^\s\"']+))"
 )
 _UNIX_FILE_RE = re.compile(r"(?i)(?:^|[\s\"'=])(/[^\s\"']+\.(?:md|py|json|diff|patch|txt|toml|sh))")
 _SECRET_RE = re.compile(
     r"(?i)\b(?:sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}|glpat-[A-Za-z0-9\-_]{8,}|"
     r"xox[baprs]-[A-Za-z0-9-]{8,}|Bearer\s+[A-Za-z0-9._\-]+|"
     r"AKIA[0-9A-Z]{8,})"
+)
+_NOT_USAGE_STARVATION = (
+    "model-registry", "no valid live route", "lacks mcp_bulk",
+    "not an active connector", "wrong-route", "not dispatch-qualified",
+    "unknown dispatcher", "unknown dispatcher profile", "restricted artifact",
+    "unknown artifact", "required handoff artifact", "coding-capable",
+    "implement/ide", "auth_blocked", "unwired", "catalog_verified",
+    "required mcp",
 )
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 _ACTOR_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,63}$")
@@ -148,10 +165,20 @@ def events_path(monitoring=None, override=None) -> Path:
 
 
 def emit_enabled(obs, *, record=False, no_record=False, emit_key="emit_on_resolve") -> bool:
-    if no_record or os.environ.get("MB_OBSERVABILITY") == "0":
+    """CLI flags outrank the environment toggle; the env toggle outranks config.
+
+    Precedence (highest first):
+      1. --no-record / --no-record-observability → never emit
+      2. --record / --record-observability → always emit (even if MB_OBSERVABILITY=0)
+      3. MB_OBSERVABILITY=0 → disable default/config emit
+      4. monitoring.observability.enabled + emit_on_*
+    """
+    if no_record:
         return False
     if record:
         return True
+    if os.environ.get("MB_OBSERVABILITY") == "0":
+        return False
     if not obs or not obs.get("enabled"):
         return False
     return bool(obs.get(emit_key, True))
@@ -159,24 +186,59 @@ def emit_enabled(obs, *, record=False, no_record=False, emit_key="emit_on_resolv
 
 # ------------------------------------------------------------- privacy core --
 
-def normalize_actor_id(raw) -> str | None:
-    """Accept an explicit pseudonym. Never infer $USER/HOME/git identity.
+def looks_like_abs_path(value: str) -> bool:
+    if not value:
+        return False
+    if _ABS_PATH_RE.search(value):
+        return True
+    if re.match(r"^[A-Za-z]:[\\/]", value):
+        return True
+    if value.startswith("\\\\"):
+        return True
+    return False
 
-    Malformed values that look like email, path, or free text are replaced with
-    a keyed hash so the raw identifier is not stored.
-    """
+
+def looks_like_secret(value: str) -> bool:
+    return bool(value and _SECRET_RE.search(value))
+
+
+def _hash_id(prefix: str, value: str) -> str:
+    return f"{prefix}:{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
+
+
+def normalize_public_id(raw, *, prefix="id") -> str | None:
+    """Keep safe UUIDs/pseudonyms; hash path-like, secret-shaped, or free-text ids."""
     if raw is None:
         return None
     value = str(raw).strip()
     if not value:
         return None
-    if "@" in value or "/" in value or "\\" in value or " " in value:
-        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-        return f"actor:{digest}"
-    if not _ACTOR_RE.match(value):
-        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-        return f"actor:{digest}"
+    if looks_like_abs_path(value) or looks_like_secret(value) or "@" in value or " " in value:
+        return _hash_id(prefix, value)
+    if "/" in value or "\\" in value:
+        return _hash_id(prefix, value)
+    if not _SAFE_ID_RE.match(value):
+        return _hash_id(prefix, value)
     return value
+
+
+def normalize_actor_id(raw) -> str | None:
+    """Accept an explicit pseudonym. Never infer $USER/HOME/git identity."""
+    got = normalize_public_id(raw, prefix="actor")
+    if got is None:
+        return None
+    if got.startswith("actor:"):
+        return got
+    if not _ACTOR_RE.match(got):
+        return _hash_id("actor", str(raw).strip())
+    return got
+
+
+def normalize_run_id(raw) -> str:
+    got = normalize_public_id(raw, prefix="run")
+    if not got:
+        raise ValueError("event requires a run_id")
+    return got
 
 
 def default_actor_id(explicit, profile_id) -> str | None:
@@ -193,6 +255,8 @@ def sanitize_text(value: str, *, identifier=False) -> str:
     if not value:
         return value
     if identifier:
+        if looks_like_abs_path(value) or looks_like_secret(value):
+            return _hash_id("id", value)
         return value
     value = _SECRET_RE.sub("<redacted>", value)
     value = _EMAIL_RE.sub("<redacted-email>", value)
@@ -247,6 +311,22 @@ def sanitize(value, key=None):
     return sanitize_text(str(value), identifier=identifier)
 
 
+def privacy_backstop(value):
+    """Final pass: absolute POSIX/Windows paths and secret-shaped values cannot persist."""
+    if isinstance(value, dict):
+        return {str(k): privacy_backstop(v) for k, v in value.items()
+                if not _drop_forbidden_key(str(k)) or str(k) in _TOKEN_ALLOW}
+    if isinstance(value, list):
+        return [privacy_backstop(v) for v in value]
+    if isinstance(value, str):
+        if looks_like_secret(value):
+            return _SECRET_RE.sub("<redacted>", value)
+        if looks_like_abs_path(value):
+            return _ABS_PATH_RE.sub("<path>", value)
+        return value
+    return value
+
+
 # --------------------------------------------------------------- event core --
 
 def _canonical(obj) -> str:
@@ -271,6 +351,8 @@ def park_reason_code(reason) -> str | None:
         return "unknown_artifact"
     if "required handoff artifact" in r:
         return "missing_required_artifact"
+    if "handoff participant" in r:
+        return "unknown_participant"
     if "not configured" in r and "dispatcher" in r:
         return "unknown_dispatcher"
     if "requested dispatcher" in r and "not configured" in r:
@@ -287,10 +369,13 @@ def park_reason_code(reason) -> str | None:
         return "review_unsatisfied"
     if "independent" in r and "park" in r:
         return "review_unsatisfied"
+    if any(s in r for s in _NOT_USAGE_STARVATION):
+        return "park"
+    if ("spent" in r and ("seat" in r or "usable" in r or "worker" in r or "intake" in r
+                          or "quota" in r)) or "quota_spent" in r or "quota spent" in r:
+        return "usage_starvation"
     if "no complete usable implementation" in r or "no usable implement" in r:
         return "implement_unsatisfied"
-    if "spent" in r or "quota" in r:
-        return "usage_starvation"
     if str(reason).upper().startswith("PARK"):
         return "park"
     return None
@@ -313,31 +398,85 @@ def _review_chain_summary(chain) -> list[dict]:
     return out
 
 
-def _implementation_summary(implement, authors) -> dict:
-    steps = [s for s in (implement or []) if isinstance(s, dict) and not s.get("input_seat")]
-    providers = [s.get("seat") for s in steps
-                 if s.get("available", True) and s.get("seat") not in (None, "(none)")]
+def _is_implement_step(step) -> bool:
+    if not isinstance(step, dict):
+        return False
+    if step.get("input_seat"):
+        return False
+    role = step.get("role")
+    if role in ("review-d-input", "review", "review-d", "review-d-input-seat"):
+        return False
+    return True
+
+
+def _implementation_summary(implement, authors, requested=None) -> dict:
+    if requested is None:
+        requested = implement is not None
+    if not requested:
+        return {
+            "requested": False,
+            "satisfied": None,
+            "providers": [],
+            "authors": [],
+            "last_resort": False,
+        }
+    steps = [s for s in (implement or []) if _is_implement_step(s)]
+    providers = []
+    all_available = bool(steps)
+    last_resort = False
+    for s in steps:
+        seat = s.get("seat")
+        available = s.get("available", True)
+        if seat in (None, "(none)") or available is False:
+            all_available = False
+            continue
+        providers.append(seat)
+        if s.get("last_resort"):
+            last_resort = True
+    if not steps:
+        all_available = False
     return {
-        "satisfied": bool(steps) and all(s.get("available", True) for s in steps),
+        "requested": True,
+        "satisfied": all_available,
         "providers": providers,
         "authors": list(authors or []),
-        "last_resort": any(s.get("last_resort") for s in steps),
+        "last_resort": last_resort,
     }
+
+
+def _usage_starvation(decision) -> bool | None:
+    """True only for recorded quota/usage exhaustion — never outage/capability/registry."""
+    reason = str(decision.get("park_reason") or (decision.get("transition") or {}).get("park_reason") or "")
+    reason_l = reason.lower()
+    if any(s in reason_l for s in _NOT_USAGE_STARVATION):
+        return False
+    impl = decision.get("implement_decision")
+    if impl is None:
+        impl = decision.get("implement")
+    spent_impl = False
+    for s in impl or []:
+        if not _is_implement_step(s):
+            continue
+        why = str(s.get("why") or "").lower()
+        if s.get("tier") == "spent" or ("spent" in why and "usable" in why):
+            spent_impl = True
+            break
+        if not s.get("available", True) and s.get("tier") == "spent":
+            spent_impl = True
+            break
+    disp = decision.get("dispatcher") or {}
+    spent_disp = disp.get("tier") == "spent" and not disp.get("satisfied")
+    if spent_impl or spent_disp or park_reason_code(reason) == "usage_starvation":
+        return True
+    if decision.get("routing_satisfied"):
+        return False
+    return False
 
 
 def _usage_summary(decision) -> dict:
     disp = decision.get("dispatcher") or {}
     review = decision.get("review") or {}
-    impl = decision.get("implement")
     measured = any(k in disp for k in ("tier", "seat", "satisfied"))
-    reason = decision.get("park_reason") or ""
-    starvation = None
-    if measured:
-        starvation = bool(
-            park_reason_code(reason) == "usage_starvation"
-            or (not disp.get("satisfied") and "unavailable" in str(disp.get("explanation") or "").lower())
-            or any(isinstance(s, dict) and not s.get("available", True) for s in (impl or []))
-        )
     seats = []
     if disp.get("seat"):
         seats.append({"seat": disp.get("seat"), "tier": disp.get("tier"), "role": "dispatcher"})
@@ -346,7 +485,7 @@ def _usage_summary(decision) -> dict:
             seats.append({"seat": entry.get("seat"), "tier": entry.get("tier"), "role": "review"})
     return {
         "measured": measured,
-        "starvation": starvation,
+        "starvation": _usage_starvation(decision) if measured else None,
         "dispatcher_tier": disp.get("tier"),
         "seats": seats or None,
         "source": "recorded-ledger" if measured else None,
@@ -363,12 +502,10 @@ def _tokens_payload(tokens) -> dict:
     out = tokens.get("output")
     total = tokens.get("total")
     cost = tokens.get("cost_usd")
-    numbers = [v for v in (inp, out, total, cost) if isinstance(v, (int, float)) and not isinstance(v, bool)]
-    if measured is not True and not numbers:
+    if measured is not True:
+        # Numeric fields without an explicit measured flag stay missing.
         return {"measured": False, "input": None, "output": None, "total": None,
                 "cost_usd": None, "source": None}
-    if measured is not True:
-        measured = bool(numbers)
     payload = {
         "measured": bool(measured),
         "input": inp if isinstance(inp, (int, float)) and not isinstance(inp, bool) else None,
@@ -389,15 +526,14 @@ def make_event(kind, *, run_id, ts, source="observe-cli", actor_id=None, profile
                **fields) -> dict:
     if kind not in KINDS:
         raise ValueError(f"unknown event kind {kind!r}; known: {', '.join(KINDS)}")
-    if not run_id:
-        raise ValueError("event requires a run_id")
+    run_id = normalize_run_id(run_id)
     if kind == "review_verdict" and fields.get("verdict") not in VERDICTS:
         raise ValueError(f"review_verdict needs verdict in {VERDICTS}")
     if kind == "test_verdict" and fields.get("verdict") not in TEST_VERDICTS:
         raise ValueError(f"test_verdict needs verdict in {TEST_VERDICTS}")
     ev = {
         "schema_version": EVENT_SCHEMA_VERSION,
-        "run_id": str(run_id),
+        "run_id": run_id,
         "ts": ts,
         "kind": kind,
         "source": source if source in SOURCES else "observe-cli",
@@ -415,7 +551,7 @@ def make_event(kind, *, run_id, ts, source="observe-cli", actor_id=None, profile
     ev.update(extra)
     if kind in ("route_decision", "run_plan", "tokens") or "tokens" in ev:
         ev["tokens"] = _tokens_payload(ev.get("tokens"))
-    ev = sanitize(ev)
+    ev = privacy_backstop(sanitize(ev))
     ev["event_id"] = event_id_for(ev)
     return ev
 
@@ -431,6 +567,10 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
     authors = list(decision.get("authors") or [])
     park = decision.get("park_reason") or (decision.get("transition") or {}).get("park_reason")
     routing_ok = bool(decision.get("routing_satisfied"))
+    implement = decision.get("implement_decision")
+    if implement is None:
+        implement = decision.get("implement")
+    implement_requested = decision.get("implement_requested")
     fallback_reason = None
     if disp.get("fallback_used"):
         fallback_reason = "intake_relay" if disp.get("intake_relay") else "recorded_unavailability"
@@ -460,7 +600,7 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
             "risk_flags": list(decision.get("risk_flags") or []),
             "review_depth": decision.get("review_depth"),
         },
-        implementation=_implementation_summary(decision.get("implement"), authors),
+        implementation=_implementation_summary(implement, authors, requested=implement_requested),
         review={
             "satisfied": bool(review.get("satisfied")),
             "chain": _review_chain_summary(review.get("chain")),
@@ -501,6 +641,13 @@ def validate_event(ev, *, strict=False) -> list[str]:
     for key in ("event_id", "run_id", "ts", "kind"):
         if not ev.get(key):
             errors.append(f"missing {key}")
+    eid = ev.get("event_id")
+    if isinstance(eid, str) and not EVENT_ID_RE.match(eid):
+        errors.append("event_id does not match schema pattern")
+    rid = ev.get("run_id")
+    if isinstance(rid, str) and (looks_like_abs_path(rid) or looks_like_secret(rid)
+                                 or not _SAFE_ID_RE.match(rid)):
+        errors.append("run_id is not a safe identifier")
     kind = ev.get("kind")
     if kind not in KINDS:
         if strict:
@@ -508,6 +655,8 @@ def validate_event(ev, *, strict=False) -> list[str]:
         # non-strict: tolerate future kinds
     if ev.get("actor_id") is not None and not isinstance(ev.get("actor_id"), str):
         errors.append("actor_id must be a string or null")
+    elif isinstance(ev.get("actor_id"), str) and looks_like_abs_path(ev["actor_id"]):
+        errors.append("actor_id contains an absolute path")
     handoff = ev.get("handoff")
     if isinstance(handoff, dict) and handoff.get("requires_user_permission"):
         errors.append("handoff.requires_user_permission must be false (no permission loop)")
@@ -520,7 +669,7 @@ def validate_event(ev, *, strict=False) -> list[str]:
                     errors.append(f"tokens.{k} present while measured is false")
     # Privacy: absolute user paths and forbidden keys must not survive.
     blob = _canonical(ev)
-    if "/Users/" in blob or "/home/" in blob:
+    if looks_like_abs_path(blob) or "/Users/" in blob or "/home/" in blob:
         errors.append("event contains an absolute user path")
     for key in ev.keys():
         if _drop_forbidden_key(str(key)) and str(key) not in ("tokens",):
@@ -591,9 +740,16 @@ def fold_run(events) -> dict:
             incoming = ev.get(section)
             if isinstance(incoming, dict):
                 merged = dict(st.get(section) or {})
+                incoming = dict(incoming)
+                if section == "usage" and merged.get("starvation") is True:
+                    incoming["starvation"] = True
+                if section == "implementation" and merged.get("satisfied") is False:
+                    incoming["satisfied"] = False
                 merged.update({k: v for k, v in incoming.items() if v is not None})
                 st[section] = merged
-        if ev.get("routing_satisfied") is not None:
+        if ev.get("routing_satisfied") is False:
+            st["routing_satisfied"] = False
+        elif ev.get("routing_satisfied") is not None and st["routing_satisfied"] is not False:
             st["routing_satisfied"] = ev["routing_satisfied"]
         intake = st.get("intake") or {}
         st["fallback_used"] = intake.get("fallback_used")
@@ -673,10 +829,14 @@ def analyze(events) -> dict:
     fallback = sum(1 for r in runs if r.get("fallback_used") is True)
     tokens_measured = [r for r in runs if (r.get("tokens") or {}).get("measured")]
     usage_measured = [r for r in runs if (r.get("usage") or {}).get("measured")]
-    starved = [r for r in runs if (r.get("usage") or {}).get("starvation") is True
-               or (r.get("terminal") or {}).get("park_reason_code") == "usage_starvation"]
-    handoff_parked = [r for r in runs
-                      if (r.get("handoff") or {}).get("allowed") is False]
+    starved = [r for r in runs if (r.get("usage") or {}).get("starvation") is True]
+    def _handoff_policy_park(r):
+        code = (r.get("terminal") or {}).get("park_reason_code")
+        hp = r.get("handoff") or {}
+        return (code in HANDOFF_PARK_CODES
+                or bool(hp.get("restricted")) or bool(hp.get("unknown"))
+                or bool(hp.get("missing_required")))
+    handoff_parked = [r for r in runs if _handoff_policy_park(r)]
     restricted = sum(1 for r in handoff_parked
                      if (r.get("terminal") or {}).get("park_reason_code") == "restricted_artifact"
                      or (r.get("handoff") or {}).get("restricted"))
@@ -800,6 +960,11 @@ def analyze(events) -> dict:
             "count": len(handoff_parked),
             "restricted": restricted,
             "unknown_artifact": unknown_art,
+            "missing_required": sum(
+                1 for r in handoff_parked
+                if (r.get("terminal") or {}).get("park_reason_code") == "missing_required_artifact"
+                or (r.get("handoff") or {}).get("missing_required")
+            ),
             "requires_user_permission_true": sum(
                 1 for r in runs if (r.get("handoff") or {}).get("requires_user_permission")
             ),
@@ -833,56 +998,94 @@ def analyze(events) -> dict:
 
 # --------------------------------------------------------------------- I/O --
 
-def _lock_and_append(path: Path, line: str) -> None:
+def _lockfile(path: Path) -> Path:
+    return path.with_name(path.name + ".lock")
+
+
+@contextmanager
+def log_lock(path: Path):
+    """One exclusive lock for append, prune-read, rewrite, and replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = _lockfile(path).open("a+")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def _append_unlocked(path: Path, line: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+", encoding="utf-8") as fh:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        fh.seek(0, os.SEEK_END)
+        if fh.tell() > 0:
+            fh.seek(fh.tell() - 1)
+            if fh.read(1) != "\n":
+                fh.write("\n")  # isolate a truncated tail before appending
+        fh.write(line)
+        if not line.endswith("\n"):
+            fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def iter_log_lines(path) -> list[tuple[int, dict | None, str | None]]:
+    """Physical line numbers. Corrupt/truncated lines are returned as errors, not dropped silently from numbering."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    try:
+        raw = p.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+    out = []
+    for lineno, line in enumerate(raw.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped:
+            continue
         try:
-            fh.seek(0, os.SEEK_END)
-            if fh.tell() > 0:
-                fh.seek(fh.tell() - 1)
-                if fh.read(1) != "\n":
-                    fh.write("\n")  # isolate a truncated tail before appending
-            fh.write(line)
-            if not line.endswith("\n"):
-                fh.write("\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        finally:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            obj = json.loads(stripped)
+        except Exception:
+            out.append((lineno, None, "corrupt"))
+            continue
+        if isinstance(obj, dict):
+            out.append((lineno, obj, None))
+        else:
+            out.append((lineno, None, "not-object"))
+    return out
+
+
+def _prepare_payload(event) -> dict:
+    payload = privacy_backstop(sanitize(event if isinstance(event, dict) else {}))
+    if isinstance(payload.get("run_id"), str):
+        try:
+            payload["run_id"] = normalize_run_id(payload["run_id"])
+        except ValueError:
+            pass
+    if payload.get("actor_id"):
+        payload["actor_id"] = normalize_actor_id(payload["actor_id"])
+    if "event_id" not in payload:
+        payload["event_id"] = event_id_for(payload)
+    return payload
 
 
 def append(event, path=None, monitoring=None) -> Path:
     """Append one sanitized JSON line. Never rewrites existing lines."""
     p = events_path(monitoring, path)
-    payload = sanitize(event if isinstance(event, dict) else {})
-    if "event_id" not in payload and isinstance(event, dict):
-        payload["event_id"] = event_id_for(payload)
-    _lock_and_append(p, json.dumps(payload, separators=(",", ":"), default=str))
+    payload = _prepare_payload(event)
+    line = json.dumps(payload, separators=(",", ":"), default=str)
+    with log_lock(p):
+        _append_unlocked(p, line)
     return p
 
 
 def read(path=None, monitoring=None) -> list[dict]:
     """Read events; skip blank, truncated, and corrupt lines. Never rewrite."""
     p = path if isinstance(path, Path) else events_path(monitoring, path)
-    if not p.exists():
-        return []
-    out = []
-    try:
-        raw = p.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except Exception:
-            continue  # truncated/corrupt tail or middle line
-        if isinstance(obj, dict):
-            out.append(obj)
-    return out
+    return [obj for _, obj, err in iter_log_lines(p) if obj is not None and err is None]
 
 
 def prune(monitoring=None, path=None, now=None) -> int:
@@ -894,28 +1097,27 @@ def prune(monitoring=None, path=None, now=None) -> int:
     if not p.exists():
         return 0
     cutoff = (now or datetime.now(timezone.utc)).timestamp() - days * 86400
-    kept, dropped = [], 0
-    for ev in read(p, monitoring):
-        ts = ev.get("ts")
-        try:
-            t = datetime.fromisoformat(ts).timestamp() if ts else None
-        except Exception:
-            t = None
-        if t is None or t >= cutoff:
-            kept.append(ev)
-        else:
-            dropped += 1
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        try:
+    with log_lock(p):
+        kept, dropped = [], 0
+        for _, ev, err in iter_log_lines(p):
+            if ev is None or err is not None:
+                continue
+            ts = ev.get("ts")
+            try:
+                t = datetime.fromisoformat(ts).timestamp() if ts else None
+            except Exception:
+                t = None
+            if t is None or t >= cutoff:
+                kept.append(ev)
+            else:
+                dropped += 1
+        tmp = p.with_name(p.name + ".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
             for ev in kept:
                 fh.write(json.dumps(ev, separators=(",", ":"), default=str) + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        finally:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-    os.replace(tmp, p)
+        os.replace(tmp, p)
     return dropped
 
 
@@ -958,6 +1160,45 @@ def try_emit_route_decision(decision, *, source, record=False, no_record=False,
     except Exception as exc:
         meta["write_error"] = f"{type(exc).__name__}: {exc}"
     meta["routing_satisfied_unchanged"] = routing_ok
+    return meta
+
+
+def try_emit_bootstrap_failure(*, reason_code, message, source="resolve-route",
+                               record=False, no_record=False, run_id=None,
+                               actor_id=None, profile_id=None, duration_ms=None,
+                               path=None) -> dict:
+    """Bounded pre-decision failure event. Never raises; never claims routing success."""
+    meta = {"recorded": False, "event_id": None, "run_id": run_id, "write_error": None,
+            "routing_satisfied_unchanged": False}
+    try:
+        monitoring = mborch.load_config("monitoring.json", required=False) or {}
+        obs = observability_config(monitoring)
+        cfg_errors = validate_config(obs) if obs else []
+        if cfg_errors:
+            meta["write_error"] = "malformed observability config: " + "; ".join(cfg_errors)
+            return meta
+        emit_key = "emit_on_run_brief" if source == "run-brief" else "emit_on_resolve"
+        if not emit_enabled(obs, record=record, no_record=no_record, emit_key=emit_key):
+            meta["reason"] = "disabled"
+            return meta
+        rid = run_id or new_run_id()
+        event = make_event(
+            "bootstrap_failure",
+            run_id=rid, ts=now_iso(), source=source,
+            actor_id=default_actor_id(actor_id, profile_id),
+            profile_id=profile_id,
+            dry_run=True,
+            routing_satisfied=False,
+            terminal={"status": "parked", "park_reason_code": reason_code},
+            bootstrap={"reason_code": reason_code, "stage": "pre-decision"},
+            note=sanitize_text(str(message)[:240]),
+            timing={"duration_ms": duration_ms if isinstance(duration_ms, int) else None},
+        )
+        append(event, path=path, monitoring=monitoring)
+        meta.update({"recorded": True, "event_id": event["event_id"], "run_id": rid,
+                     "kind": event["kind"]})
+    except Exception as exc:
+        meta["write_error"] = f"{type(exc).__name__}: {exc}"
     return meta
 
 
@@ -1084,13 +1325,19 @@ def main(argv=None):
         return 0
 
     if args.cmd == "validate-events":
-        events = read(args.path, monitoring)
+        p = Path(args.path) if args.path else events_path(monitoring)
+        rows = iter_log_lines(p)
         problems = []
-        for i, ev in enumerate(events, 1):
+        valid = 0
+        for lineno, ev, err in rows:
+            if err or ev is None:
+                problems.append({"line": lineno, "event_id": None, "errors": [err or "corrupt"]})
+                continue
+            valid += 1
             errs = validate_event(ev, strict=args.strict)
             if errs:
-                problems.append({"line": i, "event_id": ev.get("event_id"), "errors": errs})
-        payload = {"ok": not problems, "events": len(events), "problems": problems}
+                problems.append({"line": lineno, "event_id": ev.get("event_id"), "errors": errs})
+        payload = {"ok": not problems, "events": valid, "problems": problems}
         print(json.dumps(payload, indent=2) if args.json else (
             f"events ok ({len(events)})" if not problems
             else f"{len(problems)} invalid events:\n" + "\n".join(

@@ -2,6 +2,7 @@
 """Observability: schema, privacy, append safety, analysis honesty, no authority."""
 from __future__ import annotations
 
+import argparse
 import concurrent.futures
 import contextlib
 import copy
@@ -61,6 +62,7 @@ def _decision(**overrides):
         "authors": ["grok-build"],
         "implement": [{"seat": "grok-build", "available": True, "tier": "available",
                        "on": "grok-heavy"}],
+        "implement_requested": True,
         "routing_satisfied": True,
         "park_reason": None,
         "gates": {"landing_lock": True, "tip_bound_green_test": True},
@@ -537,6 +539,240 @@ class AnalysisCliTests(unittest.TestCase):
             self.assertIsNone(report["tokens"]["cost_per_success_usd"])
         else:
             self.assertIsInstance(report["tokens"]["token_per_success"], (int, float))
+
+
+class CompletenessFixTests(unittest.TestCase):
+    def test_run_plan_matches_route_decision_and_excludes_review_d(self):
+        route_dec = _decision(implement=[
+            {"seat": "grok-build", "available": True, "tier": "available"},
+            {"seat": "grok-bot-review-d", "available": True, "input_seat": True,
+             "why": "Review D pixel walk"},
+        ])
+        parked = _decision(
+            routing_satisfied=False,
+            park_reason="PARK: no usable implement seat — quota spent",
+            implement=[{"seat": "(none)", "available": False, "tier": "spent",
+                        "why": "ALL worker seats spent"}],
+            implement_requested=True, authors=[],
+        )
+        plan_ok = dict(route_dec)
+        plan_ok["implement"] = [
+            {"seat": "grok-build", "role": "implement", "available": True},
+            {"seat": "grok-bot-review-d", "role": "review-d-input", "available": True},
+        ]
+        plan_ok["implement_decision"] = route_dec["implement"]
+        plan_park = dict(parked)
+        plan_park["implement"] = [{"seat": "(none)", "role": "implement"}]  # available omitted
+        plan_park["implement_decision"] = parked["implement"]
+        route_ev = observe.event_from_route_decision(
+            route_dec, run_id="parity-ok", ts="2026-08-29T00:00:00+00:00", source="resolve-route")
+        plan_ev = observe.event_from_route_decision(
+            plan_ok, run_id="parity-ok", ts="2026-08-29T00:00:01+00:00", source="run-brief")
+        self.assertEqual(route_ev["implementation"]["providers"], ["grok-build"])
+        self.assertEqual(plan_ev["implementation"]["providers"], ["grok-build"])
+        self.assertNotIn("grok-bot-review-d", plan_ev["implementation"]["providers"])
+        self.assertTrue(plan_ev["implementation"]["requested"])
+        folded = observe.fold_run([route_ev, plan_ev])
+        self.assertEqual(folded["implementation"]["providers"], ["grok-build"])
+        self.assertTrue(folded["routing_satisfied"])
+        p_route = observe.event_from_route_decision(
+            parked, run_id="parity-park", ts="2026-08-29T00:00:00+00:00", source="resolve-route")
+        p_plan = observe.event_from_route_decision(
+            plan_park, run_id="parity-park", ts="2026-08-29T00:00:01+00:00", source="run-brief")
+        self.assertFalse(p_route["implementation"]["satisfied"])
+        self.assertFalse(p_plan["implementation"]["satisfied"])
+        self.assertTrue(p_route["usage"]["starvation"])
+        self.assertTrue(p_plan["usage"]["starvation"])
+        folded_p = observe.fold_run([p_route, p_plan])
+        self.assertFalse(folded_p["routing_satisfied"])
+        self.assertTrue(folded_p["usage"]["starvation"])
+
+    def test_emit_on_run_brief_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"MB_DATA_DIR": tmp, "MB_OBSERVABILITY": "0"}
+            buf = io.StringIO()
+            argv = ["--dry-run", "--class", "repo-code", "--scale", "routine", "--json",
+                    "--record-observability", "--run-id", "only-plan", "--actor-id", "team-a"]
+            with contextlib.redirect_stdout(buf):
+                with mock.patch.dict(os.environ, env, clear=False):
+                    rc = run_brief.main(argv)
+            self.assertEqual(rc, 0)
+            plan = json.loads(buf.getvalue())
+            self.assertTrue(plan["observability"]["recorded"])
+            events = observe.read(Path(tmp) / "orchestration-events.jsonl")
+            self.assertEqual({e["kind"] for e in events}, {"run_plan"})
+            self.assertTrue(all(e.get("implementation", {}).get("requested") for e in events))
+            self.assertNotIn("grok-bot-review-d", events[0]["implementation"]["providers"])
+
+    def test_record_flag_beats_env_disable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"MB_DATA_DIR": tmp, "MB_OBSERVABILITY": "0"}
+            silent = io.StringIO()
+            with contextlib.redirect_stdout(silent):
+                with mock.patch.dict(os.environ, env, clear=False):
+                    rr.main(["--class", "internal-notes", "--json", "--run-id", "env-off",
+                             "--actor-id", "team-a"])
+            self.assertFalse(observe.read(Path(tmp) / "orchestration-events.jsonl"))
+            recorded = io.StringIO()
+            with contextlib.redirect_stdout(recorded):
+                with mock.patch.dict(os.environ, env, clear=False):
+                    rc = rr.main(["--class", "internal-notes", "--json", "--record",
+                                  "--run-id", "cli-wins", "--actor-id", "team-a"])
+            self.assertEqual(rc, 0)
+            events = observe.read(Path(tmp) / "orchestration-events.jsonl")
+            self.assertTrue(events)
+            self.assertEqual(events[-1]["run_id"], "cli-wins")
+
+    def test_prune_vs_append_loses_no_accepted_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "events.jsonl"
+            path.write_text('{"schema_version":1,"event_id":"obs-v1-truncated"')  # no newline
+            accepted = []
+            monitoring = {"observability": {"enabled": True, "events_path": "events.jsonl",
+                                            "retention_days": 365}}
+
+            def writer(i):
+                ev = observe.make_event(
+                    "route_decision", run_id=f"keep-{i}", ts="2026-08-29T00:00:00+00:00",
+                    actor_id="team-a",
+                )
+                observe.append(ev, path=str(path), monitoring=monitoring)
+                accepted.append(ev["event_id"])
+
+            def pruner():
+                observe.prune(monitoring, path=str(path),
+                              now=datetime(2026, 8, 29, tzinfo=timezone.utc))
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                futs = [pool.submit(writer, i) for i in range(16)] + [pool.submit(pruner) for _ in range(4)]
+                for f in futs:
+                    f.result()
+            left = {e["event_id"] for e in observe.read(path)}
+            self.assertTrue(set(accepted) <= left, f"lost {set(accepted) - left}")
+
+    def test_windows_and_secret_ids_cannot_bypass_backstop(self):
+        ev = observe.make_event(
+            "route_decision",
+            run_id=r"C:\Users\neo\secret-brief.md",
+            ts="2026-08-29T00:00:00+00:00",
+            actor_id=r"C:\Users\neo\id",
+            note=r"failed at C:\Users\neo\repo\diff.patch token sk-abcdefghijklmnopqrstuvwxyz",
+        )
+        blob = json.dumps(ev)
+        self.assertNotIn(r"C:\Users", blob)
+        self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz", blob)
+        self.assertTrue(ev["run_id"].startswith("run:"))
+        self.assertTrue(ev["actor_id"].startswith("actor:"))
+        self.assertEqual(observe.validate_event(ev), [])
+        uid = "550e8400-e29b-41d4-a716-446655440000"
+        ok = observe.make_event(
+            "route_decision", run_id=uid, ts="2026-08-29T00:00:00+00:00",
+            actor_id="team-a",
+        )
+        self.assertEqual(ok["run_id"], uid)
+        self.assertEqual(ok["actor_id"], "team-a")
+
+    def test_starvation_excludes_capability_and_handoff_is_policy_only(self):
+        cap = _decision(
+            routing_satisfied=False,
+            park_reason="PARK: no usable implement seat — intake has no live coding-capable provider",
+            implement=[{"seat": "(none)", "available": False, "why": "PARK coding-capable"}],
+        )
+        conn = _decision(
+            routing_satisfied=False,
+            park_reason="PARK: --needs-mcp 'github' is not an active connector on codex-terra",
+            implement=[{"seat": "(none)", "available": False}],
+        )
+        disp = _decision(
+            routing_satisfied=False,
+            park_reason="PARK: requested dispatcher 'not-a-provider' is not configured",
+            handoff={"allowed": False, "action": "park", "artifacts": ["brief"],
+                     "restricted": [], "unknown": [], "missing_required": [],
+                     "requires_user_permission": False, "authorship_changes_authority": False},
+        )
+        report = observe.analyze([
+            observe.event_from_route_decision(cap, run_id="cap", ts="2026-08-29T00:00:00+00:00"),
+            observe.event_from_route_decision(conn, run_id="conn", ts="2026-08-29T00:00:00+00:00"),
+            observe.event_from_route_decision(disp, run_id="disp", ts="2026-08-29T00:00:00+00:00"),
+        ])
+        self.assertEqual(report["usage_starvation"]["count"], 0)
+        self.assertEqual(report["handoff_parks"]["count"], 0)
+
+    def test_implement_not_requested_distinct_from_unsatisfied(self):
+        none = observe.event_from_route_decision(
+            _decision(implement=None, implement_requested=False, authors=[], routing_satisfied=True),
+            run_id="no-impl", ts="2026-08-29T00:00:00+00:00",
+        )
+        unsat = observe.event_from_route_decision(
+            _decision(implement=[{"seat": "(none)", "available": False}],
+                      implement_requested=True, authors=[], routing_satisfied=False,
+                      park_reason="PARK: no complete usable implementation path"),
+            run_id="unsat", ts="2026-08-29T00:00:00+00:00",
+        )
+        self.assertFalse(none["implementation"]["requested"])
+        self.assertIsNone(none["implementation"]["satisfied"])
+        self.assertTrue(unsat["implementation"]["requested"])
+        self.assertFalse(unsat["implementation"]["satisfied"])
+
+    def test_numeric_tokens_without_measured_flag_stay_missing(self):
+        ev = observe.event_from_route_decision(
+            _decision(), run_id="tok-flag", ts="2026-08-29T00:00:00+00:00",
+            tokens={"input": 99, "output": 3, "cost_usd": 1.25},
+        )
+        self.assertFalse(ev["tokens"]["measured"])
+        self.assertIsNone(ev["tokens"]["input"])
+        self.assertIsNone(ev["tokens"]["cost_usd"])
+        report = observe.analyze([ev])
+        self.assertIsNone(report["tokens"]["token_per_success"])
+
+    def test_bootstrap_failure_records_unknown_class(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"MB_DATA_DIR": tmp}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with mock.patch.dict(os.environ, env, clear=False):
+                    with self.assertRaises(SystemExit):
+                        rr.main(["--class", "not-a-real-class", "--record",
+                                 "--run-id", "boot-1", "--actor-id", "team-a", "--json"])
+            events = observe.read(Path(tmp) / "orchestration-events.jsonl")
+            self.assertTrue(events)
+            self.assertEqual(events[-1]["kind"], "bootstrap_failure")
+            self.assertFalse(events[-1]["routing_satisfied"])
+            self.assertEqual(events[-1]["bootstrap"]["stage"], "pre-decision")
+
+    def test_observe_import_failure_does_not_change_park(self):
+        ns = argparse.Namespace(record=True, no_record=False, run_id="x", actor_id="team-a",
+                                profile="default")
+        decision = _decision(routing_satisfied=False, park_reason="PARK: x")
+        with mock.patch.object(rr, "observe", None):
+            with mock.patch.object(rr, "_OBS_IMPORT_ERROR", RuntimeError("boom"), create=True):
+                meta = rr._emit_decision(decision, ns, 1)
+        self.assertFalse(meta["recorded"])
+        self.assertFalse(meta["routing_satisfied_unchanged"])
+        self.assertFalse(decision["routing_satisfied"])
+
+    def test_validate_events_reports_physical_line_after_corrupt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "events.jsonl"
+            good = observe.make_event(
+                "route_decision", run_id="ok-line", ts="2026-08-29T00:00:00+00:00",
+                actor_id="team-a",
+            )
+            path.write_text(json.dumps(good) + "\n{not json}\n" + json.dumps(good) + "\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = observe.main(["--path", str(path), "validate-events", "--json"])
+            self.assertNotEqual(rc, 0)
+            payload = json.loads(buf.getvalue())
+            lines = [p["line"] for p in payload["problems"]]
+            self.assertIn(2, lines)
+
+    def test_event_id_pattern_enforced(self):
+        ev = observe.make_event(
+            "route_decision", run_id="pat", ts="2026-08-29T00:00:00+00:00",
+        )
+        ev["event_id"] = "not-a-valid-id"
+        self.assertTrue(any("event_id" in e for e in observe.validate_event(ev)))
 
 
 if __name__ == "__main__":

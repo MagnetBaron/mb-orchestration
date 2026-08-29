@@ -65,9 +65,15 @@ Runtime logs are gitignored. Synthetic fixtures are committed at
 
 ## Retention
 
-`observability.retention_days` (default 365, `0` keeps forever). `bin/observe.py prune`
-rewrites the JSONL the same way `usage-record.py --prune` rewrites usage history. The
-append path itself never rewrites.
+`observability.retention_days` (default 365, `0` keeps forever). Retention is **not**
+applied on emit. Admins run `python3 bin/observe.py prune` (the bounded safe point).
+That rewrite uses the same exclusive lock as append, so concurrent writers cannot lose
+an accepted event. This is **not** equivalent to `usage-record.py --snapshot`, which
+prunes usage history automatically.
+
+CLI vs environment: `--no-record` always wins; `--record` / `--record-observability`
+always emit even if `MB_OBSERVABILITY=0`; the env toggle only disables default/config
+emit. The append path itself never rewrites except through `prune`.
 
 ## Analysis
 
@@ -127,7 +133,7 @@ python3 bin/model-registry.py write-matrix --check
 
 Observed results on the implementation worktree:
 
-- `bin/test_observability.py`: 27 tests passed
+- `bin/test_observability.py`: 39 tests passed (loop-1 completeness repairs included)
 - `bin/test_model_registry.py`: 151 tests passed
 - `bin/test_generate.py`: 50 tests passed and seven roles validated
 - strict smoke test: 27/27 checks passed

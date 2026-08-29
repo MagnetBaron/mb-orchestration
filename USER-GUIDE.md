@@ -233,8 +233,12 @@ Admins can evaluate routing quality over time without storing briefs, diffs, or 
   tracking uses an explicit pseudonym (`--actor-id team-a`) or `profile:<name>` — the tools
   never read `$USER`, `$HOME`, or git identity.
 - **Where it lives:** `data/orchestration-events.jsonl` under `$MB_DATA_DIR` (gitignored).
-  Retention is `monitoring.json` → `observability.retention_days` (default 365, same control
-  as usage history). Synthetic fixtures used in tests are committed under
+  Retention is `monitoring.json` → `observability.retention_days` (default 365). Unlike
+  usage history, emit does **not** auto-prune: run `python3 bin/observe.py prune` (or a
+  cron/LaunchAgent that calls it) at a bounded admin point. `usage-record.py --snapshot`
+  still prunes usage history automatically; the two logs are not equivalent.
+  `--record` / `--record-observability` always emit even if `MB_OBSERVABILITY=0`;
+  `--no-record` always suppresses. Synthetic fixtures used in tests are committed under
   `model-evals/fixtures/observability/`.
 - **How to read it:** `python3 bin/observe.py report` (add `--json` for machine output).
   Coverage/missingness, success/park/fallback rates, token-per-success *where measured*,

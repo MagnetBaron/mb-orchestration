@@ -13,7 +13,17 @@
     "ts": { "type": "string", "minLength": 10 },
     "kind": {
       "type": "string",
-      "enum": ["route_decision", "run_plan", "review_verdict", "test_verdict", "terminal", "tokens"]
+      "enum": ["route_decision", "run_plan", "review_verdict", "test_verdict", "terminal", "tokens", "bootstrap_failure"]
+    },
+    "routing_satisfied": { "type": ["boolean", "null"] },
+    "gates": { "type": "object", "additionalProperties": true },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "reason_code": { "type": "string" },
+        "stage": { "type": "string" }
+      }
     },
     "source": { "type": "string", "enum": ["resolve-route", "run-brief", "observe-cli"] },
     "actor_id": { "type": ["string", "null"] },
@@ -25,9 +35,12 @@
       "properties": {
         "requested": { "type": ["string", "null"] },
         "effective": { "type": ["string", "null"] },
+        "profile": { "type": ["string", "null"] },
         "fallback_used": { "type": "boolean" },
         "fallback_reason": { "type": ["string", "null"] },
-        "intake_relay": { "type": "boolean" }
+        "intake_relay": { "type": "boolean" },
+        "satisfied": { "type": "boolean" },
+        "family": { "type": ["string", "null"] }
       }
     },
     "task": {
@@ -44,6 +57,8 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
+        "requested": { "type": "boolean" },
+        "satisfied": { "type": ["boolean", "null"] },
         "providers": { "type": "array", "items": { "type": "string" } },
         "authors": { "type": "array", "items": { "type": "string" } },
         "last_resort": { "type": "boolean" }
@@ -73,7 +88,10 @@
       "additionalProperties": true,
       "properties": {
         "measured": { "type": "boolean" },
-        "starvation": { "type": ["boolean", "null"] }
+        "starvation": { "type": ["boolean", "null"] },
+        "dispatcher_tier": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "seats": { "type": ["array", "null"] }
       }
     },
     "timing": {
