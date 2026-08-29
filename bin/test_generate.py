@@ -233,5 +233,71 @@ class ArtifactTests(unittest.TestCase):
                 gen.write_atomic(path, "nope\n")
 
 
+routing = _load_module("routing_mod", HERE / "routing.py")
+doc = _load_module("doctor_mod", HERE / "doctor.py")
+
+
+class ConnectorLifecycleTests(unittest.TestCase):
+    def test_missing_unknown_primed_ready_are_inert(self):
+        self.assertFalse(routing.connector_is_active({}))
+        self.assertFalse(routing.connector_is_active(None))
+        self.assertFalse(routing.connector_is_active({"status": "unknown"}))
+        self.assertFalse(routing.connector_is_active({"status": "bogus"}))
+        self.assertFalse(routing.connector_is_active({"status": "primed"}))
+        self.assertFalse(routing.connector_is_active({"status": "ready"}))
+        self.assertTrue(routing.connector_is_active({"status": "active"}))
+
+    def test_primed_shopify_does_not_satisfy_write_skill_gate(self):
+        conns = {"mcp_connectors": {
+            "shopify-mb-internal": {
+                "status": "primed",
+                "available_on": ["grok-build"],
+                "mutating_tools": ["update-product"],
+            },
+        }}
+        prov = {"providers": {"grok-build": {"capabilities": ["code"]}}}
+        self.assertFalse(gen.seat_has_capability("grok-build", "shopify-mb-internal", prov, conns))
+        conns["mcp_connectors"]["shopify-mb-internal"]["status"] = "unknown"
+        self.assertFalse(gen.seat_has_capability("grok-build", "shopify-mb-internal", prov, conns))
+        del conns["mcp_connectors"]["shopify-mb-internal"]["status"]
+        self.assertFalse(gen.seat_has_capability("grok-build", "shopify-mb-internal", prov, conns))
+        conns["mcp_connectors"]["shopify-mb-internal"]["status"] = "active"
+        self.assertTrue(gen.seat_has_capability("grok-build", "shopify-mb-internal", prov, conns))
+
+    def test_missing_status_is_not_granted_by_router(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        del conns["mcp_connectors"]["github"]["status"]
+        prov = live_providers()["providers"]
+        for pid in conns["mcp_connectors"]["github"]["available_on"]:
+            caps = routing.capabilities_of(pid, prov.get(pid, {}), conns)
+            self.assertNotIn("github", caps)
+
+    def test_live_active_connectors_still_grant(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        self.assertEqual(conns["mcp_connectors"]["shopify-mb-internal"]["status"], "active")
+        self.assertEqual(conns["mcp_connectors"]["mb-bundled-example"]["status"], "primed")
+        prov = live_providers()["providers"]
+        self.assertIn(
+            "shopify-mb-internal",
+            routing.capabilities_of("grok-build", prov["grok-build"], conns),
+        )
+        self.assertNotIn(
+            "mb-bundled-example",
+            routing.capabilities_of("grok-build", prov["grok-build"], conns),
+        )
+
+    def test_doctor_errors_on_missing_and_unknown_status(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        del conns["mcp_connectors"]["github"]["status"]
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        self.assertTrue(any("github" in e and "status" in e for e in doc.ERRORS), doc.ERRORS)
+        conns["mcp_connectors"]["github"]["status"] = "wired-maybe"
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        self.assertTrue(any("github" in e and "wired-maybe" in e for e in doc.ERRORS), doc.ERRORS)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -65,24 +65,30 @@ Corrected TeamClaude invocations: restricted mode, strict MCP config, no session
 
 Both found the critical fail-open defect (a synthetic score is not an authorization signal; write access to the catalog must not be deployment authority). No clear qualitative Fable win on this sample. The composite scores (0.7789 vs 0.7752) are almost tied and are **not** a quality verdict. `tokens_out` conservatively includes hidden reasoning (1487 / 1717 thinking tokens); the visible response stayed within the 120-word instruction (112 / 118 words). Cost is recorded but does not enter the quality score. Latency weight remains zero. Total reasoning/output token magnitudes were similar. This supports Opus as the normal seat and Fable as an explicit escalation. It does not establish a universal rank. Sample is n=1 per model. Rank can change only with reproducible same-harness multi-case evidence.
 
+## Attestations and freshness clock
+
+Every `live_verified` route now carries an `attestations` object covering `intake.promote_requires` (`official_id`, `local_access_smoke`, `role_evals`, `independent_evidence`, `cost_context`, `owner_approval`). Each entry is `attested: true` with a date and an auditable source. `local_access_smoke.signal` is either `direct_invocation` (Opus 5, Opus 4.8, Fable 5 teamclaude smokes) or `standing_provider` (Codex Sol/Terra/Luna listings, Grok Build listing, Cursor pool, Grok Bot identities). Standing seats were not given invented smokes.
+
+Validation compares evidence and attestation dates to the **actual current date**. `registry.as_of` is a catalog label, not the clock. Tests pass `--as-of` / `validate(..., as_of=)` to freeze it. Future-dated, missing, stale, or mismatched evidence fails closed.
+
 ## Model census (2026-08-28)
 
 Labs in scope: OpenAI, Anthropic, xAI, Google, Moonshot, Z.AI, Alibaba, DeepSeek, Meta, Review E / open-weight.
 
 Live-verified (may resolve). Evidence kind is exact:
 
-| Route | Model | Host | Evidence |
-|-------|-------|------|----------|
-| `opus-5-teamclaude` | claude-opus-5 | teamclaude | **direct live smoke** of `claude-opus-5` (seat-policy + architecture receipt) |
-| `opus-4.8-teamclaude` | claude-opus-4-8 | teamclaude | **direct live smoke** (`OPUS48_SMOKE_OK`); superseded compatibility fallback; **not** in `review_order` |
-| `fable-5-teamclaude` | claude-fable-5 | teamclaude | **direct live smoke** of `claude-fable-5` (architecture receipt); standing architecture provider |
-| `gpt-5.6-sol-codex` | gpt-5.6-sol | gpt wrapper | `gpt --models` **listing**; standing Codex Sol provider |
-| `gpt-5.6-terra-codex` | gpt-5.6-terra | gpt wrapper | `gpt --models` **listing**; standing Codex Terra provider |
-| `gpt-5.6-luna-codex` | gpt-5.6-luna | gpt wrapper | `gpt --models` **listing**; standing Codex Luna provider |
-| `grok-4.6-build` | grok-4.6 | grok CLI | `grok models` **listing**; standing Grok Build implementer |
-| `grok-4.6-cursor` | grok-4.6 | Cursor | standing first-party Cursor pool provider |
-| `grok-bot-visual-qa` | grok-4.6 (app) | Grok Bot | standing Review D provider |
-| `grok-bot-heat-map` | grok-4.6 (app) | Grok Bot | standing Heat Map provider |
+| Route | Model | Host | Evidence | Signal |
+|-------|-------|------|----------|--------|
+| `opus-5-teamclaude` | claude-opus-5 | teamclaude | **direct live smoke** of `claude-opus-5` (seat-policy + architecture receipt) | `direct_invocation` |
+| `opus-4.8-teamclaude` | claude-opus-4-8 | teamclaude | **direct live smoke** (`OPUS48_SMOKE_OK`); superseded compatibility fallback; **not** in `review_order` | `direct_invocation` |
+| `fable-5-teamclaude` | claude-fable-5 | teamclaude | **direct live smoke** of `claude-fable-5` (architecture receipt); standing architecture provider | `direct_invocation` |
+| `gpt-5.6-sol-codex` | gpt-5.6-sol | gpt wrapper | `gpt --models` **listing**; standing Codex Sol provider | `standing_provider` |
+| `gpt-5.6-terra-codex` | gpt-5.6-terra | gpt wrapper | `gpt --models` **listing**; standing Codex Terra provider | `standing_provider` |
+| `gpt-5.6-luna-codex` | gpt-5.6-luna | gpt wrapper | `gpt --models` **listing**; standing Codex Luna provider | `standing_provider` |
+| `grok-4.6-build` | grok-4.6 | grok CLI | `grok models` **listing**; standing Grok Build implementer | `standing_provider` |
+| `grok-4.6-cursor` | grok-4.6 | Cursor | standing first-party Cursor pool provider | `standing_provider` |
+| `grok-bot-visual-qa` | grok-4.6 (app) | Grok Bot | standing Review D provider | `standing_provider` |
+| `grok-bot-heat-map` | grok-4.6 (app) | Grok Bot | standing Heat Map provider | `standing_provider` |
 
 Catalog-verified (listed or documented; does **not** resolve): gpt-5.5, gpt-5.4, gpt-5.4-mini, gpt-5.3-codex-spark, grok-4.5.
 
@@ -178,10 +184,10 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 1. Re-run local smokes: `gpt --models`, `grok models`, `teamclaude status`, and direct `teamclaude` invocations for each live Anthropic id. Record the date on each live route. A listing is not an invocation. Opus 4.8 is already live-smoked (2026-08-28); keep it out of `review_order`.
 2. Refresh independent anchors from the same harness pages; do not mix effort levels into one table of "winners." Do not rank on price in the quality column.
 3. Score `model-evals/cases.json` receipts with `bin/model-eval.py`. Latency may be recorded; it must not decide rank.
-4. Catalog new models as `unwired` or `catalog_verified`. Promote to `live_verified` only after official-id, local smoke, role evals, independent evidence, cost/context, and owner approval (`intake.promote_requires`).
+4. Catalog new models as `unwired` or `catalog_verified`. Promote to `live_verified` only after official-id, local smoke, role evals, independent evidence, cost/context, and owner approval (`intake.promote_requires`). Record those as explicit `attestations` on the route (`attested`, `date`, `source`; `local_access_smoke.signal` is `direct_invocation` or `standing_provider`). Do not invent new smokes; standing operational seats stay labeled standing.
 5. `python3 bin/model-registry.py validate && python3 bin/model-registry.py write-matrix`
 6. `python3 bin/doctor.py && python3 bin/smoketest.py`
-7. If evidence is older than `freshness_days` (90) on a live_verified route, validation fails. Do not hand-edit `generated/model-matrix.md`.
+7. Freshness uses the actual current date, not frozen `registry.as_of`. Pass `--as-of YYYY-MM-DD` to freeze the clock in tests. If evidence or attestations are older than `freshness_days` (90), in the future, missing, or mismatched, validation fails closed. Do not hand-edit `generated/model-matrix.md`.
 8. Never copy vendor blog numbers into `prowess` as if they were this repo's eval.
 
 Machine-readable sibling: `generated/model-matrix.md`.

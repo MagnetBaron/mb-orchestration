@@ -1,7 +1,7 @@
 {
-  "_note": "LIVE CONNECTOR + BINDING REGISTRY \u2014 the single source for which MCP/analytics/store binding lives on which provider, plus the concrete live IDs (Clarity project ids, analytics login, Shopify stores/themes, Slack channel). Policy prose used to hardcode these and went stale; now prose points here and `bin/connectors.py` renders paste-ready blocks (bot allowlists, ticket templates) from this file. `available_on` is dynamic: when a connector moves seats, edit ONLY this file. This file holds NO secrets \u2014 connector NAMES and public IDs only; keys/tokens never live in the repo (see .gitignore, EDGE-CASES \u00a7Secrets).",
-  "_status_lifecycle": "Each mcp_connectors entry carries an OPTIONAL `status`: active | ready | primed. ABSENT = active (every existing connector above is LIVE and unaffected). primed = bundled/declared for distribution but NOT wired; ready = validated + wireable, awaiting owner activation. ONLY active is live-eligible \u2014 primed/ready are INERT scaffolding that is never routed, connected, launched, or probed (enforced by bin/routing.connector_is_active + bin/doctor.py check_connector_lifecycle). A primed/ready entry may carry an OPTIONAL `server` block (transport/command/args/url/env_keys/note) that DESCRIBES how it would launch, as DATA only \u2014 no script ever executes it. Credentials NEVER live here: `env_keys` names the env vars the admin sets OUT OF BAND at activation; it never holds values. Strap-in mechanism + inert guarantee: mcp-routing.md \u00a7MCP strap-in.",
-  "_risk_note": "CONCENTRATION RISK (known, disclosed): the Shopify and DataForSEO (dfs) integrations ride ONE shared OAuth/KV credential surface \u2014 a compromise, token expiry, or outage of that surface can take BOTH down together. Treat them as a single blast radius (one auth-failure / correlated-outage class), not two independent connectors, when routing around an outage (EDGE-CASES.md) or reasoning about secret exposure.",
+  "_note": "LIVE CONNECTOR + BINDING REGISTRY — the single source for which MCP/analytics/store binding lives on which provider, plus the concrete live IDs (Clarity project ids, analytics login, Shopify stores/themes, Slack channel). Policy prose used to hardcode these and went stale; now prose points here and `bin/connectors.py` renders paste-ready blocks (bot allowlists, ticket templates) from this file. `available_on` is dynamic: when a connector moves seats, edit ONLY this file. This file holds NO secrets — connector NAMES and public IDs only; keys/tokens never live in the repo (see .gitignore, EDGE-CASES §Secrets).",
+  "_status_lifecycle": "Each mcp_connectors entry MUST carry an explicit `status`: active | ready | primed. Missing or unknown status is INERT (never active). primed = bundled/declared for distribution but NOT wired; ready = validated + wireable, awaiting owner activation. ONLY status=active is live-eligible — primed/ready/missing/unknown are INERT scaffolding that is never routed, connected, launched, or probed (enforced by bin/routing.connector_is_active + bin/doctor.py check_connector_lifecycle + generate-roles skill/MCP gates). A primed/ready entry may carry an OPTIONAL `server` block (transport/command/args/url/env_keys/note) that DESCRIBES how it would launch, as DATA only — no script ever executes it. Credentials NEVER live here: `env_keys` names the env vars the admin sets OUT OF BAND at activation; it never holds values. Strap-in mechanism + inert guarantee: mcp-routing.md §MCP strap-in.",
+  "_risk_note": "CONCENTRATION RISK (known, disclosed): the Shopify and DataForSEO (dfs) integrations ride ONE shared OAuth/KV credential surface — a compromise, token expiry, or outage of that surface can take BOTH down together. Treat them as a single blast radius (one auth-failure / correlated-outage class), not two independent connectors, when routing around an outage (EDGE-CASES.md) or reasoning about secret exposure.",
   "schema_version": 1,
   "updated": "2026-08-27",
   "mcp_connectors": {
@@ -18,7 +18,8 @@
         "codex-sol"
       ],
       "mutating_tools": [],
-      "class": "google-mcp"
+      "class": "google-mcp",
+      "status": "active"
     },
     "gsc-indexing": {
       "typical_tools": [
@@ -38,7 +39,8 @@
         "request_url_removal"
       ],
       "class": "google-mcp",
-      "note": "Read-only roles MUST deny every mutating tool (enforced by generate-roles.py)."
+      "note": "Read-only roles MUST deny every mutating tool (enforced by generate-roles.py).",
+      "status": "active"
     },
     "google-drive": {
       "typical_tools": [
@@ -56,7 +58,8 @@
         "upload",
         "delete"
       ],
-      "class": "google-mcp"
+      "class": "google-mcp",
+      "status": "active"
     },
     "dataforseo": {
       "alias": "dfs-mcp",
@@ -72,7 +75,8 @@
         "codex-terra"
       ],
       "mutating_tools": [],
-      "class": "google-mcp"
+      "class": "google-mcp",
+      "status": "active"
     },
     "shopify-mb-internal": {
       "typical_tools": [
@@ -87,7 +91,8 @@
         "update-product",
         "set-inventory-quantities"
       ],
-      "class": "shopify"
+      "class": "shopify",
+      "status": "active"
     },
     "github": {
       "typical_tools": [
@@ -107,7 +112,8 @@
         "merge",
         "create_pull_request"
       ],
-      "class": "code"
+      "class": "code",
+      "status": "active"
     },
     "clarity-magnetbaron": {
       "typical_tools": [
@@ -121,7 +127,8 @@
       ],
       "mutating_tools": [],
       "class": "analytics-judgment",
-      "note": "MCP-judgment seats only, and only dashboard + a handful of flagged recordings. Bulk recording pulls (up to 250 rows) are a banned row-dump \u2014 park volume; Heat Map bot handles browser-only layers."
+      "note": "MCP-judgment seats only, and only dashboard + a handful of flagged recordings. Bulk recording pulls (up to 250 rows) are a banned row-dump — park volume; Heat Map bot handles browser-only layers.",
+      "status": "active"
     },
     "clarity-gadgetduke": {
       "typical_tools": [
@@ -134,7 +141,8 @@
         "codex-sol"
       ],
       "mutating_tools": [],
-      "class": "analytics-judgment"
+      "class": "analytics-judgment",
+      "status": "active"
     },
     "mb-bundled-example": {
       "status": "primed",
@@ -146,7 +154,7 @@
       ],
       "mutating_tools": [],
       "class": "bundled-sample",
-      "note": "PRIMED distribution scaffold \u2014 bundled as DATA so a distributed clone carries this MCP plug-and-play, but it is NOT wired. INERT: primed/ready is never routed, connected, launched, or probed; `available_on` here DECLARES the seat this MCP would ride on once activated, and the router still refuses to grant it while status != active (proven by bin/routing.connector_is_active + bin/doctor.py check_connector_lifecycle + bin/smoketest.py). The admin lifts it primed\u2192ready\u2192active out of band; only then is it live.",
+      "note": "PRIMED distribution scaffold — bundled as DATA so a distributed clone carries this MCP plug-and-play, but it is NOT wired. INERT: primed/ready is never routed, connected, launched, or probed; `available_on` here DECLARES the seat this MCP would ride on once activated, and the router still refuses to grant it while status != active (proven by bin/routing.connector_is_active + bin/doctor.py check_connector_lifecycle + bin/smoketest.py). The admin lifts it primed→ready→active out of band; only then is it live.",
       "server": {
         "transport": "stdio",
         "command": "npx",
@@ -157,7 +165,7 @@
         "env_keys": [
           "MB_BUNDLED_EXAMPLE_TOKEN"
         ],
-        "note": "Launch DESCRIPTOR carried as data only \u2014 no process is spawned and no socket opened from this block. Credentials never live in-repo: `env_keys` NAMES the env var(s) the admin sets out of band at activation; values never appear here."
+        "note": "Launch DESCRIPTOR carried as data only — no process is spawned and no socket opened from this block. Credentials never live in-repo: `env_keys` NAMES the env var(s) the admin sets out of band at activation; values never appear here."
       }
     }
   },
@@ -242,8 +250,8 @@
     "coexistence": "Two Grok Bot identities (Review D + Heat Map) share this ONE public channel and post under the same Slack identity; they coexist by CONTENT tokens (shopifypreview.com ticket shape vs a message starting with 'clarity deep-dive:'), never by author. Never split to a second channel or Slack-Connect it."
   },
   "render_targets": {
-    "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  \u2192 paste-ready Review D allowlist block",
-    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  \u2192 paste-ready Slack ticket template",
-    "clarity": "bin/connectors.py --render clarity  \u2192 Heat Map project/login binding"
+    "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  → paste-ready Review D allowlist block",
+    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → paste-ready Slack ticket template",
+    "clarity": "bin/connectors.py --render clarity  → Heat Map project/login binding"
   }
 }

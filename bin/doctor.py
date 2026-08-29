@@ -206,9 +206,12 @@ def check_connector_lifecycle(conns, providers):
         routing = None
         err(f"connector lifecycle: cannot import routing for the inertness proof: {exc}")
     for name, m in conns.get("mcp_connectors", {}).items():
-        status = m.get("status", "active")
+        status = m.get("status")
         if status not in VALID_CONNECTOR_STATUS:
-            err(f"connector {name}: status {status!r} not one of {VALID_CONNECTOR_STATUS} (absent = active)")
+            err(
+                f"connector {name}: status {status!r} is required (active|ready|primed); "
+                "missing/unknown defaults inert, never active"
+            )
         server = m.get("server")
         if server is not None:
             _check_server_block(name, server)
@@ -273,8 +276,23 @@ def check_entrypoints(entry, provs, provider_ids):
     elif "dispatch" not in provs.get(dp, {}).get("functions", []):
         err(f"entrypoints dispatcher.provider {dp!r} lacks the 'dispatch' function")
     surfaces = entry.get("entry_surfaces", {})
-    if not any(s.get("can_dispatch") for s in surfaces.values()):
-        err("entrypoints: no entry surface has can_dispatch:true (nobody can dispatch)")
+    dispatchers = [(name, s) for name, s in surfaces.items() if s.get("can_dispatch")]
+    if len(dispatchers) != 1:
+        names = [n for n, _ in dispatchers]
+        err(f"entrypoints: exactly one can_dispatch:true required, found {len(dispatchers)} {names}")
+    else:
+        name, s = dispatchers[0]
+        if s.get("provider") != dp:
+            err(
+                f"entrypoints: can_dispatch surface {name} provider {s.get('provider')!r} "
+                f"!= dispatcher.provider {dp!r}"
+            )
+        declared = disp.get("level")
+        actual = (provs.get(dp) or {}).get("level")
+        if declared != actual:
+            err(
+                f"entrypoints: dispatcher.level {declared!r} != provider {dp} level {actual!r}"
+            )
     if entry.get("rules", {}).get("single_dispatcher") is not True:
         err("entrypoints rules.single_dispatcher must be true")
     for name, s in surfaces.items():

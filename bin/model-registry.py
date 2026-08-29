@@ -42,6 +42,9 @@ EVIDENCE_STRENGTHS = (
     "owner_eval",
     "none",
 )
+# live_verified local-access signal: a direct invocation, or an explicit standing-provider
+# operational signal. A listing is not an invocation; both must be labeled, never implied.
+LIVE_SIGNALS = ("direct_invocation", "standing_provider")
 REQUIRED_RANKING_KINDS = ("quality", "selection")
 OPTIONAL_RANKING_KINDS = ("efficiency",)
 DATA_BOUNDARIES = ("subscription", "metered_third_party", "local", "unknown")
@@ -92,14 +95,186 @@ def _sorted_items(mapping: dict) -> list[tuple[str, dict]]:
     return sorted((mapping or {}).items(), key=lambda kv: kv[0])
 
 
+def independence_group_of(registry: dict, family) -> str:
+    """Configured independence group, never a free-form family string alone."""
+    meta = (registry.get("families") or {}).get(family) or {}
+    group = meta.get("independence_group")
+    if isinstance(group, str) and group:
+        return group
+    return family or ""
+
+
+def physical_invocation(route_or_row: dict) -> tuple:
+    return (
+        route_or_row.get("host"),
+        route_or_row.get("harness"),
+        route_or_row.get("invocation_id"),
+    )
+
+
+def _freshness_days(registry: dict) -> int:
+    days = registry.get("freshness_days", 90)
+    return days if isinstance(days, int) and days >= 1 else 90
+
+
+def _dated_evidence(records) -> tuple[list[tuple[date, dict]], list[str]]:
+    errors: list[str] = []
+    dated: list[tuple[date, dict]] = []
+    if not isinstance(records, list):
+        return dated, ["evidence must be a list"]
+    for i, rec in enumerate(records):
+        if not isinstance(rec, dict):
+            errors.append(f"evidence[{i}] must be an object")
+            continue
+        d = _as_date(rec.get("date"))
+        if d is None:
+            errors.append(f"evidence[{i}] missing date")
+            continue
+        dated.append((d, rec))
+    dated.sort(key=lambda x: x[0])
+    return dated, errors
+
+
+def route_is_live(registry: dict, route_id, as_of: date | None = None) -> bool:
+    """Shared live-route predicate: bound catalog route is live_verified, current, and valid.
+
+    Unknown, missing, catalog-only, unwired, auth-blocked, disabled, incubation, stale,
+    future, or unattested state fails closed. Used by review, implement, MCP, and last-resort
+    selection — there is no Review E (or any provider) exception.
+    """
+    if not isinstance(registry, dict) or not route_id:
+        return False
+    route = (registry.get("routes") or {}).get(route_id)
+    if not isinstance(route, dict):
+        return False
+    return not _live_route_errors(registry, str(route_id), route, as_of or date.today())
+
+
+def provider_route_is_live(registry: dict, provider: dict | None, as_of: date | None = None) -> bool:
+    """True iff an enabled provider's bound catalog route passes route_is_live."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+        return False
+    return route_is_live(registry, provider.get("route"), as_of=as_of)
+
+
+def _live_route_errors(registry: dict, rid: str, route: dict, as_of: date) -> list[str]:
+    """Errors that keep a route out of any live chain. Empty = live-eligible."""
+    errors: list[str] = []
+    state = route.get("route_state")
+    if state not in ACTIVE_RESOLVE_STATES:
+        errors.append(f"route {rid}: route_state {state!r} is not live_verified")
+        return errors
+    if route.get("incubation"):
+        errors.append(f"route {rid}: incubation routes cannot be live_verified")
+    models = registry.get("models") or {}
+    model = models.get(route.get("model")) or {}
+    life = route.get("lifecycle_override") or model.get("lifecycle")
+    if life not in ROUTABLE_LIFECYCLES:
+        errors.append(f"route {rid}: lifecycle {life!r} cannot be live_verified")
+    if model.get("lifecycle") == "retired":
+        errors.append(f"route {rid}: retired model {route.get('model')} cannot be live_verified")
+    if route.get("host") in (None, "", "none", "unknown"):
+        errors.append(f"route {rid}: host {route.get('host')!r} cannot be live_verified")
+    freshness_days = _freshness_days(registry)
+    evidence_date = _as_date(route.get("evidence_date"))
+    if evidence_date is None:
+        errors.append(f"route {rid}: evidence_date is required (YYYY-MM-DD)")
+    elif evidence_date > as_of:
+        errors.append(
+            f"route {rid}: evidence_date {evidence_date.isoformat()} is in the future "
+            f"(after {as_of.isoformat()})"
+        )
+    elif (as_of - evidence_date).days > freshness_days:
+        errors.append(
+            f"route {rid}: live_verified evidence_date {evidence_date.isoformat()} is stale "
+            f"(>{freshness_days} days before {as_of.isoformat()})"
+        )
+    records = route.get("evidence")
+    dated, ev_errors = _dated_evidence(records)
+    for e in ev_errors:
+        errors.append(f"route {rid}: {e}")
+    if not dated:
+        errors.append(f"route {rid}: live_verified requires non-empty dated evidence")
+    else:
+        for d, rec in dated:
+            if d > as_of:
+                errors.append(
+                    f"route {rid}: evidence dated {d.isoformat()} is in the future "
+                    f"(after {as_of.isoformat()})"
+                )
+        last_state = None
+        last_date = None
+        for d, rec in dated:
+            st = rec.get("route_state", state)
+            if last_state is not None and st != last_state and d == last_date:
+                errors.append(
+                    f"route {rid}: contradictory evidence on {d.isoformat()} "
+                    f"({last_state!r} vs {st!r})"
+                )
+            last_state, last_date = st, d
+        latest_state = dated[-1][1].get("route_state", state)
+        if latest_state not in ACTIVE_RESOLVE_STATES:
+            errors.append(
+                f"route {rid}: route_state {state!r} contradicts latest evidence "
+                f"{latest_state!r} dated {dated[-1][0].isoformat()}"
+            )
+        live_recs = [rec for d, rec in dated if rec.get("route_state", state) in ACTIVE_RESOLVE_STATES]
+        if not any(rec.get("signal") in LIVE_SIGNALS for rec in live_recs):
+            errors.append(
+                f"route {rid}: live_verified evidence needs signal "
+                f"direct_invocation|standing_provider (got "
+                f"{sorted({rec.get('signal') for rec in live_recs})})"
+            )
+    required = list((registry.get("intake") or {}).get("promote_requires") or [])
+    atts = route.get("attestations")
+    if not required:
+        errors.append("model-registry: intake.promote_requires is required (two-phase new-model intake)")
+    elif not isinstance(atts, dict) or not atts:
+        errors.append(
+            f"route {rid}: live_verified requires attestations covering intake.promote_requires"
+        )
+    else:
+        for key in required:
+            rec = atts.get(key)
+            if not isinstance(rec, dict) or rec.get("attested") is not True:
+                errors.append(f"route {rid}: attestation {key!r} missing or not attested")
+                continue
+            d = _as_date(rec.get("date"))
+            if d is None:
+                errors.append(f"route {rid}: attestation {key!r} needs a valid date")
+            elif d > as_of:
+                errors.append(
+                    f"route {rid}: attestation {key!r} date {d.isoformat()} is in the future"
+                )
+            elif (as_of - d).days > freshness_days:
+                errors.append(f"route {rid}: attestation {key!r} is stale")
+            if not rec.get("source"):
+                errors.append(f"route {rid}: attestation {key!r} needs an auditable source")
+            if key == "local_access_smoke" and rec.get("signal") not in LIVE_SIGNALS:
+                errors.append(
+                    f"route {rid}: local_access_smoke attestation needs signal "
+                    "direct_invocation|standing_provider"
+                )
+            if key == "official_id" and not (model.get("official_ids") or []):
+                errors.append(f"route {rid}: official_id attestation but model has no official_ids")
+            src = str(rec.get("source") or "").split()[0]
+            if src.startswith("model-evals/") and not (mborch.REPO / src).exists():
+                errors.append(f"route {rid}: attestation {key!r} source {src} is missing")
+    return errors
+
+
 def validate(registry: dict, as_of: date | None = None, providers: dict | None = None) -> list[str]:
-    """Return ERROR strings. Empty list = valid. Stale or contradictory evidence fails."""
+    """Return ERROR strings. Empty list = valid. Stale or contradictory evidence fails.
+
+    Freshness and future-date checks use the actual current date unless `as_of` is
+    supplied (CLI `--as-of` / tests). `registry.as_of` is a catalog label, not the clock.
+    """
     errors: list[str] = []
     if not isinstance(registry, dict):
         return ["model-registry: root must be an object"]
     if registry.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"model-registry: schema_version must be {SCHEMA_VERSION}")
-    as_of = as_of or _as_date(registry.get("as_of")) or date.today()
+    as_of = as_of or date.today()
     freshness_days = registry.get("freshness_days", 90)
     if not isinstance(freshness_days, int) or freshness_days < 1:
         errors.append("model-registry: freshness_days must be a positive integer")
@@ -132,6 +307,15 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         if rid not in rankings:
             errors.append(f"model-registry: missing rankings for role {rid!r}")
 
+    for fid, fam in families.items():
+        if not isinstance(fam, dict):
+            errors.append(f"family {fid}: must be an object")
+            continue
+        group = fam.get("independence_group")
+        if not isinstance(group, str) or not group:
+            errors.append(f"family {fid}: independence_group is required")
+
+    official_id_families: dict[str, set[str]] = {}
     for mid, model in models.items():
         if not isinstance(model, dict):
             errors.append(f"model {mid}: must be an object")
@@ -143,6 +327,9 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         ids = model.get("official_ids")
         if not isinstance(ids, list) or not ids or any(not isinstance(x, str) or not x for x in ids):
             errors.append(f"model {mid}: official_ids must be a non-empty list of strings")
+        else:
+            for oid in ids:
+                official_id_families.setdefault(oid, set()).add(model.get("family"))
         if AUTHORITY_KEYS.intersection(model):
             errors.append(f"model {mid}: rank/catalog must not grant {sorted(AUTHORITY_KEYS.intersection(model))}")
 
@@ -165,10 +352,10 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         evidence_date = _as_date(route.get("evidence_date"))
         if evidence_date is None:
             errors.append(f"route {rid}: evidence_date is required (YYYY-MM-DD)")
-        elif state == "live_verified" and (as_of - evidence_date).days > freshness_days:
+        elif evidence_date > as_of:
             errors.append(
-                f"route {rid}: live_verified evidence_date {evidence_date.isoformat()} is stale "
-                f"(>{freshness_days} days before {as_of.isoformat()})"
+                f"route {rid}: evidence_date {evidence_date.isoformat()} is in the future "
+                f"(after {as_of.isoformat()})"
             )
         strength = route.get("evidence_strength")
         if strength not in EVIDENCE_STRENGTHS:
@@ -177,34 +364,36 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
             errors.append(f"route {rid}: data_boundary {route.get('data_boundary')!r} not in {DATA_BOUNDARIES}")
         if not route.get("host") or not route.get("harness") or not route.get("invocation_id"):
             errors.append(f"route {rid}: host, harness, and invocation_id are required")
-        if state == "live_verified" and route.get("host") in ("none", "unknown"):
-            errors.append(f"route {rid}: host {route.get('host')!r} cannot be live_verified")
         if not isinstance(route.get("capabilities"), list):
             errors.append(f"route {rid}: capabilities must be a list")
+        if not isinstance(route.get("tools"), list) and route.get("tools") is not None:
+            errors.append(f"route {rid}: tools must be a list")
         if AUTHORITY_KEYS.intersection(route):
             errors.append(f"route {rid}: must not grant {sorted(AUTHORITY_KEYS.intersection(route))}")
-        if state == "live_verified" and (model.get("lifecycle") == "retired"):
-            errors.append(f"route {rid}: retired model {mid} cannot be live_verified")
-        if state == "live_verified" and route.get("incubation"):
-            errors.append(f"route {rid}: incubation routes cannot be live_verified")
-        records = route.get("evidence") or []
-        if not isinstance(records, list):
-            errors.append(f"route {rid}: evidence must be a list")
+        inv = route.get("invocation_id")
+        mf = model.get("family")
+        if inv in official_id_families and mf not in official_id_families[inv]:
+            errors.append(
+                f"route {rid}: invocation_id {inv!r} is an official id of family "
+                f"{sorted(official_id_families[inv])}, not {mf!r}"
+            )
+        alias_of = route.get("invocation_alias_of")
+        if alias_of is not None and alias_of not in routes:
+            errors.append(f"route {rid}: invocation_alias_of {alias_of!r} is not a cataloged route")
+        if state in ACTIVE_RESOLVE_STATES:
+            errors.extend(_live_route_errors(registry, rid, route, as_of))
         else:
-            dated = []
-            for i, rec in enumerate(records):
-                if not isinstance(rec, dict):
-                    errors.append(f"route {rid}: evidence[{i}] must be an object")
-                    continue
-                d = _as_date(rec.get("date"))
-                if d is None:
-                    errors.append(f"route {rid}: evidence[{i}] missing date")
-                    continue
-                dated.append((d, rec))
-            dated.sort(key=lambda x: x[0])
+            dated, ev_errors = _dated_evidence(route.get("evidence") or [])
+            for e in ev_errors:
+                errors.append(f"route {rid}: {e}")
             last_state = None
             last_date = None
             for d, rec in dated:
+                if d > as_of:
+                    errors.append(
+                        f"route {rid}: evidence dated {d.isoformat()} is in the future "
+                        f"(after {as_of.isoformat()})"
+                    )
                 st = rec.get("route_state", state)
                 if last_state is not None and st != last_state and d == last_date:
                     errors.append(
@@ -219,8 +408,44 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                         f"route {rid}: route_state {state!r} contradicts latest evidence "
                         f"{latest_state!r} dated {dated[-1][0].isoformat()}"
                     )
-        key = (route.get("host"), route.get("harness"), route.get("invocation_id"))
+        key = physical_invocation(route)
         seen_invocations.setdefault(key, []).append(rid)
+
+    for key, rids in seen_invocations.items():
+        if any(part in (None, "") for part in key):
+            continue
+        if len(rids) <= 1:
+            continue
+        canonical = [rid for rid in rids if not (routes.get(rid) or {}).get("invocation_alias_of")]
+        aliases = [rid for rid in rids if (routes.get(rid) or {}).get("invocation_alias_of")]
+        if len(canonical) != 1:
+            errors.append(
+                f"duplicate invocation {key[0]}/{key[1]}/{key[2]} on routes {rids} — "
+                "physical (host, harness, invocation_id) identities must be unique unless "
+                "exactly one canonical route is aliased via invocation_alias_of"
+            )
+            continue
+        can = canonical[0]
+        can_fam = (models.get((routes.get(can) or {}).get("model")) or {}).get("family")
+        can_group = independence_group_of(registry, can_fam)
+        for rid in aliases:
+            alias_of = (routes.get(rid) or {}).get("invocation_alias_of")
+            if alias_of != can:
+                errors.append(
+                    f"route {rid}: invocation_alias_of {alias_of!r} must point at canonical {can}"
+                )
+            alias_fam = (models.get((routes.get(rid) or {}).get("model")) or {}).get("family")
+            if independence_group_of(registry, alias_fam) != can_group:
+                errors.append(
+                    f"route {rid}: alias cannot change independence group of invocation "
+                    f"{key[0]}/{key[1]}/{key[2]} ({can_group!r} vs "
+                    f"{independence_group_of(registry, alias_fam)!r})"
+                )
+            if (routes.get(rid) or {}).get("route_state") in ACTIVE_RESOLVE_STATES:
+                errors.append(
+                    f"route {rid}: invocation_alias_of cannot be live_verified "
+                    "(aliases document a physical identity; they cannot count twice)"
+                )
 
     for rid, rnk in rankings.items():
         if rid not in roles:
@@ -343,6 +568,8 @@ def _route_row(rid: str, route: dict, model: dict) -> dict:
         "provider": route.get("provider"),
         "capabilities": list(route.get("capabilities") or []),
         "tools": list(route.get("tools") or []),
+        "independence_group": None,
+        "physical": physical_invocation(route),
         "connectors": list(route.get("connectors") or []),
         "data_boundary": route.get("data_boundary"),
         "quota_bucket": route.get("quota_bucket"),
@@ -379,7 +606,7 @@ def _matches(row: dict, *, required_capabilities=None, required_tools=None,
     tools = set(row.get("tools") or [])
     if required_capabilities and not set(required_capabilities).issubset(caps):
         return False
-    if required_tools and not set(required_tools).issubset(tools | caps):
+    if required_tools and not set(required_tools).issubset(tools):
         return False
     if data_boundary and row.get("data_boundary") != data_boundary:
         return False
@@ -403,7 +630,8 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
             hosts=None, quota_spent=None, use_quality: bool = False) -> dict:
     """Fail-closed resolver. Only live_verified routes. Rank does not grant authority.
 
-    family_diversity=2 rejects two routes from the same family (cross-family).
+    family_diversity=2 requires distinct configured independence groups AND distinct
+    physical (host, harness, invocation_id) identities — never family strings alone.
     """
     roles = registry.get("roles") or {}
     rankings = registry.get("rankings") or {}
@@ -427,6 +655,10 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
             continue
         seen.add(rid)
         row = _route_row(rid, routes[rid], models.get(routes[rid].get("model"), {}))
+        row["independence_group"] = independence_group_of(registry, row.get("family"))
+        row["physical"] = physical_invocation(row)
+        if routes[rid].get("invocation_alias_of"):
+            continue
         row["quality_rank"] = next(
             (x.get("rank") for x in (rankings[role].get("quality") or []) if x.get("route") == rid),
             None,
@@ -452,15 +684,18 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
 
     want = family_diversity if family_diversity else n
     picked = []
-    used_families = set()
+    used_groups = set()
+    used_physical = set()
     rejected_same_family = []
     for row in candidates:
-        fam = row.get("family")
-        if family_diversity and fam in used_families:
+        group = row.get("independence_group") or independence_group_of(registry, row.get("family"))
+        phys = tuple(row.get("physical") or physical_invocation(row))
+        if family_diversity and (group in used_groups or phys in used_physical):
             rejected_same_family.append(row["route"])
             continue
         picked.append(row)
-        used_families.add(fam)
+        used_groups.add(group)
+        used_physical.add(phys)
         if len(picked) >= want:
             break
 
@@ -473,10 +708,11 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
         "reason": "",
     }
     if family_diversity and family_diversity >= 2 and len(picked) < family_diversity:
-        fams = sorted(used_families)
+        groups = sorted(used_groups)
         result["reason"] = (
-            f"fail-closed: cross-family needs {family_diversity} distinct families; "
-            f"only {fams or 'none'} resolved from live_verified routes"
+            f"fail-closed: cross-family needs {family_diversity} distinct independence "
+            f"groups and unique physical invocations; only {groups or 'none'} resolved "
+            f"from live_verified routes"
         )
         return result
     if not picked:
@@ -515,26 +751,23 @@ def rankings_for(registry: dict, role: str) -> dict:
     return blob
 
 
-def live_review_providers(registry: dict, providers: dict) -> list[str]:
-    """review_order filtered to providers whose bound route is live_verified (or unwired Review E)."""
-    routes = registry.get("routes") or {}
+def live_review_providers(registry: dict, providers: dict, as_of: date | None = None) -> list[str]:
+    """review_order filtered to providers whose bound catalog route is live.
+
+    No exceptions: Review E (or any provider) enters only when route_is_live is true.
+    `providers.review-e.wired` does not override an unwired/catalog/disabled route.
+    """
+    if not isinstance(registry, dict) or not isinstance(providers, dict):
+        return []
     provs = providers.get("providers") or {}
     out = []
     for pid in providers.get("review_order") or []:
         p = provs.get(pid) or {}
         if not p.get("review_eligible"):
             continue
-        rid = p.get("route")
-        if not rid:
-            # Review E historically has no live route; keep the slot only when wired.
-            if p.get("wired"):
-                out.append(pid)
+        if not provider_route_is_live(registry, p, as_of=as_of):
             continue
-        route = routes.get(rid) or {}
-        if route.get("route_state") in ACTIVE_RESOLVE_STATES:
-            out.append(pid)
-        elif pid == "review-e" and p.get("wired") and route.get("route_state") != "disabled":
-            out.append(pid)
+        out.append(pid)
     return out
 
 
@@ -549,6 +782,8 @@ def render_matrix(registry: dict) -> str:
         "A catalog entry is not a usable route. Only `live_verified` routes resolve.",
         "Quality rank is not selection priority. Rank never grants tools or data.",
         "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",
+        "live_verified freshness is compared to the current date (or `--as-of`), not frozen `registry.as_of`.",
+        "Promotion attestations (`intake.promote_requires`) live on each live route; `direct_invocation` vs `standing_provider` is explicit.",
         "",
     ]
     census = registry.get("census") or {}
@@ -578,17 +813,25 @@ def render_matrix(registry: dict) -> str:
         "",
         "## Routes",
         "",
-        "| route | model | state | lifecycle | host | harness | invocation | evidence | provider |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| route | model | state | lifecycle | host | harness | invocation | evidence | signal | provider |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     models = registry.get("models") or {}
     for rid, route in _sorted_items(registry.get("routes") or {}):
         model = models.get(route.get("model"), {})
+        signal = ((route.get("attestations") or {}).get("local_access_smoke") or {}).get("signal") or ""
+        if not signal:
+            recs = route.get("evidence") or []
+            if isinstance(recs, list):
+                for rec in reversed(recs):
+                    if isinstance(rec, dict) and rec.get("signal"):
+                        signal = rec.get("signal")
+                        break
         lines.append(
             f"| `{rid}` | `{route.get('model')}` | {route.get('route_state')} | "
             f"{_lifecycle(route, model)} | {route.get('host')} | {route.get('harness')} | "
             f"`{route.get('invocation_id')}` | {route.get('evidence_date')} "
-            f"{route.get('evidence_strength')} | {route.get('provider') or '—'} |"
+            f"{route.get('evidence_strength')} | {signal or '—'} | {route.get('provider') or '—'} |"
         )
     lines += ["", "## Per-role rankings (selection vs quality)", ""]
     for role in REQUIRED_ROLES:
@@ -646,6 +889,11 @@ def main(argv=None) -> int:
 
     p_val = sub.add_parser("validate", help="schema + freshness + contradiction checks")
     p_val.add_argument("--json", action="store_true")
+    p_val.add_argument(
+        "--as-of",
+        default="",
+        help="YYYY-MM-DD freshness clock (default: actual current date, not registry.as_of)",
+    )
 
     p_inv = sub.add_parser("inventory", help="list every cataloged route")
     p_inv.add_argument("--json", action="store_true")
@@ -656,6 +904,7 @@ def main(argv=None) -> int:
     p_res.add_argument("--n", type=int, default=1)
     p_res.add_argument("--family-diversity", type=int, default=0)
     p_res.add_argument("--require-cap", default="", help="comma-separated capabilities")
+    p_res.add_argument("--require-tool", default="", help="comma-separated tools (matched against route.tools only)")
     p_res.add_argument("--exclude-family", default="")
     p_res.add_argument("--exclude-model", default="")
     p_res.add_argument("--data-boundary", default="")
@@ -675,7 +924,8 @@ def main(argv=None) -> int:
     providers = mborch.load_config("providers.json", required=False) or None
 
     if args.cmd == "validate":
-        errors = validate(registry, providers=providers)
+        as_of = _as_date(args.as_of) if getattr(args, "as_of", "") else None
+        errors = validate(registry, as_of=as_of, providers=providers)
         if args.json:
             print(json.dumps({"ok": not errors, "errors": errors}, indent=2))
         else:
@@ -710,6 +960,7 @@ def main(argv=None) -> int:
             n=args.n,
             family_diversity=args.family_diversity or None,
             required_capabilities=split(args.require_cap) or None,
+            required_tools=split(getattr(args, "require_tool", "") or "") or None,
             exclude_families=split(args.exclude_family) or None,
             exclude_models=split(args.exclude_model) or None,
             data_boundary=args.data_boundary or None,

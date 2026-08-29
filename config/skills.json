@@ -14,7 +14,7 @@
       "kind": "write",
       "required_capability": "shopify-mb-internal",
       "hosts": ["claude", "grok"],
-      "note": "Capability-gated, not seat-gated: any implement seat listed in connectors.json shopify-mb-internal.available_on may carry it. Pair with Review D (Website Visual QA) when storefront pixels change."
+      "note": "Capability-gated, not seat-gated: any implement seat listed in connectors.json shopify-mb-internal.available_on may carry it, and only while that connector's status is active. A primed/ready/missing Shopify connector does not satisfy this write skill gate. Pair with Review D (Website Visual QA) when storefront pixels change."
     },
     "magnet-baron-skills:web-coding": {
       "description": "Modern web-app coding standards: project structure, dependencies, testing, security, and review-ready diffs.",

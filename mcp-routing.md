@@ -16,12 +16,13 @@ If a connector is missing on the assigned seat (per `available_on`), park and re
 
 ## MCP strap-in (distribution): primed → ready → active
 
-A distributed clone carries its own MCP servers plug-and-play, admin-managed, via an optional
+A distributed clone carries its own MCP servers plug-and-play, admin-managed, via a required
 `status` on each `config/connectors.json` `mcp_connectors` entry:
 
-- **absent = active** — every existing connector; LIVE and unaffected.
+- **active** — live-eligible. Existing live connectors are backfilled with `status: active`.
 - **primed** — bundled/declared for distribution but NOT wired (some MCPs aren't ready yet).
 - **ready** — validated + wireable, awaiting owner activation.
+- **missing or unknown** — inert, never active. The schema requires `status`; doctor errors if it is absent.
 
 Only **active** is live-eligible. A primed/ready entry may carry an optional **`server`** block
 (`transport`/`command`/`args`/`url`/`env_keys`/`note`) — the launch DESCRIPTOR, carried **as data
@@ -32,9 +33,10 @@ then is it routable.
 **Hard inert guarantee.** Priming NEVER connects, launches, probes, or activates anything:
 
 - The router refuses to grant a non-active connector to any seat — `bin/routing.py`'s
-  `connector_is_active` filters `capabilities_of`, so primed/ready never routes and `available_on`
-  is only a *declaration* of the seat it would ride on once active. Existing (active) connectors
-  route exactly as before.
+  `connector_is_active` is the single lifecycle predicate (routing, role/MCP generation, doctor,
+  and skill gates). Missing/unknown/primed/ready never route and `available_on` is only a
+  *declaration* of the seat it would ride on once active. A primed Shopify connector does not
+  satisfy a write-capable Shopify skill gate. Existing `status: active` connectors still route.
 - `bin/doctor.py` (`check_connector_lifecycle`) validates the SHAPE only — status enum, a well-formed
   server block — and *proves* the inertness (a non-active connector is granted to no seat). It reads
   strings; it never runs `command`, opens `url`, spawns a process, or hits the network.

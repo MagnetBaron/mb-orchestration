@@ -23,6 +23,15 @@ required promote checklist under `intake.promote_requires`.
    - cost and context-window capture
    - owner/admin approval recorded in the route `evidence` list
 
+   Those six items are `intake.promote_requires`. Each `live_verified` route must carry an
+   `attestations` object with one entry per item: `attested: true`, a `date`, and an auditable
+   `source`. `local_access_smoke` also requires `signal`: `direct_invocation` (a real host
+   smoke) or `standing_provider` (an already-operational seat; a listing is not an invocation).
+   Do not invent new smokes to fill a checkbox. Validation compares evidence and attestation
+   dates to the **actual current date** unless you pass `--as-of YYYY-MM-DD` (or
+   `validate(..., as_of=)` in tests). `registry.as_of` is a catalog label, not the freshness
+   clock. Future-dated, missing, stale, or mismatched evidence fails closed.
+
 Incubation (`incubation: true`) is for vendor-heavy or too-new candidates
 (example: GLM 5.3 Flash). It is still non-routable until promotion.
 

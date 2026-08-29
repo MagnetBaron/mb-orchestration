@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
+import routing  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 DEFAULTS = {
@@ -44,6 +45,8 @@ def mcp_mutation_map():
     c = mborch.load_config("connectors.json", required=False)
     out = {}
     for name, meta in (c.get("mcp_connectors") or {}).items():
+        if not routing.connector_is_active(meta):
+            continue  # primed/ready/missing/unknown are inert — not a vetted live MCP
         muts = set(meta.get("mutating_tools", []))
         out[name] = muts
         alias = meta.get("alias")
@@ -105,7 +108,7 @@ def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) 
         return True
     conn = (connectors.get("mcp_connectors") or {}).get(cap)
     if isinstance(conn, dict) and seat in (conn.get("available_on") or []):
-        return True
+        return routing.connector_is_active(conn)
     return False
 
 
@@ -201,7 +204,19 @@ def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: di
             if host == "grok" and mcp:
                 raise ValueError(f"{name}: Grok mcpServers are unsupported until a host adapter emits them")
             mcp_denials = role.get("mcp_deny_tools", {}).get(host, {})
+            mcp_all = connectors.get("mcp_connectors") or {}
+            alias_to_name = {n: n for n in mcp_all}
+            for n, m in mcp_all.items():
+                if m.get("alias"):
+                    alias_to_name[m["alias"]] = n
             for server in mcp:
+                real = alias_to_name.get(server)
+                if real and not routing.connector_is_active(mcp_all.get(real) or {}):
+                    raise ValueError(
+                        f"{name}: {host} MCP connector {server!r} is not active "
+                        f"(status={(mcp_all.get(real) or {}).get('status')!r}; "
+                        "missing/unknown/primed/ready are inert)"
+                    )
                 denied_server = set(mcp_denials.get(server, []))
                 if role["read_only"]:
                     if server not in mut:

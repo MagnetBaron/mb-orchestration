@@ -441,5 +441,247 @@ class FableEvalLabelTests(unittest.TestCase):
         self.assertIn("1 of 1", line)
 
 
+rr = load_mod("resolve_route", HERE / "resolve-route.py")
+doc = load_mod("doctor_mod", HERE / "doctor.py")
+
+
+def providers():
+    return json.loads((REPO / "config" / "providers.json").read_text())
+
+
+def connectors():
+    return json.loads((REPO / "config" / "connectors.json").read_text())
+
+
+class ReviewEGateTests(unittest.TestCase):
+    def test_wired_unwired_review_e_excluded_from_live_gate(self):
+        registry = live()
+        provs = providers()
+        provs["providers"]["review-e"]["wired"] = True
+        self.assertEqual(registry["routes"]["review-e-fireworks"]["route_state"], "unwired")
+        live_ids = mr.live_review_providers(registry, provs)
+        self.assertNotIn("review-e", live_ids)
+        self.assertEqual(live_ids, ["opus-5", "codex-sol"])
+        self.assertFalse(mr.provider_route_is_live(registry, provs["providers"]["review-e"]))
+
+    def test_wired_unwired_review_e_does_not_satisfy_cross_family(self):
+        registry = live()
+        provs = providers()
+        provs["providers"]["review-e"]["wired"] = True
+        rows = [
+            {"seat": "claude-max", "subscription": "claude-max-200", "tier": "available",
+             "billing": "included", "family": "anthropic", "fable": True, "intake": False,
+             "window_kinds": ["rolling"], "runway_seconds": 10000},
+        ]
+        reviewers = rr.live_reviewers(provs, rows, {}, registry)
+        self.assertNotIn("review-e", [r["provider"] for r in reviewers])
+        self.assertTrue(all(r["provider"] != "review-e" for r in reviewers))
+        review = rr.pick_review(
+            "cross-family", reviewers,
+            mr.provider_route_is_live(registry, provs["providers"]["review-e"]), 0,
+        )
+        self.assertFalse(review["satisfied"])
+        decision = mr.resolve(registry, "code_review", family_diversity=2)
+        self.assertEqual(set(r["family"] for r in decision["routes"]), {"anthropic", "openai"})
+        self.assertNotIn("review-e-fireworks", [r["route"] for r in decision["routes"]])
+
+
+class OperationalLiveRouteTests(unittest.TestCase):
+    def _rows(self):
+        return [
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "available",
+             "billing": "included", "intake": False, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "xai"},
+            {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": "available",
+             "billing": "included", "intake": False, "window_kinds": ["monthly"],
+             "runway_seconds": 864000 * 20, "family": "cursor-pool"},
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+             "billing": "included", "intake": True, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "openai"},
+        ]
+
+    def test_catalog_verified_grok_binding_is_not_selected(self):
+        provs = providers()
+        registry = live()
+        provs["providers"]["grok-build"]["route"] = "gpt-5.5-codex"
+        self.assertEqual(registry["routes"]["gpt-5.5-codex"]["route_state"], "catalog_verified")
+        self.assertFalse(mr.route_is_live(registry, "gpt-5.5-codex"))
+        steps = rr.pick_implement(
+            provs, connectors(), self._rows(), "repo-code", "", "", False, 0, registry,
+        )
+        self.assertFalse(any(s.get("seat") == "grok-build" for s in steps))
+        self.assertTrue(any(s.get("available") for s in steps))
+
+    def test_unknown_route_state_fails_closed(self):
+        registry = copy.deepcopy(live())
+        registry["routes"]["grok-4.6-build"]["route_state"] = "who-knows"
+        self.assertFalse(mr.route_is_live(registry, "grok-4.6-build"))
+        self.assertNotIn("grok-4.6-build", mr.live_review_providers(registry, providers()))
+        errors = mr.validate(registry, as_of=date(2026, 8, 28), providers=providers())
+        self.assertTrue(any("who-knows" in e for e in errors))
+
+    def test_missing_registry_parks_implement(self):
+        steps = rr.pick_implement(
+            providers(), connectors(), self._rows(), "repo-code", "", "", False, 0, None,
+        )
+        self.assertTrue(any("fail closed" in (s.get("why") or "") for s in steps))
+        self.assertFalse(any(s.get("available") for s in steps))
+
+    def test_auth_blocked_and_unwired_not_live(self):
+        registry = live()
+        self.assertFalse(mr.route_is_live(registry, "opus-5-direct-claude"))
+        self.assertFalse(mr.route_is_live(registry, "review-e-fireworks"))
+        self.assertFalse(mr.route_is_live(registry, "missing-route"))
+        self.assertTrue(mr.route_is_live(registry, "grok-4.6-build", as_of=date(2026, 8, 28)))
+
+
+class DuplicateInvocationTests(unittest.TestCase):
+    def test_cloned_teamclaude_opus5_under_openai_fails_closed(self):
+        data = copy.deepcopy(live())
+        spoof = copy.deepcopy(data["routes"]["opus-5-teamclaude"])
+        spoof["model"] = "gpt-5.6-sol"
+        spoof["provider"] = "codex-sol"
+        data["routes"]["spoof-openai-opus"] = spoof
+        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        blob = "\n".join(errors)
+        self.assertTrue(
+            "duplicate invocation" in blob or "official id of family" in blob,
+            blob,
+        )
+        self.assertIn("teamclaude/claude-cli/claude-opus-5", blob)
+        data["rankings"]["code_review"]["selection"] = [
+            {"priority": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "real"},
+            {"priority": 2, "route": "spoof-openai-opus", "confidence": "high", "rationale": "spoof"},
+            {"priority": 3, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "sol"},
+        ]
+        decision = mr.resolve(
+            data, "code_review", family_diversity=2, exclude_routes=["gpt-5.6-sol-codex"],
+        )
+        self.assertFalse(decision["ok"])
+        self.assertIn("fail-closed", decision["reason"])
+        self.assertIn("spoof-openai-opus", decision["rejected_same_family"])
+        families = [r["family"] for r in decision["routes"]]
+        self.assertNotEqual(set(families), {"anthropic", "openai"})
+
+
+class LiveEvidenceTests(unittest.TestCase):
+    def test_empty_evidence_fails(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence"] = []
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("non-empty" in e for e in errors))
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_future_evidence_fails(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence_date"] = "2099-01-01"
+        data["routes"]["opus-5-teamclaude"]["evidence"] = [
+            {"date": "2099-01-01", "route_state": "live_verified", "signal": "direct_invocation",
+             "kind": "local_smoke", "source": "future"},
+        ]
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("future" in e for e in errors))
+
+    def test_missing_attestations_fail(self):
+        data = copy.deepcopy(live())
+        del data["routes"]["opus-5-teamclaude"]["attestations"]
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("attestations" in e for e in errors))
+
+    def test_missing_signal_fails(self):
+        data = copy.deepcopy(live())
+        for rec in data["routes"]["opus-5-teamclaude"]["evidence"]:
+            rec.pop("signal", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("signal" in e for e in errors))
+
+    def test_default_as_of_is_today_not_registry_as_of(self):
+        data = copy.deepcopy(live())
+        data["as_of"] = "2020-01-01"
+        errors = mr.validate(data, providers=providers())
+        self.assertFalse(any("stale" in e or "future" in e for e in errors), errors)
+
+    def test_as_of_override_freezes_clock(self):
+        data = copy.deepcopy(live())
+        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        self.assertEqual(errors, [])
+        errors_fresh = mr.validate(data, as_of=date(2026, 9, 1), providers=providers())
+        self.assertEqual(errors_fresh, [])
+        errors_stale = mr.validate(data, as_of=date(2026, 12, 1), providers=providers())
+        self.assertTrue(any("stale" in e for e in errors_stale))
+
+    def test_live_routes_distinguish_standing_from_direct(self):
+        registry = live()
+        opus = registry["routes"]["opus-5-teamclaude"]
+        self.assertEqual(opus["attestations"]["local_access_smoke"]["signal"], "direct_invocation")
+        sol = registry["routes"]["gpt-5.6-sol-codex"]
+        self.assertEqual(sol["attestations"]["local_access_smoke"]["signal"], "standing_provider")
+        grok = registry["routes"]["grok-4.6-build"]
+        self.assertEqual(grok["attestations"]["local_access_smoke"]["signal"], "standing_provider")
+        cursor = registry["routes"]["grok-4.6-cursor"]
+        self.assertEqual(cursor["evidence_strength"], "owner_eval")
+        self.assertEqual(cursor["attestations"]["local_access_smoke"]["signal"], "standing_provider")
+
+
+class RequiredToolsVsCapabilitiesTests(unittest.TestCase):
+    def test_required_tools_do_not_match_capabilities(self):
+        data = copy.deepcopy(live())
+        route = data["routes"]["opus-5-teamclaude"]
+        route["tools"] = []
+        route["capabilities"] = ["review"]
+        decision = mr.resolve(data, "code_review", required_tools=["review"])
+        self.assertFalse(decision["ok"])
+        self.assertFalse(decision["authority_grants"])
+        by_cap = mr.resolve(data, "code_review", required_capabilities=["review"])
+        self.assertTrue(by_cap["ok"])
+        self.assertEqual(by_cap["routes"][0]["route"], "opus-5-teamclaude")
+        self.assertFalse(by_cap["authority_grants"])
+
+
+class DispatcherAuthorityTests(unittest.TestCase):
+    def setUp(self):
+        doc.ERRORS.clear()
+        doc.WARNINGS.clear()
+
+    def _check(self, entry, provs=None):
+        doc.ERRORS.clear()
+        p = provs or providers()["providers"]
+        doc.check_entrypoints(entry, p, set(p))
+        return list(doc.ERRORS)
+
+    def _entry(self, **surface_overrides):
+        entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
+        entry["entry_surfaces"].update(surface_overrides)
+        return entry
+
+    def test_live_entrypoints_have_exactly_one_dispatcher(self):
+        entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
+        self.assertEqual(self._check(entry), [])
+
+    def test_multiple_dispatchers_fail(self):
+        entry = self._entry()
+        entry["entry_surfaces"]["codex-cli"]["can_dispatch"] = True
+        errors = self._check(entry)
+        self.assertTrue(any("exactly one can_dispatch:true" in e for e in errors), errors)
+
+    def test_zero_dispatchers_fail(self):
+        entry = self._entry()
+        entry["entry_surfaces"]["claude-code"]["can_dispatch"] = False
+        errors = self._check(entry)
+        self.assertTrue(any("exactly one can_dispatch:true" in e and "found 0" in e for e in errors), errors)
+
+    def test_provider_mismatch_fails(self):
+        entry = self._entry()
+        entry["entry_surfaces"]["claude-code"]["provider"] = "codex-terra"
+        errors = self._check(entry)
+        self.assertTrue(any("!= dispatcher.provider" in e for e in errors), errors)
+
+    def test_level_mismatch_fails(self):
+        entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
+        entry["dispatcher"]["level"] = "terra"
+        errors = self._check(entry)
+        self.assertTrue(any("dispatcher.level" in e and "terra" in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()

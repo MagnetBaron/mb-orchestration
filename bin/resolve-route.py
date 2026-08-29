@@ -92,13 +92,14 @@ def provider_seats(pid, providers, rows):
     return sorted(seats, key=routing.route_key)
 
 
-def live_reviewers(providers, rows, ledger, registry=None):
+def live_reviewers(providers, rows, ledger, registry):
+    """Reviewers whose bound catalog route is live. Registry is required; unknown state fails closed."""
+    if not registry:
+        return []
     by_name = {r["seat"]: r for r in rows}
     prov = providers["providers"]
     order_index = {pid: i for i, pid in enumerate(providers["review_order"])}
-    live_ids = None
-    if registry:
-        live_ids = set(modelreg.live_review_providers(registry, providers))
+    live_ids = set(modelreg.live_review_providers(registry, providers))
 
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
     fable_seats = [r for r in rows if r.get("fable") and routing.usable(r) and r["seat"] not in downgraded]
@@ -109,9 +110,12 @@ def live_reviewers(providers, rows, ledger, registry=None):
         p = prov.get(pid, {})
         if not p.get("review_eligible"):
             continue
-        if live_ids is not None and pid not in live_ids:
+        if pid not in live_ids:
             continue
         fam = p.get("family")
+        group = modelreg.independence_group_of(registry, fam)
+        route = (registry.get("routes") or {}).get(p.get("route") or "") or {}
+        phys = modelreg.physical_invocation(route)
         seat = None
         if pid == "fable-5":
             cand = sorted(fable_seats, key=routing.route_key)
@@ -120,18 +124,18 @@ def live_reviewers(providers, rows, ledger, registry=None):
             # prefer a non-Fable (Pro) seat to spare Fable seats; then by route_key
             cand = sorted(anthropic_seats, key=lambda r: (bool(r.get("fable")), *routing.route_key(r)))
             seat = cand[0] if cand else None
-        elif pid == "codex-sol":
-            r = by_name.get("codex-sol")
-            seat = r if (r and routing.usable(r)) else None
-        elif pid == "review-e":
-            if p.get("wired"):
-                r = by_name.get("review-e")
-                seat = r if (r is None or routing.usable(r)) else None
         else:
             r = by_name.get(pid)
-            seat = r if (r and routing.usable(r)) else None
+            if r and routing.usable(r):
+                seat = r
+            elif r is None and p.get("kind") == "api":
+                # Live API route with no usage-window seat: treat as available. Still requires
+                # a live_verified catalog route (live_ids filter above); wired=true is not enough.
+                seat = {"seat": pid, "tier": "available", "billing": p.get("billing"),
+                        "family": fam, "intake": False, "window_kinds": ["none"]}
         if seat is not None:
-            out.append({"provider": pid, "family": fam, "seat": seat["seat"], "tier": seat["tier"],
+            out.append({"provider": pid, "family": fam, "independence_group": group,
+                        "physical": phys, "seat": seat["seat"], "tier": seat["tier"],
                         "billing": seat.get("billing"), "row": seat, "order": order_index.get(pid, 99)})
     # preferred first: included/available/non-intake by route_key, then prowess order
     out.sort(key=lambda e: (routing.route_key(e["row"]), e["order"]))
@@ -160,9 +164,16 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
         rest = ", ".join(r["provider"] for r in reviewers[1:]) or "(none — then park)"
         return {"satisfied": True, "chain": [first],
                 "explanation": f"single-frontier: {note_for(first)}. Fallback: {rest}.{warn}"}
-    # cross-family: two DIFFERENT families from USABLE seats
+    # cross-family: two DIFFERENT independence groups AND unique physical invocations
     first = reviewers[0]
-    second = next((r for r in reviewers[1:] if r["family"] != first["family"]), None)
+    first_group = first.get("independence_group") or first["family"]
+    first_phys = tuple(first.get("physical") or ())
+    second = next(
+        (r for r in reviewers[1:]
+         if (r.get("independence_group") or r["family"]) != first_group
+         and tuple(r.get("physical") or ()) != first_phys),
+        None,
+    )
     if second:
         return {"satisfied": True, "chain": [first, second],
                 "explanation": f"cross-family: {note_for(first)} + {note_for(second)} — one pass each, "
@@ -176,19 +187,27 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
     return {"satisfied": False, "chain": [first], "explanation": "PARK: " + msg}
 
 
-def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels, task_seconds):
+def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels,
+                   task_seconds, registry):
     prov = providers["providers"]
     steps = []
+    if not registry:
+        steps.append({"seat": "(none)", "why": "model-registry required for runtime routing — fail closed",
+                      "available": False, "tier": "spent"})
+        return steps
+
+    def live_ok(pid):
+        return modelreg.provider_route_is_live(registry, prov.get(pid) or {})
 
     def cap_ok(pid):
         if not needs_connector:
             return True
         return needs_connector in routing.capabilities_of(pid, prov.get(pid, {}), connectors)
 
-    # candidate implement providers: have 'implement' (or 'ide') and the needed capability
+    # candidate implement providers: live catalog route + implement/ide + needed capability
     impl_ids = [pid for pid, p in prov.items()
                 if ("implement" in p.get("functions", []) or "ide" in p.get("functions", []))
-                and p.get("enabled", True) and cap_ok(pid)]
+                and p.get("enabled", True) and live_ok(pid) and cap_ok(pid)]
 
     def best_seat(pid):
         seats = [s for s in provider_seats(pid, providers, rows) if routing.usable(s)]
@@ -204,7 +223,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
 
     if needs_mcp:
         # MCP bulk to Terra first (capability), then implement against the snapshot
-        terra = best_seat("codex-terra")
+        terra = best_seat("codex-terra") if live_ok("codex-terra") else None
         steps.append({"seat": "codex-terra", "why": f"Google-MCP bulk ({needs_mcp}) → output_path snapshot",
                       "available": bool(terra), "tier": terra["tier"] if terra else "spent"})
 
@@ -215,11 +234,33 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                       "resets_mid_task": routing.resets_before(s, task_seconds)})
     else:
         # never strand: no usable worker → the intake/dispatch seat codes (2-sub setups land here)
-        intake = sorted([r for r in rows if r.get("intake") and routing.usable(r)], key=routing.route_key)
+        # last-resort still requires some provider on that subscription to have a live catalog route
+        def sub_has_live(sub):
+            return any(
+                p.get("backed_by") == sub and modelreg.provider_route_is_live(registry, p)
+                for p in prov.values() if isinstance(p, dict)
+            )
+        last_dollar = [pid for pid, p in prov.items()
+                       if "last_dollar" in (p.get("functions") or [])
+                       and p.get("enabled", True) and live_ok(pid)]
+        intake = sorted(
+            [r for r in rows if r.get("intake") and routing.usable(r) and sub_has_live(r.get("subscription"))],
+            key=routing.route_key,
+        )
         if intake:
             steps.append({"seat": "dispatch/intake", "on": intake[0]["seat"],
                           "why": "ALL worker seats spent → intake/dispatch codes as last resort (never strand; releases reserve)",
                           "available": True, "tier": intake[0]["tier"], "last_resort": True})
+        elif last_dollar:
+            pid = last_dollar[0]
+            s = best_seat(pid)
+            if s:
+                steps.append({"seat": pid, "on": s["seat"],
+                              "why": "last-resort metered provider (live catalog route required)",
+                              "available": True, "tier": s["tier"], "last_resort": True, "billing": s.get("billing")})
+            else:
+                steps.append({"seat": "(none)", "why": "no usable implement seat anywhere — genuine full exhaustion → PARK",
+                              "available": False, "tier": "spent"})
         else:
             steps.append({"seat": "(none)", "why": "no usable implement seat anywhere — genuine full exhaustion → PARK",
                           "available": False, "tier": "spent"})
@@ -247,8 +288,13 @@ def main(argv=None):
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
-    connectors = mborch.load_config("connectors.json", required=False)
-    registry = mborch.load_config("model-registry.json", required=False) or None
+    connectors = mborch.load_config("connectors.json", required=False) or {}
+    registry = mborch.load_config("model-registry.json")
+    if not registry:
+        sys.exit("resolve-route: model-registry.json is required (unknown registry state fails closed)")
+    reg_errors = modelreg.validate(registry, providers=providers)
+    if reg_errors:
+        sys.exit("resolve-route: model-registry invalid (fail closed):\n  - " + "\n  - ".join(reg_errors))
     risk_flags = [f.strip() for f in args.risk.split(",") if f.strip()]
 
     updated, rows = usage_status.compute(args.ledger)
@@ -257,10 +303,12 @@ def main(argv=None):
 
     level, reasons, extra = compute_depth(depth_conf, args.klass, args.scale, risk_flags)
     reviewers = live_reviewers(providers, rows, ledger, registry)
-    review_e_wired = bool(providers["providers"].get("review-e", {}).get("wired"))
+    review_e = providers["providers"].get("review-e") or {}
+    review_e_wired = modelreg.provider_route_is_live(registry, review_e)
     review = pick_review(level, reviewers, review_e_wired, args.task_seconds)
     implement = pick_implement(providers, connectors, rows, args.klass, args.needs_connector.strip(),
-                               args.needs_mcp.strip(), args.pixels, args.task_seconds) if args.implement else None
+                               args.needs_mcp.strip(), args.pixels, args.task_seconds,
+                               registry) if args.implement else None
 
     decision = {
         "class": args.klass, "scale": args.scale, "risk_flags": risk_flags,

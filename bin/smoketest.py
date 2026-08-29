@@ -347,7 +347,7 @@ def c_primed_connector_inert():
     # at least one primed entry carries a well-formed bundled server DEFINITION
     has_server = any(isinstance(m.get("server"), dict) and m["server"].get("transport") in ("stdio", "http", "sse")
                      for m in primed.values())
-    # active connectors STILL route (absent status = active; live behaviour unchanged)
+    # active connectors STILL route (explicit status=active; missing/unknown/primed are inert)
     gh = mcp.get("github", {})
     active_routes = bool(gh.get("available_on")) and all(
         "github" in routing.capabilities_of(pid, prov.get(pid, {}), conns) for pid in gh["available_on"])

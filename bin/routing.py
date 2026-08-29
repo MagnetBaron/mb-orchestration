@@ -36,13 +36,15 @@ def usable(row):
 
 
 def connector_is_active(meta):
-    """A connector is live-eligible ONLY when its status is 'active'. Status is ABSENT on
-    every existing connector, and absent defaults to 'active' — so live routing behaviour is
-    unchanged. The 'primed' (bundled/declared for distribution, not wired) and 'ready'
-    (validated + wireable, awaiting owner activation) states are INERT scaffolding: they are
-    never granted to a seat here, so the router never treats them as live. Only the owner/admin
-    flipping status to 'active' (out of band) makes a connector routable."""
-    return (meta or {}).get("status", "active") == "active"
+    """A connector is live-eligible ONLY when its explicit status is 'active'.
+
+    Missing or unknown status is inert — never active. primed (bundled/declared, not wired)
+    and ready (validated, awaiting owner activation) are also inert scaffolding and are never
+    granted to a seat. Only an owner/admin setting status to 'active' makes a connector
+    routable. This is the single lifecycle predicate used by routing, role/MCP generation,
+    doctor, and skill gates.
+    """
+    return (meta or {}).get("status") == "active"
 
 
 def route_key(row):

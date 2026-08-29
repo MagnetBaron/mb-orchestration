@@ -71,13 +71,13 @@
           "type": "object",
           "additionalProperties": {
             "type": "object",
-            "required": ["available_on"],
+            "required": ["available_on", "status"],
             "properties": {
               "available_on": { "type": "array", "items": { "type": "string" } },
               "mutating_tools": { "type": "array", "items": { "type": "string" } },
               "status": {
                 "enum": ["active", "ready", "primed"],
-                "description": "Strap-in lifecycle. OPTIONAL and back-compatible: ABSENT = active (existing connectors are LIVE). Only 'active' is live-eligible; 'primed' (bundled/declared, not wired) and 'ready' (validated, awaiting owner activation) are inert scaffolding that is never routed, connected, launched, or probed."
+                "description": "Strap-in lifecycle. REQUIRED. Missing or unknown status is inert (never active). Only 'active' is live-eligible; 'primed' (bundled/declared, not wired) and 'ready' (validated, awaiting owner activation) are inert scaffolding that is never routed, connected, launched, or probed."
               },
               "server": {
                 "type": "object",
