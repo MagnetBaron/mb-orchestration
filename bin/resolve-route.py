@@ -20,6 +20,9 @@ It enforces the owner's economics (bin/routing.py):
     No such provider → PARK.
   * capability-aware — an implement seat must actually have the needed capability
     (browser/connector/etc., derived from providers.json + connectors.json).
+  * MCP volume — --needs-mcp requires an active connector on the MCP volume seat
+    AND mcp_bulk on that provider's functions, capabilities, and bound live route.
+    Any missing layer PARKS immediately and does not continue to implement.
   * no mid-turn swaps — --task-seconds flags a seat that would reset mid-task.
 
 Examples:
@@ -215,6 +218,21 @@ def provider_can_code(provider, registry):
     return "code" in (route.get("capabilities") or [])
 
 
+def provider_can_mcp_bulk(provider, registry):
+    """True iff this provider may run MCP volume: mcp_bulk function, mcp_bulk on the
+    provider AND on its bound live catalog route. Live-route predicate is shared."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+        return False
+    if "mcp_bulk" not in (provider.get("functions") or []):
+        return False
+    if "mcp_bulk" not in (provider.get("capabilities") or []):
+        return False
+    if not modelreg.provider_route_is_live(registry, provider):
+        return False
+    route = (registry.get("routes") or {}).get(provider.get("route") or "") or {}
+    return "mcp_bulk" in (route.get("capabilities") or [])
+
+
 def last_resort_coder(prov, registry, subscription, cap_ok):
     """Concrete live coding-capable provider on this subscription, or None.
 
@@ -273,7 +291,8 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     if needs_mcp:
         # MCP bulk to Terra first. Any failed prerequisite PARKS the whole pipeline —
         # do not snapshot then continue to Grok. Connector match, live Terra route,
-        # and a currently usable Terra seat are all required.
+        # mcp_bulk on functions + provider capabilities + bound live-route
+        # capabilities, and a currently usable Terra seat are all required.
         matches, why = routing.mcp_volume_matches(needs_mcp, connectors, routing.MCP_VOLUME_PROVIDER)
         if not matches:
             steps.append({
@@ -311,6 +330,16 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                         f"is bound to wrong-route {terra_route_id!r} "
                         f"(provider {terra_route.get('provider')!r}) — required MCP "
                         "work cannot continue to implement"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        if not provider_can_mcp_bulk(terra_prov, registry):
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} resolved, but {terra_pid} "
+                        "lacks mcp_bulk on provider functions, provider capabilities, "
+                        "and bound live-route capabilities — required MCP work "
+                        "cannot continue to implement"),
                 "available": False, "tier": "spent",
             })
             return steps

@@ -594,7 +594,7 @@ def check_forbidden_matcher():
         err("forbidden-matcher regression: Opus 5 blocked by an unrelated map")
 
 
-def check_model_registry(providers):
+def check_model_registry(providers, connectors=None):
     """The model catalog must parse, stay fresh, and stay bound to providers.json."""
     try:
         mr = load_module("model_registry_doc", HERE / "model-registry.py")
@@ -606,7 +606,7 @@ def check_model_registry(providers):
     except Exception as exc:
         err(f"model-registry.json cannot load: {exc}")
         return
-    for e in mr.validate(registry, providers=providers):
+    for e in mr.validate(registry, providers=providers, connectors=connectors):
         err(e)
     try:
         mr.write_matrix(registry, check=True)
@@ -661,7 +661,7 @@ def main(argv=None):
     check_doctrine_has_classes(depth)
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")
     check_forbidden_matcher()
-    check_model_registry(providers)
+    check_model_registry(providers, conns)
     check_seat_exec(seat_exec, provs, provider_ids)
     check_runledger()
     prose_hygiene()

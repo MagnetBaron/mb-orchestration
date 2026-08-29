@@ -21,6 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
+import routing  # noqa: E402
 
 SCHEMA_VERSION = 1
 ROUTE_STATES = (
@@ -354,7 +355,32 @@ def _live_route_errors(registry: dict, rid: str, route: dict, as_of: date) -> li
     return errors
 
 
-def validate(registry: dict, as_of: date | None = None, providers: dict | None = None) -> list[str]:
+def mcp_bulk_layer_flags(provider, registry) -> tuple[bool, bool, bool]:
+    """Whether mcp_bulk is declared on functions, provider capabilities, and bound-route capabilities."""
+    if not isinstance(provider, dict) or not isinstance(registry, dict):
+        return False, False, False
+    fn = "mcp_bulk" in (provider.get("functions") or [])
+    cap = "mcp_bulk" in (provider.get("capabilities") or [])
+    route = (registry.get("routes") or {}).get(provider.get("route") or "") or {}
+    route_cap = isinstance(route, dict) and "mcp_bulk" in (route.get("capabilities") or [])
+    return fn, cap, route_cap
+
+
+def _mcp_volume_assigned(pid, connectors) -> bool:
+    """True if pid is the MCP volume seat assigned on an active connector (or unknown map)."""
+    if pid != routing.MCP_VOLUME_PROVIDER:
+        return False
+    if connectors is None:
+        return True  # fail closed when the connector map is unknown
+    return any(
+        routing.connector_is_active(meta) and pid in (meta.get("available_on") or [])
+        for meta in (connectors.get("mcp_connectors") or {}).values()
+        if isinstance(meta, dict)
+    )
+
+
+def validate(registry: dict, as_of: date | None = None, providers: dict | None = None,
+             connectors: dict | None = None) -> list[str]:
     """Return ERROR strings. Empty list = valid. Stale or contradictory evidence fails.
 
     Freshness and future-date checks use the actual current date unless `as_of` is
@@ -546,6 +572,15 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         for pid, p in provs.items():
             if not isinstance(p, dict) or p.get("enabled", True) is False:
                 continue
+            fn, cap, route_cap = mcp_bulk_layer_flags(p, registry)
+            assigned = _mcp_volume_assigned(pid, connectors)
+            if (assigned or fn or cap or route_cap) and not (fn and cap and route_cap):
+                errors.append(
+                    f"provider {pid}: mcp_bulk declarations are inconsistent "
+                    f"(functions={fn}, capabilities={cap}, bound-route={route_cap}); "
+                    "enabled MCP assignment requires mcp_bulk on provider functions, "
+                    "provider capabilities, and bound-route capabilities together"
+                )
             route_id = p.get("route")
             if not route_id:
                 continue
@@ -997,10 +1032,11 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     registry = load()
     providers = mborch.load_config("providers.json", required=False) or None
+    connectors = mborch.load_config("connectors.json", required=False) or None
 
     if args.cmd == "validate":
         as_of = _as_date(args.as_of) if getattr(args, "as_of", "") else None
-        errors = validate(registry, as_of=as_of, providers=providers)
+        errors = validate(registry, as_of=as_of, providers=providers, connectors=connectors)
         if args.json:
             print(json.dumps({"ok": not errors, "errors": errors}, indent=2))
         else:
@@ -1014,7 +1050,7 @@ def main(argv=None) -> int:
 
     as_of = _as_date(getattr(args, "as_of", "") or "") or None
     if args.cmd != "resolve":
-        assert_valid(registry, providers=providers, as_of=as_of)
+        assert_valid(registry, providers=providers, as_of=as_of, connectors=connectors)
 
     if args.cmd == "inventory":
         rows = inventory(registry)

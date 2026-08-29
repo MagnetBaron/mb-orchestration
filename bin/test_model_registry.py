@@ -742,6 +742,95 @@ class NeedsMcpTests(unittest.TestCase):
         conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
         self._assert_parked_no_continue(self._impl("browser", conns=conns))
 
+    def test_live_terra_declares_mcp_bulk_conjunction(self):
+        terra = providers()["providers"]["codex-terra"]
+        self.assertTrue(rr.provider_can_mcp_bulk(terra, live()))
+        self.assertEqual(mr.mcp_bulk_layer_flags(terra, live()), (True, True, True))
+
+
+class McpBulkConjunctionTests(unittest.TestCase):
+    """mcp_bulk must be present on functions, provider capabilities, and bound live-route."""
+
+    LAYERS = (
+        ("functions", ("functions",)),
+        ("capabilities", ("capabilities",)),
+        ("route", ("route",)),
+        ("all", ("functions", "capabilities", "route")),
+    )
+
+    def _without(self, layers):
+        provs = providers()
+        registry = copy.deepcopy(live())
+        terra = provs["providers"]["codex-terra"]
+        if "functions" in layers:
+            terra["functions"] = [x for x in terra["functions"] if x != "mcp_bulk"]
+        if "capabilities" in layers:
+            terra["capabilities"] = [x for x in terra["capabilities"] if x != "mcp_bulk"]
+        if "route" in layers:
+            rid = terra["route"]
+            registry["routes"][rid]["capabilities"] = [
+                x for x in registry["routes"][rid]["capabilities"] if x != "mcp_bulk"
+            ]
+        return provs, registry
+
+    def _impl(self, provs, registry):
+        rows = [
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "available",
+             "billing": "included", "intake": False, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "xai"},
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+             "billing": "included", "intake": True, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "openai"},
+        ]
+        return rr.pick_implement(
+            provs, connectors(), rows, "repo-code", "", "google-search-console",
+            False, 0, registry,
+        )
+
+    def test_missing_each_layer_and_all_parks_without_terra_or_implement(self):
+        for name, layers in self.LAYERS:
+            with self.subTest(missing=name):
+                provs, registry = self._without(layers)
+                terra = provs["providers"]["codex-terra"]
+                self.assertFalse(rr.provider_can_mcp_bulk(terra, registry), name)
+                self.assertFalse(all(mr.mcp_bulk_layer_flags(terra, registry)), name)
+                steps = self._impl(provs, registry)
+                self.assertTrue(
+                    any(not s.get("available") and "PARK" in (s.get("why") or "")
+                        and "mcp_bulk" in (s.get("why") or "") for s in steps),
+                    steps,
+                )
+                self.assertFalse(
+                    any(s.get("seat") == "codex-terra" and s.get("available") for s in steps),
+                    steps,
+                )
+                self.assertFalse(any(s.get("seat") == "grok-build" for s in steps), steps)
+                self.assertFalse(any(s.get("available") for s in steps), steps)
+
+    def test_validate_rejects_inconsistent_mcp_assignment(self):
+        for name, layers in self.LAYERS:
+            with self.subTest(missing=name):
+                provs, registry = self._without(layers)
+                errors = mr.validate(
+                    registry, as_of=date(2026, 8, 28),
+                    providers=provs, connectors=connectors(),
+                )
+                blob = "\n".join(errors)
+                self.assertTrue(
+                    any("codex-terra" in e and "mcp_bulk" in e and "inconsistent" in e
+                        for e in errors),
+                    blob,
+                )
+
+    def test_live_catalog_still_validates_with_connectors(self):
+        errors = mr.validate(
+            live(), as_of=date(2026, 8, 28),
+            providers=providers(), connectors=connectors(),
+        )
+        self.assertEqual(errors, [])
+        terra = providers()["providers"]["codex-terra"]
+        self.assertTrue(rr.provider_can_mcp_bulk(terra, live()))
+
 
 class DuplicateInvocationTests(unittest.TestCase):
     def test_cloned_teamclaude_opus5_under_openai_fails_closed(self):
