@@ -79,9 +79,10 @@ import mborch  # noqa: E402  (shared config/data resolution — used for data_di
 #
 #   OWNER: confirm/edit the exact binary, subcommand, passthrough marker, flags, and the
 #   model ids for YOUR Mini before the first real (non --dry-run) run. The model ids
-#   default to whatever providers.json lists for fable-5 / opus-4.8 (see resolve_models),
+#   default to whatever providers.json lists for fable-5 / opus-5 (see resolve_models),
 #   so they never go stale in prose; override per-run with --fable-model / --opus-model /
-#   --grader-model, or set them permanently in providers.json.
+#   --grader-model, or set them permanently in providers.json. Outcome labels are
+#   derived from the resolved model id (never hardcoded as Opus 4.8).
 #
 # Default command template (edit here if your teamclaude differs):
 #       teamclaude run -- -p "<prompt>" --model <model-id>
@@ -129,6 +130,47 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
 # Model-id resolution — single source of truth is providers.json (no stale ids in code)
 # ======================================================================================
 FALLBACK_MODELS = {"fable": "claude-fable-5", "opus": "claude-opus-5"}
+
+# Human labels for scoresheet text. Keys are canonical / alias invocation ids.
+ARM_LABELS = {
+    "claude-opus-5": "Opus 5",
+    "opus-5": "Opus 5",
+    "claude-opus-4-8": "Opus 4.8",
+    "opus-4.8": "Opus 4.8",
+    "claude-opus-4.8": "Opus 4.8",
+    "claude-fable-5": "Fable 5",
+    "fable-5": "Fable 5",
+}
+
+
+def comparison_arm_label(model_id: str) -> str:
+    """Human label for the comparison arm. Model-driven so outcome text cannot stale."""
+    mid = (model_id or "").strip()
+    if mid in ARM_LABELS:
+        return ARM_LABELS[mid]
+    low = mid.lower()
+    if "opus-5" in low or "opus_5" in low:
+        return "Opus 5"
+    if "4-8" in low or "4.8" in low:
+        return "Opus 4.8"
+    if "fable" in low:
+        return "Fable 5"
+    return mid or "Opus 5"
+
+
+def overall_outcome_line(earned: list, results: list, opus_model: str) -> str:
+    label = comparison_arm_label(opus_model)
+    n_earned = len(earned)
+    n_total = len(results)
+    if earned:
+        return (
+            f"OVERALL: Fable clearly beats {label} on {n_earned} of {n_total} axes -> "
+            f"earns a non-gating generation seat on: {', '.join(earned)}."
+        )
+    return (
+        f"OVERALL: Fable clearly beats {label} on 0 of {n_total} axes -> "
+        "no generation seat earned."
+    )
 
 
 def _safe_providers() -> dict:
@@ -983,11 +1025,7 @@ def print_scoresheet(results, recs, models, out_dir, k, dry_run, seed):
             print(f"         ({rec['note']})")
     print("-" * 90)
     earned = [r["axis"] for r in results if r["clearly_beats"]]
-    if earned:
-        print(f"OVERALL: Fable clearly beats Opus 4.8 on {len(earned)} of {len(results)} axes -> "
-              f"earns a non-gating generation seat on: {', '.join(earned)}.")
-    else:
-        print(f"OVERALL: Fable clearly beats Opus 4.8 on 0 of {len(results)} axes -> no generation seat earned.")
+    print(overall_outcome_line(earned, results, models["opus"]))
     print("Reminder: GENERATION trials only. Fable stays OUT of the gating/refusal order and out of")
     print("dispatch (owner ruling 2026-08-25) regardless of any result above. A seat here is a")
     print("non-gating generation home, nothing more.")

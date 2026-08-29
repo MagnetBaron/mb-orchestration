@@ -36,11 +36,14 @@ LIFECYCLES = ("preview", "stable", "superseded", "restricted", "retired")
 ROUTABLE_LIFECYCLES = frozenset({"preview", "stable", "superseded", "restricted"})
 EVIDENCE_STRENGTHS = (
     "local_smoke",
+    "cli_listing",
     "independent_benchmark",
     "vendor_self_reported",
     "owner_eval",
     "none",
 )
+REQUIRED_RANKING_KINDS = ("quality", "selection")
+OPTIONAL_RANKING_KINDS = ("efficiency",)
 DATA_BOUNDARIES = ("subscription", "metered_third_party", "local", "unknown")
 AUTHORITY_KEYS = frozenset({
     "tools_granted", "credentials", "write_access", "publish_authority",
@@ -174,12 +177,16 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
             errors.append(f"route {rid}: data_boundary {route.get('data_boundary')!r} not in {DATA_BOUNDARIES}")
         if not route.get("host") or not route.get("harness") or not route.get("invocation_id"):
             errors.append(f"route {rid}: host, harness, and invocation_id are required")
+        if state == "live_verified" and route.get("host") in ("none", "unknown"):
+            errors.append(f"route {rid}: host {route.get('host')!r} cannot be live_verified")
         if not isinstance(route.get("capabilities"), list):
             errors.append(f"route {rid}: capabilities must be a list")
         if AUTHORITY_KEYS.intersection(route):
             errors.append(f"route {rid}: must not grant {sorted(AUTHORITY_KEYS.intersection(route))}")
         if state == "live_verified" and (model.get("lifecycle") == "retired"):
             errors.append(f"route {rid}: retired model {mid} cannot be live_verified")
+        if state == "live_verified" and route.get("incubation"):
+            errors.append(f"route {rid}: incubation routes cannot be live_verified")
         records = route.get("evidence") or []
         if not isinstance(records, list):
             errors.append(f"route {rid}: evidence must be a list")
@@ -223,8 +230,10 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
             continue
         if AUTHORITY_KEYS.intersection(rnk):
             errors.append(f"rankings {rid}: must not grant {sorted(AUTHORITY_KEYS.intersection(rnk))}")
-        for kind in ("quality", "selection"):
+        for kind in REQUIRED_RANKING_KINDS + OPTIONAL_RANKING_KINDS:
             rows = rnk.get(kind)
+            if kind in OPTIONAL_RANKING_KINDS and not rows:
+                continue
             if not isinstance(rows, list) or not rows:
                 errors.append(f"rankings.{rid}.{kind} must be a non-empty list")
                 continue
@@ -233,7 +242,7 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                 if not isinstance(row, dict) or row.get("route") not in routes:
                     errors.append(f"rankings.{rid}.{kind}[{i}]: route must name a cataloged route")
                     continue
-                n = row.get("rank") if kind == "quality" else row.get("priority")
+                n = row.get("rank") if kind != "selection" else row.get("priority")
                 if not isinstance(n, int) or n < 1:
                     errors.append(f"rankings.{rid}.{kind}[{i}]: rank/priority must be a positive integer")
                 else:
@@ -291,6 +300,20 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
     if not isinstance(intake, dict) or not intake.get("promote_requires"):
         errors.append("model-registry: intake.promote_requires is required (two-phase new-model intake)")
 
+    census = registry.get("census") or {}
+    if census:
+        if not census.get("as_of") or not census.get("scope"):
+            errors.append("model-registry: census.as_of and census.scope are required when census is present")
+        for mid in census.get("required_model_ids") or []:
+            if mid not in models:
+                errors.append(f"census: required model {mid!r} is missing")
+                continue
+            if not any(r.get("model") == mid for r in routes.values()):
+                errors.append(f"census: required model {mid!r} has no route")
+        for mid in census.get("ambiguous_ids_forbidden") or []:
+            if mid in models:
+                errors.append(f"census: ambiguous model id {mid!r} is forbidden")
+
     return errors
 
 
@@ -345,6 +368,8 @@ def _matches(row: dict, *, required_capabilities=None, required_tools=None,
              data_boundary=None, exclude_models=None, exclude_families=None,
              exclude_routes=None, hosts=None, quota_spent=None) -> bool:
     if row["route_state"] not in ACTIVE_RESOLVE_STATES:
+        return False
+    if row.get("incubation"):
         return False
     if row["lifecycle"] not in ROUTABLE_LIFECYCLES:
         return False
@@ -474,13 +499,20 @@ def rankings_for(registry: dict, role: str) -> dict:
     rnk = (registry.get("rankings") or {}).get(role)
     if not rnk:
         raise RegistryError(f"unknown role {role!r}")
-    return {
+    blob = {
         "role": role,
         "quality": rnk.get("quality") or [],
         "selection": rnk.get("selection") or [],
-        "note": "quality_rank and selection_priority are independent; neither grants authority",
+        "note": (
+            "quality_rank and selection_priority are independent; neither grants authority. "
+            "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering. "
+            "Cost/token efficiency is selection or an explicit efficiency field, not quality."
+        ),
         "authority_grants": False,
     }
+    if rnk.get("efficiency"):
+        blob["efficiency"] = rnk.get("efficiency")
+    return blob
 
 
 def live_review_providers(registry: dict, providers: dict) -> list[str]:
@@ -516,7 +548,20 @@ def render_matrix(registry: dict) -> str:
         "",
         "A catalog entry is not a usable route. Only `live_verified` routes resolve.",
         "Quality rank is not selection priority. Rank never grants tools or data.",
+        "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",
         "",
+    ]
+    census = registry.get("census") or {}
+    if census:
+        lines += [
+            "## Census scope",
+            "",
+            f"- as_of: {census.get('as_of', '')}",
+            f"- cutoff: {census.get('cutoff') or census.get('as_of', '')}",
+            f"- scope: {census.get('scope', '')}",
+            "",
+        ]
+    lines += [
         "## Models",
         "",
         "| id | family | lab | lifecycle | official ids | excluded |",
@@ -556,7 +601,7 @@ def render_matrix(registry: dict) -> str:
             lines.append("")
         lines.append("| kind | n | route | confidence |")
         lines.append("|---|---:|---|---|")
-        for kind, key in (("quality", "rank"), ("selection", "priority")):
+        for kind, key in (("quality", "rank"), ("selection", "priority"), ("efficiency", "rank")):
             for row in rnk.get(kind) or []:
                 lines.append(
                     f"| {kind} | {row.get(key)} | `{row.get('route')}` | {row.get('confidence') or ''} |"

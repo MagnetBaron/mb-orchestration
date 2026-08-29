@@ -38,7 +38,7 @@
     "opus-4.8": {
       "bin": "claude", "args_template": ["-p", "review the git diff on {branch}; verdict ship|fix-list|blocked"],
       "reads": "git-diff", "worktree": false, "never_metered_host": true, "dispatcher_account_forbidden": true,
-      "note": "Opus 4.8 compatibility fallback. Same family as Opus 5; not in review_order. MUST run on another Claude seat via teamclaude."
+      "note": "Opus 4.8 intended time-bounded compatibility fallback. Same family as Opus 5; not in review_order. Catalog-verified only until a direct smoke exists, so runtime fails closed. MUST run on another Claude seat via teamclaude."
     },
     "fable-5": {
       "bin": "claude", "args_template": ["-p", "architecture pass on the git diff on {branch}"],

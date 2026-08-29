@@ -47,7 +47,7 @@ def recommend(h):
     reviews = h["reviews_per_week"]
     if reviews > 0 or h["cross_family"]:
         stack["claude-max"] = 1
-        reasons.append("1× Claude Max: the Fable + Opus 4.8 anchor for frontier review/architecture.")
+        reasons.append("1× Claude Max: the Fable + Opus 5 anchor for frontier review/architecture.")
     # More review volume → add Team premium seats (Fable) for teamclaude rotation.
     extra_team = 0
     if reviews > 10:
@@ -59,7 +59,7 @@ def recommend(h):
     # Overflow / cheap Opus capacity if sustained but not review-heavy
     if h["implement_hours_per_day"] >= 3 and reviews <= 10:
         stack["claude-pro"] = 2
-        reasons.append("2× Claude Pro: cheap Opus 4.8 overflow + teamclaude rotation headroom (no Fable).")
+        reasons.append("2× Claude Pro: cheap Opus 5 overflow + teamclaude rotation headroom (no Fable).")
 
     # MCP bulk + the OpenAI review family → Codex $200
     if h["mcp_bulk_per_week"] > 0 or h["cross_family"]:

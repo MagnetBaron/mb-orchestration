@@ -65,6 +65,15 @@ class FailClosedTests(unittest.TestCase):
         self.assertNotIn("gpt-5.5-codex", ids)
         self.assertNotIn("grok-4.5-cli", ids)
 
+    def test_opus_48_is_catalog_verified_and_does_not_resolve(self):
+        registry = live()
+        self.assertEqual(registry["routes"]["opus-4.8-teamclaude"]["route_state"], "catalog_verified")
+        review = mr.resolve(registry, "code_review", n=5)
+        ids = [r["route"] for r in review["routes"]]
+        self.assertNotIn("opus-4.8-teamclaude", ids)
+        impl = mr.resolve(registry, "implementation", n=5)
+        self.assertNotIn("opus-4.8-teamclaude", [r["route"] for r in impl["routes"]])
+
     def test_auth_blocked_never_resolves(self):
         decision = mr.resolve(live(), "code_review", n=5)
         ids = [r["route"] for r in decision["routes"]]
@@ -137,6 +146,10 @@ class RouteStateSeparationTests(unittest.TestCase):
         self.assertEqual(states["opus-5-teamclaude"], "live_verified")
         self.assertEqual(states["opus-5-direct-claude"], "auth_blocked")
         self.assertEqual(states["gpt-5.5-codex"], "catalog_verified")
+        self.assertEqual(states["opus-4.8-teamclaude"], "catalog_verified")
+        self.assertNotIn("deepseek-v4-unwired", states)
+        self.assertEqual(states["deepseek-v4-pro-unwired"], "unwired")
+        self.assertEqual(states["deepseek-v4-flash-unwired"], "unwired")
 
     def test_quality_rank_is_not_selection(self):
         impl = mr.rankings_for(live(), "implementation")
@@ -219,6 +232,95 @@ class ReceiptScoringTests(unittest.TestCase):
         self.assertEqual(blob["latency_weight"], 0.0)
         self.assertFalse(blob["authority_grants"])
         self.assertGreater(blob["mean_correctness"], 0.5)
+
+
+class RankingClaimTests(unittest.TestCase):
+    def test_kimi_k3_is_not_above_opus5_for_research_quality(self):
+        rows = live()["rankings"]["research_synthesis"]["quality"]
+        by_route = {row["route"]: row["rank"] for row in rows}
+        self.assertLess(by_route["opus-5-teamclaude"], by_route["kimi-k3-unwired"])
+        kimi = next(row for row in rows if row["route"] == "kimi-k3-unwired")
+        self.assertEqual(kimi["confidence"], "low")
+
+    def test_context_scouting_quality_is_not_price(self):
+        rows = live()["rankings"]["context_scouting"]["quality"]
+        self.assertNotEqual(rows[0]["route"], "glm-5.3-flash-unwired")
+        efficiency = live()["rankings"]["context_scouting"]["efficiency"]
+        self.assertEqual(efficiency[0]["route"], "glm-5.3-flash-unwired")
+
+    def test_implementation_default_remains_grok(self):
+        impl = mr.rankings_for(live(), "implementation")
+        self.assertEqual(impl["selection"][0]["route"], "grok-4.6-build")
+        self.assertIn("evidence-bounded", impl["note"])
+
+    def test_incubation_does_not_resolve_even_if_marked_live(self):
+        data = copy.deepcopy(live())
+        route = data["routes"]["glm-5.3-flash-unwired"]
+        route["route_state"] = "live_verified"
+        route["incubation"] = True
+        route["host"] = "fake-host"
+        route["evidence"] = [{"date": "2026-08-28", "route_state": "live_verified"}]
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("incubation" in e for e in errors))
+        data["rankings"]["context_scouting"]["selection"] = [
+            {"priority": 1, "route": "glm-5.3-flash-unwired", "confidence": "low", "rationale": "injected"},
+            {"priority": 2, "route": "gpt-5.6-luna-codex", "confidence": "medium", "rationale": "live"},
+        ]
+        decision = mr.resolve(data, "context_scouting")
+        self.assertNotIn("glm-5.3-flash-unwired", [r["route"] for r in decision["routes"]])
+
+
+class CensusTests(unittest.TestCase):
+    REQUIRED = (
+        "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite", "gemini-3.1-pro-preview", "gemini-3-flash-preview",
+        "kimi-k3", "kimi-k2.7-code", "kimi-k2.6",
+        "deepseek-v4-pro", "deepseek-v4-flash",
+        "muse-spark-1.2", "muse-code",
+    )
+
+    def test_census_scope_and_required_models(self):
+        registry = live()
+        census = registry["census"]
+        self.assertEqual(census["cutoff"], "2026-08-28")
+        self.assertIn("scoped", census["scope"].lower())
+        self.assertNotIn("deepseek-v4", registry["models"])
+        for mid in self.REQUIRED:
+            self.assertIn(mid, registry["models"])
+            routes = [r for r in registry["routes"].values() if r.get("model") == mid]
+            self.assertTrue(routes, mid)
+            self.assertTrue(all(r["route_state"] != "live_verified" for r in routes), mid)
+
+    def test_opus5_direct_smoke_is_the_only_local_smoke_anthropic_gate(self):
+        registry = live()
+        self.assertEqual(registry["routes"]["opus-5-teamclaude"]["evidence_strength"], "local_smoke")
+        self.assertIn("Direct live smoke", registry["routes"]["opus-5-teamclaude"]["evidence"][0]["source"])
+        self.assertEqual(registry["routes"]["opus-4.8-teamclaude"]["evidence_strength"], "none")
+        self.assertEqual(registry["routes"]["gpt-5.6-sol-codex"]["evidence_strength"], "cli_listing")
+
+
+class FableEvalLabelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fe = load_mod("fable_eval", HERE / "fable-eval.py")
+
+    def test_default_comparison_arm_is_opus5(self):
+        class Args:
+            fable_model = None
+            opus_model = None
+            grader_model = None
+        models = self.fe.resolve_models(Args())
+        self.assertEqual(models["opus"], "claude-opus-5")
+        self.assertEqual(self.fe.comparison_arm_label(models["opus"]), "Opus 5")
+        line = self.fe.overall_outcome_line([], [{"axis": "coding"}], models["opus"])
+        self.assertIn("Opus 5", line)
+        self.assertNotIn("Opus 4.8", line)
+
+    def test_label_follows_resolved_model(self):
+        self.assertEqual(self.fe.comparison_arm_label("claude-opus-4-8"), "Opus 4.8")
+        line = self.fe.overall_outcome_line(["coding"], [{"axis": "coding"}], "claude-opus-4-8")
+        self.assertIn("Opus 4.8", line)
+        self.assertIn("1 of 1", line)
 
 
 if __name__ == "__main__":

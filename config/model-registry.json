@@ -12,10 +12,15 @@
     "catalog_is_not_a_route": true,
     "quality_rank_is_not_selection_priority": true,
     "unknown_availability_fails_closed": true,
-    "fable_is_same_family_as_opus": true
+    "fable_is_same_family_as_opus": true,
+    "rankings_are_role_and_harness_specific": true,
+    "quality_is_not_price": true
   },
   "intake": {
-    "phases": ["catalog_non_routable", "promote_live_verified"],
+    "phases": [
+      "catalog_non_routable",
+      "promote_live_verified"
+    ],
     "promote_requires": [
       "official_id",
       "local_access_smoke",
@@ -26,20 +31,57 @@
     ]
   },
   "excluded_from_routing": {
-    "classes": ["media-only", "embedding", "moderation", "audio-only", "invitation-only"],
+    "classes": [
+      "media-only",
+      "embedding",
+      "moderation",
+      "audio-only",
+      "invitation-only"
+    ],
     "note": "May be mentioned in audits. Never receive a resolvable route."
   },
   "families": {
-    "anthropic": {"label": "Anthropic (Claude)", "independence_group": "anthropic", "note": "Opus and Fable are one family."},
-    "openai": {"label": "OpenAI (GPT / Codex)", "independence_group": "openai"},
-    "xai": {"label": "xAI (Grok)", "independence_group": "xai"},
-    "google": {"label": "Google (Gemini)", "independence_group": "google"},
-    "moonshot": {"label": "Moonshot (Kimi)", "independence_group": "moonshot"},
-    "zhipu": {"label": "Zhipu / Z.AI (GLM)", "independence_group": "zhipu"},
-    "alibaba": {"label": "Alibaba (Qwen)", "independence_group": "alibaba"},
-    "deepseek": {"label": "DeepSeek", "independence_group": "deepseek"},
-    "meta": {"label": "Meta (Muse / Llama)", "independence_group": "meta"},
-    "open-weight": {"label": "Independent open-weight slot", "independence_group": "open-weight"}
+    "anthropic": {
+      "label": "Anthropic (Claude)",
+      "independence_group": "anthropic",
+      "note": "Opus and Fable are one family."
+    },
+    "openai": {
+      "label": "OpenAI (GPT / Codex)",
+      "independence_group": "openai"
+    },
+    "xai": {
+      "label": "xAI (Grok)",
+      "independence_group": "xai"
+    },
+    "google": {
+      "label": "Google (Gemini)",
+      "independence_group": "google"
+    },
+    "moonshot": {
+      "label": "Moonshot (Kimi)",
+      "independence_group": "moonshot"
+    },
+    "zhipu": {
+      "label": "Zhipu / Z.AI (GLM)",
+      "independence_group": "zhipu"
+    },
+    "alibaba": {
+      "label": "Alibaba (Qwen)",
+      "independence_group": "alibaba"
+    },
+    "deepseek": {
+      "label": "DeepSeek",
+      "independence_group": "deepseek"
+    },
+    "meta": {
+      "label": "Meta (Muse / Llama)",
+      "independence_group": "meta"
+    },
+    "open-weight": {
+      "label": "Independent open-weight slot",
+      "independence_group": "open-weight"
+    }
   },
   "models": {
     "claude-opus-5": {
@@ -49,9 +91,20 @@
       "lifecycle": "stable",
       "released": "2026-07-24",
       "context_window": 1000000,
-      "modalities": ["text", "vision"],
-      "pricing_list_usd_per_mtok": {"input": 5, "output": 25, "source": "vendor", "as_of": "2026-08-28"},
-      "official_ids": ["claude-opus-5", "opus-5"],
+      "modalities": [
+        "text",
+        "vision"
+      ],
+      "pricing_list_usd_per_mtok": {
+        "input": 5,
+        "output": 25,
+        "source": "vendor",
+        "as_of": "2026-08-28"
+      },
+      "official_ids": [
+        "claude-opus-5",
+        "opus-5"
+      ],
       "notes": "Everyday Anthropic default at the same list price as 4.8. Not a bulk implementer."
     },
     "claude-opus-4-8": {
@@ -59,15 +112,22 @@
       "family": "anthropic",
       "lab": "Anthropic",
       "lifecycle": "superseded",
-      "official_ids": ["claude-opus-4-8", "opus-4.8", "claude-opus-4.8"],
-      "notes": "Time-bounded compatibility fallback while genuinely available. Not the operational Anthropic gate."
+      "official_ids": [
+        "claude-opus-4-8",
+        "opus-4.8",
+        "claude-opus-4.8"
+      ],
+      "notes": "Intended time-bounded compatibility fallback while genuinely available. Not the operational Anthropic gate. Not live_verified in the 2026-08-28 audit."
     },
     "claude-fable-5": {
       "label": "Claude Fable 5",
       "family": "anthropic",
       "lab": "Anthropic",
       "lifecycle": "restricted",
-      "official_ids": ["claude-fable-5", "fable-5"],
+      "official_ids": [
+        "claude-fable-5",
+        "fable-5"
+      ],
       "notes": "Rare long-horizon/architecture escalation. Same family as Opus. Public measurements can be contaminated by safety fallback to Opus."
     },
     "gpt-5.6-sol": {
@@ -75,7 +135,9 @@
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.6-sol"],
+      "official_ids": [
+        "gpt-5.6-sol"
+      ],
       "notes": "Scarce OpenAI judgment. Relatively concise. OpenAI reports Coding Agent Index 80 (vendor, self-reported)."
     },
     "gpt-5.6-terra": {
@@ -83,7 +145,9 @@
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.6-terra"],
+      "official_ids": [
+        "gpt-5.6-terra"
+      ],
       "notes": "MCP volume / high-context worker on the Codex plan."
     },
     "gpt-5.6-luna": {
@@ -91,7 +155,9 @@
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.6-luna"],
+      "official_ids": [
+        "gpt-5.6-luna"
+      ],
       "notes": "Lightweight coordination. Dispatch quality candidate; authority still lives in entrypoints.json."
     },
     "gpt-5.5": {
@@ -99,35 +165,46 @@
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.5"]
+      "official_ids": [
+        "gpt-5.5"
+      ]
     },
     "gpt-5.4": {
       "label": "GPT-5.4",
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.4"]
+      "official_ids": [
+        "gpt-5.4"
+      ]
     },
     "gpt-5.4-mini": {
       "label": "GPT-5.4 Mini",
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.4-mini"]
+      "official_ids": [
+        "gpt-5.4-mini"
+      ]
     },
     "gpt-5.3-codex-spark": {
       "label": "GPT-5.3 Codex Spark",
       "family": "openai",
       "lab": "OpenAI",
       "lifecycle": "stable",
-      "official_ids": ["gpt-5.3-codex-spark"]
+      "official_ids": [
+        "gpt-5.3-codex-spark"
+      ]
     },
     "grok-4.6": {
       "label": "Grok 4.6",
       "family": "xai",
       "lab": "xAI",
       "lifecycle": "stable",
-      "official_ids": ["grok-4.6", "grok-4.6-build"],
+      "official_ids": [
+        "grok-4.6",
+        "grok-4.6-build"
+      ],
       "notes": "Default implementer. Near-frontier and materially cheaper than scarce review seats. Effort order is empirical (high vs xhigh)."
     },
     "grok-4.5": {
@@ -135,14 +212,18 @@
       "family": "xai",
       "lab": "xAI",
       "lifecycle": "superseded",
-      "official_ids": ["grok-4.5"]
+      "official_ids": [
+        "grok-4.5"
+      ]
     },
     "gemini-3.7-flash": {
       "label": "Gemini 3.7 Flash",
       "family": "google",
       "lab": "Google",
       "lifecycle": "preview",
-      "official_ids": ["gemini-3.7-flash"],
+      "official_ids": [
+        "gemini-3.7-flash"
+      ],
       "notes": "Multimodal/volume candidate. Public availability does not create a Google MCP connector."
     },
     "kimi-k3": {
@@ -150,8 +231,11 @@
       "family": "moonshot",
       "lab": "Moonshot",
       "lifecycle": "stable",
-      "official_ids": ["kimi-k3", "kimi-k3-max"],
-      "notes": "Long-context research candidate. Independent reports call it verbose."
+      "official_ids": [
+        "kimi-k3",
+        "kimi-k3-max"
+      ],
+      "notes": "Long-context research candidate. Independent reports call it verbose. Global index plus long context is not comparable role evidence vs Opus 5; incubation until local role evals."
     },
     "glm-5.3-flash": {
       "label": "GLM 5.3 Flash",
@@ -159,7 +243,9 @@
       "lab": "Z.AI",
       "lifecycle": "preview",
       "released": "2026-08-26",
-      "official_ids": ["glm-5.3-flash"],
+      "official_ids": [
+        "glm-5.3-flash"
+      ],
       "notes": "Promising cost-efficient scout/volume candidate. Vendor-heavy evidence; incubation until local corroboration."
     },
     "glm-5.2": {
@@ -167,39 +253,152 @@
       "family": "zhipu",
       "lab": "Z.AI",
       "lifecycle": "stable",
-      "official_ids": ["glm-5.2", "glm-5-2"]
+      "official_ids": [
+        "glm-5.2",
+        "glm-5-2"
+      ]
     },
     "qwen-3.8-max": {
       "label": "Qwen 3.8 Max",
       "family": "alibaba",
       "lab": "Alibaba",
       "lifecycle": "stable",
-      "official_ids": ["qwen-3.8-max", "qwen3-8-max"],
+      "official_ids": [
+        "qwen-3.8-max",
+        "qwen3-8-max"
+      ],
       "notes": "Unwired coding/review candidate. Independent reports call it very verbose."
-    },
-    "deepseek-v4": {
-      "label": "DeepSeek V4",
-      "family": "deepseek",
-      "lab": "DeepSeek",
-      "lifecycle": "stable",
-      "official_ids": ["deepseek-v4", "deepseek-chat"],
-      "notes": "Unwired coding/review candidate."
     },
     "muse-spark-1.2": {
       "label": "Muse Spark 1.2",
       "family": "meta",
       "lab": "Meta",
       "lifecycle": "preview",
-      "official_ids": ["muse-spark-1.2"],
-      "notes": "Unwired coding/computer-use candidate."
+      "official_ids": [
+        "muse-spark-1.2"
+      ],
+      "notes": "Unwired coding/computer-use model. Distinct from the Muse Code agent product."
     },
     "open-weight-review-e": {
       "label": "Review E independent-family slot",
       "family": "open-weight",
       "lab": "unspecified",
       "lifecycle": "restricted",
-      "official_ids": ["review-e"],
+      "official_ids": [
+        "review-e"
+      ],
       "notes": "Independence slot, not a named model. Fireworks today, local open-weight later. Never sees secrets/PII."
+    },
+    "gemini-3.6-flash": {
+      "label": "Gemini 3.6 Flash",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "stable",
+      "official_ids": [
+        "gemini-3.6-flash"
+      ],
+      "notes": "Previous-generation Flash. Unwired multimodal/volume candidate. Public availability does not create a Google MCP connector."
+    },
+    "gemini-3.5-flash": {
+      "label": "Gemini 3.5 Flash",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "stable",
+      "official_ids": [
+        "gemini-3.5-flash"
+      ],
+      "notes": "Legacy Flash. Unwired. Public availability does not create a Google MCP connector."
+    },
+    "gemini-3.5-flash-lite": {
+      "label": "Gemini 3.5 Flash-Lite",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "stable",
+      "official_ids": [
+        "gemini-3.5-flash-lite"
+      ],
+      "notes": "High-throughput Flash-Lite. Cost candidate, not a quality ranking by price. Unwired; no connector."
+    },
+    "gemini-3.1-flash-lite": {
+      "label": "Gemini 3.1 Flash-Lite",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "stable",
+      "official_ids": [
+        "gemini-3.1-flash-lite"
+      ],
+      "notes": "Older Flash-Lite generation. Unwired; no connector."
+    },
+    "gemini-3.1-pro-preview": {
+      "label": "Gemini 3.1 Pro Preview",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "preview",
+      "official_ids": [
+        "gemini-3.1-pro-preview"
+      ],
+      "notes": "Preview Pro. Unwired reasoning candidate. Public availability does not create a connector."
+    },
+    "gemini-3-flash-preview": {
+      "label": "Gemini 3 Flash Preview",
+      "family": "google",
+      "lab": "Google",
+      "lifecycle": "preview",
+      "official_ids": [
+        "gemini-3-flash-preview"
+      ],
+      "notes": "Gemini 3 Flash preview id. Unwired. Public availability does not create a connector."
+    },
+    "kimi-k2.7-code": {
+      "label": "Kimi K2.7 Code",
+      "family": "moonshot",
+      "lab": "Moonshot",
+      "lifecycle": "stable",
+      "official_ids": [
+        "kimi-k2.7-code",
+        "kimi-for-coding"
+      ],
+      "notes": "Coding-focused Kimi. Unwired candidate. Vendor coding benches are self-reported."
+    },
+    "kimi-k2.6": {
+      "label": "Kimi K2.6",
+      "family": "moonshot",
+      "lab": "Moonshot",
+      "lifecycle": "superseded",
+      "official_ids": [
+        "kimi-k2.6"
+      ],
+      "notes": "Prior Kimi general model; still listed. Unwired. Thinking-off traffic on newer Kimi ids can route here."
+    },
+    "deepseek-v4-pro": {
+      "label": "DeepSeek V4 Pro",
+      "family": "deepseek",
+      "lab": "DeepSeek",
+      "lifecycle": "stable",
+      "official_ids": [
+        "deepseek-v4-pro"
+      ],
+      "notes": "Current DeepSeek quality/reasoning model. Distinct from V4 Flash. Unwired coding/review candidate."
+    },
+    "deepseek-v4-flash": {
+      "label": "DeepSeek V4 Flash",
+      "family": "deepseek",
+      "lab": "DeepSeek",
+      "lifecycle": "stable",
+      "official_ids": [
+        "deepseek-v4-flash"
+      ],
+      "notes": "Current DeepSeek latency/cost model. Distinct from V4 Pro. Unwired. Efficiency candidate, not a quality rank by price."
+    },
+    "muse-code": {
+      "label": "Muse Code",
+      "family": "meta",
+      "lab": "Meta",
+      "lifecycle": "preview",
+      "official_ids": [
+        "muse-code"
+      ],
+      "notes": "Meta terminal coding agent, distinct from the Muse Spark 1.2 model it is powered by. Unwired candidate; a product/harness is not a live route."
     }
   },
   "routes": {
@@ -212,9 +411,21 @@
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
       "evidence_strength": "local_smoke",
-      "capabilities": ["review", "mcp_judgment", "dispatch", "code", "architecture"],
+      "capabilities": [
+        "review",
+        "mcp_judgment",
+        "dispatch",
+        "code",
+        "architecture"
+      ],
       "tools": [],
-      "connectors": ["google-search-console", "gsc-indexing", "google-drive", "dataforseo", "github"],
+      "connectors": [
+        "google-search-console",
+        "gsc-indexing",
+        "google-drive",
+        "dataforseo",
+        "github"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "claude-any-seat",
       "evidence": [
@@ -222,7 +433,7 @@
           "date": "2026-08-28",
           "route_state": "live_verified",
           "kind": "local_smoke",
-          "source": "teamclaude run -- claude ... --model claude-opus-5 resolved to canonical claude-opus-5, first-party, 1M context"
+          "source": "Direct live smoke: teamclaude run -- claude ... --model claude-opus-5 resolved to canonical claude-opus-5, first-party, 1M context."
         }
       ],
       "notes": "Operational Anthropic review/judgment seat."
@@ -233,25 +444,36 @@
       "host": "teamclaude",
       "harness": "claude-cli",
       "invocation_id": "claude-opus-4-8",
-      "route_state": "live_verified",
+      "route_state": "catalog_verified",
       "compatibility_fallback": true,
       "fallback_until": "2026-12-31",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
+      "evidence_strength": "none",
+      "capabilities": [
+        "review",
+        "mcp_judgment",
+        "dispatch",
+        "code"
+      ],
       "tools": [],
-      "connectors": ["google-search-console", "gsc-indexing", "google-drive", "dataforseo", "github"],
+      "connectors": [
+        "google-search-console",
+        "gsc-indexing",
+        "google-drive",
+        "dataforseo",
+        "github"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "claude-any-seat",
       "evidence": [
         {
           "date": "2026-08-28",
-          "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "teamclaude still serves Opus 4.8 while the id remains available"
+          "route_state": "catalog_verified",
+          "kind": "none",
+          "source": "Not directly invoked in the 2026-08-28 audit. Documented as the intended time-bounded compatibility fallback. Fail closed until a direct smoke receipt exists."
         }
       ],
-      "notes": "Compatibility fallback only. Not in review_order."
+      "notes": "Intended compatibility fallback only. Not in review_order. catalog_verified — does not resolve until live-smoked."
     },
     "opus-5-direct-claude": {
       "model": "claude-opus-5",
@@ -262,7 +484,12 @@
       "route_state": "auth_blocked",
       "evidence_date": "2026-08-28",
       "evidence_strength": "local_smoke",
-      "capabilities": ["review", "mcp_judgment", "dispatch", "code"],
+      "capabilities": [
+        "review",
+        "mcp_judgment",
+        "dispatch",
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "claude-direct",
       "evidence": [
@@ -284,16 +511,18 @@
       "route_state": "live_verified",
       "lifecycle_override": "restricted",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["architecture"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "architecture"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "claude-fable-capable-seats",
       "evidence": [
         {
           "date": "2026-08-28",
           "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "teamclaude status showed usable Fable on at least one configured account"
+          "kind": "cli_listing",
+          "source": "teamclaude status listed usable Fable on at least one configured account (status listing, not a direct invocation in this audit). Standing architecture-escalation provider in providers.json."
         }
       ],
       "notes": "Architecture/long-horizon only. Never a gating reviewer. Never a second family with Opus."
@@ -306,16 +535,19 @@
       "invocation_id": "gpt-5.6-sol",
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["review", "mcp_judgment"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "review",
+        "mcp_judgment"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
         {
           "date": "2026-08-28",
           "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "gpt --models exposed gpt-5.6-sol with effort levels"
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.6-sol with effort levels (CLI listing, not a direct invocation in this audit). Standing operational Codex Sol provider in providers.json."
         }
       ]
     },
@@ -327,16 +559,19 @@
       "invocation_id": "gpt-5.6-terra",
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["mcp_bulk", "dispatch"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "mcp_bulk",
+        "dispatch"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
         {
           "date": "2026-08-28",
           "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "gpt --models exposed gpt-5.6-terra"
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.6-terra (CLI listing, not a direct invocation in this audit). Standing operational Codex Terra provider in providers.json."
         }
       ]
     },
@@ -348,16 +583,19 @@
       "invocation_id": "gpt-5.6-luna",
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["mcp_bulk", "dispatch"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "mcp_bulk",
+        "dispatch"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
         {
           "date": "2026-08-28",
           "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "gpt --models exposed gpt-5.6-luna"
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.6-luna (CLI listing, not a direct invocation in this audit). Standing operational Codex Luna provider in providers.json."
         }
       ]
     },
@@ -368,12 +606,19 @@
       "invocation_id": "gpt-5.5",
       "route_state": "catalog_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "catalog_verified", "kind": "local_smoke", "source": "gpt --models listed gpt-5.5; not wired as a seat"}
+        {
+          "date": "2026-08-28",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.5 (CLI listing, not a direct invocation). Not wired as a seat."
+        }
       ]
     },
     "gpt-5.4-codex": {
@@ -383,12 +628,19 @@
       "invocation_id": "gpt-5.4",
       "route_state": "catalog_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "catalog_verified", "kind": "local_smoke", "source": "gpt --models listed gpt-5.4; not wired as a seat"}
+        {
+          "date": "2026-08-28",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.4 (CLI listing, not a direct invocation). Not wired as a seat."
+        }
       ]
     },
     "gpt-5.4-mini-codex": {
@@ -398,12 +650,19 @@
       "invocation_id": "gpt-5.4-mini",
       "route_state": "catalog_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "catalog_verified", "kind": "local_smoke", "source": "gpt --models listed gpt-5.4-mini; not wired as a seat"}
+        {
+          "date": "2026-08-28",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.4-mini (CLI listing, not a direct invocation). Not wired as a seat."
+        }
       ]
     },
     "gpt-5.3-codex-spark-codex": {
@@ -413,12 +672,19 @@
       "invocation_id": "gpt-5.3-codex-spark",
       "route_state": "catalog_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "codex-200",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "catalog_verified", "kind": "local_smoke", "source": "gpt --models listed gpt-5.3-codex-spark; not wired as a seat"}
+        {
+          "date": "2026-08-28",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "gpt --models listed gpt-5.3-codex-spark (CLI listing, not a direct invocation). Not wired as a seat."
+        }
       ]
     },
     "grok-4.6-build": {
@@ -429,16 +695,19 @@
       "invocation_id": "grok-4.6",
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code", "implement"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code",
+        "implement"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "grok-heavy",
       "evidence": [
         {
           "date": "2026-08-28",
           "route_state": "live_verified",
-          "kind": "local_smoke",
-          "source": "grok models exposed grok-4.6; cached authenticated registry readable despite network warnings on refresh"
+          "kind": "cli_listing",
+          "source": "grok models listed grok-4.6 (CLI listing, not a dedicated invocation receipt in this audit). Standing operational Grok Build implementer in providers.json."
         }
       ]
     },
@@ -451,11 +720,19 @@
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
       "evidence_strength": "local_smoke",
-      "capabilities": ["code", "ide"],
+      "capabilities": [
+        "code",
+        "ide"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "cursor-ultra",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "live_verified", "kind": "owner_eval", "source": "Cursor first-party Models pool includes Grok 4.6 / Composer"}
+        {
+          "date": "2026-08-28",
+          "route_state": "live_verified",
+          "kind": "owner_eval",
+          "source": "Standing Cursor first-party Models pool provider (Grok 4.6 / Composer) in providers.json. Not a CLI invocation in this audit."
+        }
       ]
     },
     "grok-4.5-cli": {
@@ -465,12 +742,19 @@
       "invocation_id": "grok-4.5",
       "route_state": "catalog_verified",
       "evidence_date": "2026-08-28",
-      "evidence_strength": "local_smoke",
-      "capabilities": ["code"],
+      "evidence_strength": "cli_listing",
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "grok-heavy",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "catalog_verified", "kind": "local_smoke", "source": "grok models exposed grok-4.5; not the default implementer"}
+        {
+          "date": "2026-08-28",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "grok models listed grok-4.5 (CLI listing, not a direct invocation). Not the default implementer."
+        }
       ]
     },
     "grok-bot-visual-qa": {
@@ -482,11 +766,19 @@
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
       "evidence_strength": "owner_eval",
-      "capabilities": ["browser", "visual_qa"],
+      "capabilities": [
+        "browser",
+        "visual_qa"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "grok-heavy",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "live_verified", "kind": "owner_eval", "source": "standing Grok Bot Website Visual QA via Slack"}
+        {
+          "date": "2026-08-28",
+          "route_state": "live_verified",
+          "kind": "owner_eval",
+          "source": "Standing Grok Bot Website Visual QA provider via Slack. Not a CLI invocation in this audit."
+        }
       ]
     },
     "grok-bot-heat-map": {
@@ -498,11 +790,19 @@
       "route_state": "live_verified",
       "evidence_date": "2026-08-28",
       "evidence_strength": "owner_eval",
-      "capabilities": ["browser", "analytics"],
+      "capabilities": [
+        "browser",
+        "analytics"
+      ],
       "data_boundary": "subscription",
       "quota_bucket": "grok-heavy",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "live_verified", "kind": "owner_eval", "source": "standing Grok Bot Heat Map identity"}
+        {
+          "date": "2026-08-28",
+          "route_state": "live_verified",
+          "kind": "owner_eval",
+          "source": "Standing Grok Bot Heat Map identity in providers.json. Not a CLI invocation in this audit."
+        }
       ]
     },
     "review-e-fireworks": {
@@ -514,11 +814,18 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "none",
-      "capabilities": ["review"],
+      "capabilities": [
+        "review"
+      ],
       "data_boundary": "metered_third_party",
       "quota_bucket": "fireworks-api",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "none", "source": "wired:false in providers.json"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "none",
+          "source": "wired:false in providers.json"
+        }
       ]
     },
     "gemini-3.7-flash-unwired": {
@@ -529,10 +836,17 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "vendor_self_reported",
-      "capabilities": ["mcp_bulk"],
+      "capabilities": [
+        "mcp_bulk"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "vendor_self_reported", "source": "https://ai.google.dev/gemini-api/docs/models"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
       ]
     },
     "kimi-k3-unwired": {
@@ -543,10 +857,17 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "independent_benchmark",
-      "capabilities": ["research"],
+      "capabilities": [
+        "research"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "independent_benchmark", "source": "https://artificialanalysis.ai/models/kimi-k3"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "independent_benchmark",
+          "source": "https://artificialanalysis.ai/models/kimi-k3"
+        }
       ]
     },
     "glm-5.3-flash-unwired": {
@@ -558,10 +879,18 @@
       "incubation": true,
       "evidence_date": "2026-08-28",
       "evidence_strength": "vendor_self_reported",
-      "capabilities": ["context_scout", "mcp_bulk"],
+      "capabilities": [
+        "context_scout",
+        "mcp_bulk"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "vendor_self_reported", "source": "https://z.ai/blog/glm-5.3-flash released 2026-08-26"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://z.ai/blog/glm-5.3-flash released 2026-08-26"
+        }
       ]
     },
     "glm-5.2-unwired": {
@@ -572,10 +901,17 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "independent_benchmark",
-      "capabilities": ["code"],
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "independent_benchmark", "source": "https://artificialanalysis.ai/models/glm-5-2"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "independent_benchmark",
+          "source": "https://artificialanalysis.ai/models/glm-5-2"
+        }
       ]
     },
     "qwen-3.8-max-unwired": {
@@ -586,24 +922,18 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "independent_benchmark",
-      "capabilities": ["code", "review"],
+      "capabilities": [
+        "code",
+        "review"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "independent_benchmark", "source": "https://artificialanalysis.ai/models/qwen3-8-max"}
-      ]
-    },
-    "deepseek-v4-unwired": {
-      "model": "deepseek-v4",
-      "host": "none",
-      "harness": "none",
-      "invocation_id": "deepseek-v4",
-      "route_state": "unwired",
-      "evidence_date": "2026-08-28",
-      "evidence_strength": "vendor_self_reported",
-      "capabilities": ["code", "review"],
-      "data_boundary": "unknown",
-      "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "vendor_self_reported", "source": "https://api-docs.deepseek.com/news/news260813/"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "independent_benchmark",
+          "source": "https://artificialanalysis.ai/models/qwen3-8-max"
+        }
       ]
     },
     "muse-spark-1.2-unwired": {
@@ -614,17 +944,262 @@
       "route_state": "unwired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "vendor_self_reported",
-      "capabilities": ["code"],
+      "capabilities": [
+        "code"
+      ],
       "data_boundary": "unknown",
       "evidence": [
-        {"date": "2026-08-28", "route_state": "unwired", "kind": "vendor_self_reported", "source": "https://ai.meta.com/llama/"}
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.meta.com/llama/"
+        }
       ]
+    },
+    "gemini-3.6-flash-unwired": {
+      "model": "gemini-3.6-flash",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3.6-flash",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "mcp_bulk"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "gemini-3.5-flash-unwired": {
+      "model": "gemini-3.5-flash",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3.5-flash",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "mcp_bulk"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "gemini-3.5-flash-lite-unwired": {
+      "model": "gemini-3.5-flash-lite",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3.5-flash-lite",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "mcp_bulk",
+        "context_scout"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "gemini-3.1-flash-lite-unwired": {
+      "model": "gemini-3.1-flash-lite",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3.1-flash-lite",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "mcp_bulk",
+        "context_scout"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "gemini-3.1-pro-preview-unwired": {
+      "model": "gemini-3.1-pro-preview",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3.1-pro-preview",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "gemini-3-flash-preview-unwired": {
+      "model": "gemini-3-flash-preview",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "gemini-3-flash-preview",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "mcp_bulk"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.google.dev/gemini-api/docs/models"
+        }
+      ]
+    },
+    "kimi-k2.7-code-unwired": {
+      "model": "kimi-k2.7-code",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "kimi-k2.7-code",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://platform.kimi.ai/"
+        }
+      ]
+    },
+    "kimi-k2.6-unwired": {
+      "model": "kimi-k2.6",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "kimi-k2.6",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://platform.kimi.ai/"
+        }
+      ]
+    },
+    "deepseek-v4-pro-unwired": {
+      "model": "deepseek-v4-pro",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "deepseek-v4-pro",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code",
+        "review"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://api-docs.deepseek.com/news/news260813/"
+        }
+      ]
+    },
+    "deepseek-v4-flash-unwired": {
+      "model": "deepseek-v4-flash",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "deepseek-v4-flash",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://api-docs.deepseek.com/news/news260813/"
+        }
+      ],
+      "notes": "Efficiency/latency candidate. Distinct from V4 Pro."
+    },
+    "muse-code-unwired": {
+      "model": "muse-code",
+      "host": "none",
+      "harness": "none",
+      "invocation_id": "muse-code",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "vendor_self_reported",
+      "capabilities": [
+        "code"
+      ],
+      "data_boundary": "unknown",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "vendor_self_reported",
+          "source": "https://ai.meta.com/llama/"
+        }
+      ],
+      "notes": "Agent product, distinct from muse-spark-1.2. Unwired."
     }
   },
   "roles": {
     "dispatch": {
       "description": "Classify, stamp review, brief, assign. Authority is entrypoints.json, not model rank. Luna/Terra rank for dispatch work quality.",
-      "required_capabilities": ["dispatch"]
+      "required_capabilities": [
+        "dispatch"
+      ]
     },
     "context_scouting": {
       "description": "Cheap first pass to compress or extract facts before expensive seats. Added because it reduces expensive context.",
@@ -636,27 +1211,39 @@
     },
     "implementation": {
       "description": "Repo/app code in an isolated worktree.",
-      "required_capabilities": ["code"]
+      "required_capabilities": [
+        "code"
+      ]
     },
     "architecture_spec_critique": {
       "description": "Rare long-horizon / spec critique. Fable is the escalation; Opus 5 covers normal Anthropic judgment.",
-      "required_capabilities": ["architecture"]
+      "required_capabilities": [
+        "architecture"
+      ]
     },
     "code_review": {
       "description": "Diff review. Cross-family pair is Opus 5 + Sol. Fable is not a second family.",
-      "required_capabilities": ["review"]
+      "required_capabilities": [
+        "review"
+      ]
     },
     "mcp_volume": {
       "description": "High-volume connector fetches. Connector presence is required; public models do not create connectors.",
-      "required_capabilities": ["mcp_bulk"]
+      "required_capabilities": [
+        "mcp_bulk"
+      ]
     },
     "mcp_judgment": {
       "description": "Interpret already-fetched MCP output. Never row-dump fetch loops.",
-      "required_capabilities": ["mcp_judgment"]
+      "required_capabilities": [
+        "mcp_judgment"
+      ]
     },
     "visual_qa": {
       "description": "Storefront pixel review of a visitor preview URL.",
-      "required_capabilities": ["visual_qa"]
+      "required_capabilities": [
+        "visual_qa"
+      ]
     },
     "evidence_audit": {
       "description": "Check claims against snapshots and sources. Catches invented metrics before they propagate.",
@@ -670,136 +1257,590 @@
   "rankings": {
     "dispatch": {
       "quality": [
-        {"rank": 1, "route": "gpt-5.6-terra-codex", "confidence": "medium", "rationale": "High-context routing quality on the Codex plan."},
-        {"rank": 2, "route": "opus-5-teamclaude", "confidence": "medium", "rationale": "Strong judgment; scarce. Authority here is assigned, not earned by rank."},
-        {"rank": 3, "route": "gpt-5.6-luna-codex", "confidence": "medium", "rationale": "Lightweight coordination quality."}
+        {
+          "rank": 1,
+          "route": "gpt-5.6-terra-codex",
+          "confidence": "medium",
+          "rationale": "High-context routing quality on the Codex plan."
+        },
+        {
+          "rank": 2,
+          "route": "opus-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Strong judgment; scarce. Authority here is assigned, not earned by rank."
+        },
+        {
+          "rank": 3,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "medium",
+          "rationale": "Lightweight coordination quality."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "gpt-5.6-luna-codex", "confidence": "high", "rationale": "Routine intake default — dispatch is not a prize for the strongest model.", "when": "routine_intake"},
-        {"priority": 2, "route": "gpt-5.6-terra-codex", "confidence": "high", "rationale": "Ambiguous or high-context routing.", "when": "ambiguous_or_high_context"},
-        {"priority": 3, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "User-assigned dispatcher in this reference setup (entrypoints.json)."}
+        {
+          "priority": 1,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "high",
+          "rationale": "Routine intake default — dispatch is not a prize for the strongest model.",
+          "when": "routine_intake"
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-terra-codex",
+          "confidence": "high",
+          "rationale": "Ambiguous or high-context routing.",
+          "when": "ambiguous_or_high_context"
+        },
+        {
+          "priority": 3,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "User-assigned dispatcher in this reference setup (entrypoints.json)."
+        }
       ]
     },
     "context_scouting": {
       "quality": [
-        {"rank": 1, "route": "glm-5.3-flash-unwired", "confidence": "low", "rationale": "Vendor-reported cost efficiency; incubating; cannot resolve."},
-        {"rank": 2, "route": "gpt-5.6-luna-codex", "confidence": "medium", "rationale": "Live cheap coordinator for extract/compress."},
-        {"rank": 3, "route": "grok-4.6-build", "confidence": "medium", "rationale": "Live abundant volume."}
+        {
+          "rank": 1,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "medium",
+          "rationale": "Live extract/compress coordinator. Quality is operational extract discipline, not price."
+        },
+        {
+          "rank": 2,
+          "route": "grok-4.6-build",
+          "confidence": "medium",
+          "rationale": "Live abundant volume for a first-pass scout."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "gpt-5.6-luna-codex", "confidence": "medium", "rationale": "Live, cheap, already paid."},
-        {"priority": 2, "route": "grok-4.6-build", "confidence": "medium", "rationale": "Live abundant fallback."}
+        {
+          "priority": 1,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "medium",
+          "rationale": "Live, cheap, already paid."
+        },
+        {
+          "priority": 2,
+          "route": "grok-4.6-build",
+          "confidence": "medium",
+          "rationale": "Live abundant fallback."
+        }
+      ],
+      "efficiency": [
+        {
+          "rank": 1,
+          "route": "glm-5.3-flash-unwired",
+          "confidence": "low",
+          "rationale": "Vendor-reported cost/task; incubating; cannot resolve. Efficiency, not quality."
+        },
+        {
+          "rank": 2,
+          "route": "gemini-3.5-flash-lite-unwired",
+          "confidence": "low",
+          "rationale": "Flash-Lite throughput/cost candidate; unwired; no connector."
+        },
+        {
+          "rank": 3,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "medium",
+          "rationale": "Live cheap coordinator on an already-paid plan."
+        }
       ]
     },
     "research_synthesis": {
       "quality": [
-        {"rank": 1, "route": "kimi-k3-unwired", "confidence": "medium", "rationale": "Independent long-context candidate; verbose; unwired."},
-        {"rank": 2, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Strong synthesis; scarce."},
-        {"rank": 3, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "Concise OpenAI judgment."},
-        {"rank": 4, "route": "grok-4.6-build", "confidence": "medium", "rationale": "Live default for non-MCP research write-up."}
+        {
+          "rank": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Role-relevant judgment/synthesis on an already-fetched packet. Independent Intelligence Index 63 at max is supporting, not sole, evidence."
+        },
+        {
+          "rank": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "Concise OpenAI judgment; independent family on the same packet."
+        },
+        {
+          "rank": 3,
+          "route": "grok-4.6-build",
+          "confidence": "medium",
+          "rationale": "Live default for non-MCP research write-up."
+        },
+        {
+          "rank": 4,
+          "route": "kimi-k3-unwired",
+          "confidence": "low",
+          "rationale": "Incubation candidate. A lower global index plus long context is not comparable role evidence versus Opus 5; do not treat as a research-synthesis upgrade."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "grok-4.6-build", "confidence": "high", "rationale": "Live, cheap, preserves review lanes."},
-        {"priority": 2, "route": "gpt-5.6-terra-codex", "confidence": "high", "rationale": "When the packet must come from Google MCP."},
-        {"priority": 3, "route": "opus-5-teamclaude", "confidence": "medium", "rationale": "Scarce judgment on an already-fetched packet."}
+        {
+          "priority": 1,
+          "route": "grok-4.6-build",
+          "confidence": "high",
+          "rationale": "Live, cheap, preserves review lanes."
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-terra-codex",
+          "confidence": "high",
+          "rationale": "When the packet must come from Google MCP."
+        },
+        {
+          "priority": 3,
+          "route": "opus-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Scarce judgment on an already-fetched packet."
+        }
       ]
     },
     "implementation": {
       "quality": [
-        {"rank": 1, "route": "gpt-5.6-sol-codex", "confidence": "medium", "rationale": "Vendor coding-agent index leads; too scarce for daily implement."},
-        {"rank": 2, "route": "opus-5-teamclaude", "confidence": "medium", "rationale": "Strong but scarce; not the daily coder."},
-        {"rank": 3, "route": "grok-4.6-build", "confidence": "high", "rationale": "Near-frontier, live, cheaper."},
-        {"rank": 4, "route": "qwen-3.8-max-unwired", "confidence": "low", "rationale": "Unwired coding candidate; verbose."},
-        {"rank": 5, "route": "deepseek-v4-unwired", "confidence": "low", "rationale": "Unwired coding candidate."}
+        {
+          "rank": 1,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "medium",
+          "rationale": "Vendor coding-agent index leads; too scarce for daily implement. Quality is not selection."
+        },
+        {
+          "rank": 2,
+          "route": "opus-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Strong but scarce; not the daily coder."
+        },
+        {
+          "rank": 3,
+          "route": "grok-4.6-build",
+          "confidence": "high",
+          "rationale": "Near-frontier, live, cheaper. Operational default remains selection, not this rank."
+        },
+        {
+          "rank": 4,
+          "route": "qwen-3.8-max-unwired",
+          "confidence": "low",
+          "rationale": "Unwired coding candidate; verbose. Independent index is not a local role eval."
+        },
+        {
+          "rank": 5,
+          "route": "deepseek-v4-pro-unwired",
+          "confidence": "low",
+          "rationale": "Unwired coding candidate (V4 Pro, not an ambiguous bare v4)."
+        },
+        {
+          "rank": 6,
+          "route": "kimi-k2.7-code-unwired",
+          "confidence": "low",
+          "rationale": "Unwired coding-focused Kimi. Vendor benches only."
+        },
+        {
+          "rank": 7,
+          "route": "muse-spark-1.2-unwired",
+          "confidence": "low",
+          "rationale": "Unwired Muse Spark 1.2 model. Distinct from the Muse Code agent."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "grok-4.6-build", "confidence": "high", "rationale": "Operational default: live, near-frontier, preserves independent review lanes."},
-        {"priority": 2, "route": "grok-4.6-cursor", "confidence": "high", "rationale": "IDE included pool before Grok Heavy."}
+        {
+          "priority": 1,
+          "route": "grok-4.6-build",
+          "confidence": "high",
+          "rationale": "Operational default: live, near-frontier, preserves independent review lanes."
+        },
+        {
+          "priority": 2,
+          "route": "grok-4.6-cursor",
+          "confidence": "high",
+          "rationale": "IDE included pool before Grok Heavy."
+        }
+      ],
+      "efficiency": [
+        {
+          "rank": 1,
+          "route": "deepseek-v4-flash-unwired",
+          "confidence": "low",
+          "rationale": "Latency/cost sibling of V4 Pro; unwired. Efficiency, not quality."
+        },
+        {
+          "rank": 2,
+          "route": "grok-4.6-build",
+          "confidence": "high",
+          "rationale": "Live near-frontier at materially lower list cost than scarce review seats."
+        }
       ]
     },
     "architecture_spec_critique": {
       "quality": [
-        {"rank": 1, "route": "fable-5-teamclaude", "confidence": "medium", "rationale": "Long-horizon breadth; not automatically better per token than Opus 5."},
-        {"rank": 2, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Stronger/more efficient for normal Anthropic judgment."}
+        {
+          "rank": 1,
+          "route": "fable-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Long-horizon breadth; not automatically better per token than Opus 5."
+        },
+        {
+          "rank": 2,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Stronger/more efficient for normal Anthropic judgment."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Default Anthropic architecture-adjacent judgment."},
-        {"priority": 2, "route": "fable-5-teamclaude", "confidence": "medium", "rationale": "Rare explicit long-horizon escalation. Never paired with Opus as cross-family."}
+        {
+          "priority": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Default Anthropic architecture-adjacent judgment."
+        },
+        {
+          "priority": 2,
+          "route": "fable-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Rare explicit long-horizon escalation. Never paired with Opus as cross-family."
+        }
       ]
     },
     "code_review": {
       "quality": [
-        {"rank": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Independent Intelligence Index 63 at max effort; operational Anthropic gate."},
-        {"rank": 2, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "OpenAI family gate; relatively concise."},
-        {"rank": 3, "route": "fable-5-teamclaude", "confidence": "low", "rationale": "Same family as Opus; public scores may include Opus fallback. Not a gate."},
-        {"rank": 4, "route": "review-e-fireworks", "confidence": "low", "rationale": "Independence slot; unwired."}
+        {
+          "rank": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Independent Intelligence Index 63 at max effort; operational Anthropic gate."
+        },
+        {
+          "rank": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "OpenAI family gate; relatively concise."
+        },
+        {
+          "rank": 3,
+          "route": "fable-5-teamclaude",
+          "confidence": "low",
+          "rationale": "Same family as Opus; public scores may include Opus fallback. Not a gate."
+        },
+        {
+          "rank": 4,
+          "route": "review-e-fireworks",
+          "confidence": "low",
+          "rationale": "Independence slot; unwired."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Anthropic family gate."},
-        {"priority": 2, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "OpenAI family gate. Order may swap by availability; families must differ."},
-        {"priority": 3, "route": "opus-4.8-teamclaude", "confidence": "medium", "rationale": "Time-bounded fallback while 4.8 remains available. Same family as Opus 5."}
+        {
+          "priority": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Anthropic family gate."
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "OpenAI family gate. Order may swap by availability; families must differ."
+        },
+        {
+          "priority": 3,
+          "route": "opus-4.8-teamclaude",
+          "confidence": "low",
+          "rationale": "Intended time-bounded fallback. catalog_verified in this audit, so it fails closed until a direct smoke exists. Same family as Opus 5."
+        }
       ]
     },
     "mcp_volume": {
       "quality": [
-        {"rank": 1, "route": "gpt-5.6-terra-codex", "confidence": "high", "rationale": "Has the actual Google MCP connector."},
-        {"rank": 2, "route": "gemini-3.7-flash-unwired", "confidence": "low", "rationale": "Multimodal/volume candidate; no connector."},
-        {"rank": 3, "route": "glm-5.3-flash-unwired", "confidence": "low", "rationale": "Cost-efficient scout; incubating; no connector."}
+        {
+          "rank": 1,
+          "route": "gpt-5.6-terra-codex",
+          "confidence": "high",
+          "rationale": "Only live route that actually holds the Google MCP connector; quality here is ability to do the role."
+        },
+        {
+          "rank": 2,
+          "route": "gemini-3.7-flash-unwired",
+          "confidence": "low",
+          "rationale": "Current Flash workhorse candidate; no connector and no local role eval."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "gpt-5.6-terra-codex", "confidence": "high", "rationale": "Only live route with the Google MCP connector."},
-        {"priority": 2, "route": "gpt-5.6-luna-codex", "confidence": "medium", "rationale": "Coordination helper on the same Codex plan."}
+        {
+          "priority": 1,
+          "route": "gpt-5.6-terra-codex",
+          "confidence": "high",
+          "rationale": "Only live route with the Google MCP connector."
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-luna-codex",
+          "confidence": "medium",
+          "rationale": "Coordination helper on the same Codex plan."
+        }
+      ],
+      "efficiency": [
+        {
+          "rank": 1,
+          "route": "glm-5.3-flash-unwired",
+          "confidence": "low",
+          "rationale": "Vendor-reported cost/task; incubating; no connector."
+        },
+        {
+          "rank": 2,
+          "route": "gemini-3.5-flash-lite-unwired",
+          "confidence": "low",
+          "rationale": "Flash-Lite throughput candidate; unwired; no connector."
+        },
+        {
+          "rank": 3,
+          "route": "gemini-3.7-flash-unwired",
+          "confidence": "low",
+          "rationale": "Current Flash promotional pricing; unwired; no connector."
+        }
       ]
     },
     "mcp_judgment": {
       "quality": [
-        {"rank": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Anthropic judgment on already-fetched data."},
-        {"rank": 2, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "OpenAI judgment; code-review risk gate wins Sol the same week."}
+        {
+          "rank": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Anthropic judgment on already-fetched data."
+        },
+        {
+          "rank": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "OpenAI judgment; code-review risk gate wins Sol the same week."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "Default MCP judgment when Sol is not already consumed by the review gate."},
-        {"priority": 2, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "When Sol is spent or already used on the change-set."}
+        {
+          "priority": 1,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "Default MCP judgment when Sol is not already consumed by the review gate."
+        },
+        {
+          "priority": 2,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "When Sol is spent or already used on the change-set."
+        }
       ]
     },
     "visual_qa": {
       "quality": [
-        {"rank": 1, "route": "grok-bot-visual-qa", "confidence": "high", "rationale": "The only live credential-free preview walker."}
+        {
+          "rank": 1,
+          "route": "grok-bot-visual-qa",
+          "confidence": "high",
+          "rationale": "The only live credential-free preview walker."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "grok-bot-visual-qa", "confidence": "high", "rationale": "Standing Review D seat. Never Admin/SimGym."}
+        {
+          "priority": 1,
+          "route": "grok-bot-visual-qa",
+          "confidence": "high",
+          "rationale": "Standing Review D seat. Never Admin/SimGym."
+        }
       ]
     },
     "evidence_audit": {
       "quality": [
-        {"rank": 1, "route": "opus-5-teamclaude", "confidence": "high", "rationale": "Catches invented metrics before they propagate."},
-        {"rank": 2, "route": "gpt-5.6-sol-codex", "confidence": "high", "rationale": "Independent family check on the same packet."},
-        {"rank": 3, "route": "glm-5.3-flash-unwired", "confidence": "low", "rationale": "Cheap extraction candidate; incubating."}
+        {
+          "rank": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "high",
+          "rationale": "Catches invented metrics before they propagate."
+        },
+        {
+          "rank": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "high",
+          "rationale": "Independent family check on the same packet."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "opus-5-teamclaude", "confidence": "medium", "rationale": "Live Anthropic judgment."},
-        {"priority": 2, "route": "gpt-5.6-sol-codex", "confidence": "medium", "rationale": "Live OpenAI judgment."}
+        {
+          "priority": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Live Anthropic judgment."
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "medium",
+          "rationale": "Live OpenAI judgment."
+        }
+      ],
+      "efficiency": [
+        {
+          "rank": 1,
+          "route": "glm-5.3-flash-unwired",
+          "confidence": "low",
+          "rationale": "Cheap extraction candidate; incubating. Efficiency, not quality."
+        }
       ]
     },
     "model_evaluation_admin": {
       "quality": [
-        {"rank": 1, "route": "opus-5-teamclaude", "confidence": "medium", "rationale": "Admin judgment on receipts; owner gated."},
-        {"rank": 2, "route": "gpt-5.6-sol-codex", "confidence": "medium", "rationale": "Second-family check of an eval packet."}
+        {
+          "rank": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "medium",
+          "rationale": "Admin judgment on receipts; owner gated."
+        },
+        {
+          "rank": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "medium",
+          "rationale": "Second-family check of an eval packet."
+        }
       ],
       "selection": [
-        {"priority": 1, "route": "opus-5-teamclaude", "confidence": "low", "rationale": "Does not auto-promote candidates. Owner approval still required."},
-        {"priority": 2, "route": "gpt-5.6-sol-codex", "confidence": "low", "rationale": "Independent scoring pass when requested."}
+        {
+          "priority": 1,
+          "route": "opus-5-teamclaude",
+          "confidence": "low",
+          "rationale": "Does not auto-promote candidates. Owner approval still required."
+        },
+        {
+          "priority": 2,
+          "route": "gpt-5.6-sol-codex",
+          "confidence": "low",
+          "rationale": "Independent scoring pass when requested."
+        }
       ]
     }
   },
   "independent_anchors_as_of": "2026-08-28",
   "independent_anchors": [
-    {"model": "claude-opus-5", "harness": "max", "source": "https://artificialanalysis.ai/models/claude-opus-5", "intelligence_index": 63, "usd_per_task": 2.34, "label": "independent"},
-    {"model": "claude-fable-5", "harness": "max", "source": "https://artificialanalysis.ai/models/claude-fable-5/", "intelligence_index": 62, "usd_per_task": 3.14, "label": "independent", "caveat": "fallback to Opus contaminates family attribution"},
-    {"model": "grok-4.6", "harness": "high", "source": "https://artificialanalysis.ai/models/releases/grok-4-6", "intelligence_index": 61, "usd_per_task": 0.94, "label": "independent", "caveat": "high marginally beat xhigh in this run; effort order is empirical"},
-    {"model": "gpt-5.6-sol", "harness": "xhigh", "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/", "intelligence_index": 59, "usd_per_task": 0.67, "label": "independent"},
-    {"model": "kimi-k3", "harness": "max", "source": "https://artificialanalysis.ai/models/kimi-k3", "intelligence_index": 60, "usd_per_task": 0.84, "label": "independent", "caveat": "verbose"},
-    {"model": "qwen-3.8-max", "harness": "max", "source": "https://artificialanalysis.ai/models/qwen3-8-max", "intelligence_index": 58, "usd_per_task": 0.91, "label": "independent", "caveat": "very verbose"},
-    {"model": "glm-5.3-flash", "harness": "reported", "source": "https://z.ai/blog/glm-5.3-flash", "intelligence_index": 57, "usd_per_task": 0.045, "label": "vendor_self_reported"},
-    {"model": "glm-5.2", "harness": "max", "source": "https://artificialanalysis.ai/models/glm-5-2", "intelligence_index": 53, "usd_per_task": 0.44, "label": "independent"}
-  ]
+    {
+      "model": "claude-opus-5",
+      "harness": "max",
+      "source": "https://artificialanalysis.ai/models/claude-opus-5",
+      "intelligence_index": 63,
+      "usd_per_task": 2.34,
+      "label": "independent"
+    },
+    {
+      "model": "claude-fable-5",
+      "harness": "max",
+      "source": "https://artificialanalysis.ai/models/claude-fable-5/",
+      "intelligence_index": 62,
+      "usd_per_task": 3.14,
+      "label": "independent",
+      "caveat": "fallback to Opus contaminates family attribution"
+    },
+    {
+      "model": "grok-4.6",
+      "harness": "high",
+      "source": "https://artificialanalysis.ai/models/releases/grok-4-6",
+      "intelligence_index": 61,
+      "usd_per_task": 0.94,
+      "label": "independent",
+      "caveat": "high marginally beat xhigh in this run; effort order is empirical"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "harness": "xhigh",
+      "source": "https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/",
+      "intelligence_index": 59,
+      "usd_per_task": 0.67,
+      "label": "independent"
+    },
+    {
+      "model": "kimi-k3",
+      "harness": "max",
+      "source": "https://artificialanalysis.ai/models/kimi-k3",
+      "intelligence_index": 60,
+      "usd_per_task": 0.84,
+      "label": "independent",
+      "caveat": "verbose"
+    },
+    {
+      "model": "qwen-3.8-max",
+      "harness": "max",
+      "source": "https://artificialanalysis.ai/models/qwen3-8-max",
+      "intelligence_index": 58,
+      "usd_per_task": 0.91,
+      "label": "independent",
+      "caveat": "very verbose"
+    },
+    {
+      "model": "glm-5.3-flash",
+      "harness": "reported",
+      "source": "https://z.ai/blog/glm-5.3-flash",
+      "intelligence_index": 57,
+      "usd_per_task": 0.045,
+      "label": "vendor_self_reported"
+    },
+    {
+      "model": "glm-5.2",
+      "harness": "max",
+      "source": "https://artificialanalysis.ai/models/glm-5-2",
+      "intelligence_index": 53,
+      "usd_per_task": 0.44,
+      "label": "independent"
+    }
+  ],
+  "rankings_note": "Descending quality ranks are evidence-bounded and role/harness-specific, not a universal ordering. Quality reflects performance evidence for that role; cost/token efficiency belongs in selection priority or the optional efficiency field. Rank never grants tools, connectors, credentials, or dispatch authority.",
+  "census": {
+    "as_of": "2026-08-28",
+    "cutoff": "2026-08-28",
+    "scope": "Current general-purpose text/vision/agentic/coding models plausibly useful to this orchestration as of 2026-08-28. A scoped lab census, not an unbounded claim of every model in existence.",
+    "labs_in_scope": [
+      "OpenAI",
+      "Anthropic",
+      "xAI",
+      "Google",
+      "Moonshot",
+      "Z.AI",
+      "Alibaba",
+      "DeepSeek",
+      "Meta",
+      "Review E / open-weight"
+    ],
+    "excluded_classes": [
+      "media-only",
+      "embedding",
+      "moderation",
+      "audio-only",
+      "invitation-only"
+    ],
+    "excluded_examples": [
+      "Gemini image-only (Nano Banana) and Live Translate/TTS",
+      "Kimi-Audio",
+      "invitation-only lab previews",
+      "embedding and moderation APIs"
+    ],
+    "required_model_ids": [
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-pro-preview",
+      "gemini-3-flash-preview",
+      "kimi-k3",
+      "kimi-k2.7-code",
+      "kimi-k2.6",
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "muse-spark-1.2",
+      "muse-code"
+    ],
+    "ambiguous_ids_forbidden": [
+      "deepseek-v4"
+    ],
+    "sources": {
+      "google": "https://ai.google.dev/gemini-api/docs/models",
+      "moonshot": "https://platform.kimi.ai/",
+      "deepseek": "https://api-docs.deepseek.com/news/news260813/",
+      "meta": "https://ai.meta.com/llama/"
+    }
+  }
 }

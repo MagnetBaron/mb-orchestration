@@ -119,8 +119,9 @@ Raise if: auth/money/PII/prod/irreversible · multi-service · Grok conflict/fla
 **Opus 5 → Codex Sol → Review E (if wired) → stop** (`config/providers.json` `review_order`, filtered to
 `live_verified` routes in `config/model-registry.json`). Cross-family needs two *different* families (never two
 Anthropic passes); **Fable is NOT in the gating order** (rare architecture/long-horizon escalation —
-Fable + Opus 5 are one family). Opus 4.8 remains a time-bounded compatibility fallback while it is
-genuinely available; it is not the operational Anthropic gate. One frontier pass per change-set **except** the cross-family pair.
+Fable + Opus 5 are one family). Opus 4.8 remains the intended time-bounded compatibility fallback
+while the id is genuinely available; it is not the operational Anthropic gate and does not resolve
+until its route is `live_verified`. One frontier pass per change-set **except** the cross-family pair.
 
 **Exhaustion opens the next seat only on quota evidence** — `usage-status` shows the seat spent or
 soft-capped (a recorded 429 or ledger %), never a probe; probe failure, timeout, or auth error → fail

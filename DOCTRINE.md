@@ -128,7 +128,7 @@ touched paths/resources, not the brief's claim; ambiguity rounds up one level.
 Composition:
 - **Gate wins upward, always.** The right column *is* the `AGENTS.md` risk gate, by reference.
 - **none / self-check remove *review* only** — landing lock, tip-bound green test, Review D pixels, owner publish/send gates still apply.
-- Levels: **none** (Grok, or skip) · **self-check** (implementer tests bound to `done_when`, not a second model) · **single-frontier** (first live seat in the order) · **cross-family** (one pass each from two families; Fable + 4.8 is one family; one native family quota-spent → Review E fills the second slot; none → park). Run `bin/resolve-route.py` for the concrete live chain.
+- Levels: **none** (Grok, or skip) · **self-check** (implementer tests bound to `done_when`, not a second model) · **single-frontier** (first live seat in the order) · **cross-family** (one pass each from two families; Fable + Opus 5 are one family; one native family quota-spent → Review E fills the second slot; none → park). Run `bin/resolve-route.py` for the concrete live chain.
 
 ## Concurrency
 
