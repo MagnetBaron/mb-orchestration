@@ -1197,7 +1197,9 @@ class TypedAttestationTests(unittest.TestCase):
                 if rec["state"] == "not_applicable":
                     self.assertIn(rec.get("structural_code"), mr.STRUCTURAL_CODES, f"{rid}.{key}")
                     self.assertTrue(
-                        mr._structural_code_allowed(key, rec["structural_code"], registry["routes"][rid]),
+                        mr._structural_code_allowed(
+                            rid, registry["routes"][rid]["model"], key, rec["structural_code"],
+                        ),
                         f"{rid}.{key}",
                     )
                 if rec["state"] == "waived":
@@ -1241,6 +1243,38 @@ class TypedAttestationTests(unittest.TestCase):
         blob = "\n".join(errors)
         self.assertTrue(any("structural_code" in e and "role_evals" in e for e in errors), errors)
         self.assertIn("missing", blob)
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_mutable_compatibility_flag_cannot_authorize_structural_na(self):
+        data = copy.deepcopy(live())
+        route = data["routes"]["opus-5-teamclaude"]
+        route["compatibility_fallback"] = True
+        route["fallback_until"] = "2026-12-31"
+        rec = route["attestations"]["role_evals"]
+        rec.clear()
+        rec.update({
+            "state": "not_applicable",
+            "date": "2026-08-28",
+            "source": "mutated route compatibility flag",
+            "rationale": "Structurally a time-bounded compatibility fallback, not ranked.",
+            "structural_code": "compatibility_fallback_not_ranked",
+        })
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("structural_code" in e and "opus-5-teamclaude" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_markdown_file_cannot_attest_owner_approval(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["owner_approval"]
+        rec.clear()
+        rec.update({
+            "state": "attested",
+            "date": "2026-08-28",
+            "source": "README.md",
+            "evidence_kind": "committed_owner_record",
+        })
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("structured owner-record manifest" in e for e in errors), errors)
         self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
 
     def test_attested_missing_source_or_date_fails(self):
@@ -1330,6 +1364,21 @@ class TypedAttestationTests(unittest.TestCase):
             errors,
         )
         self.assertFalse(mr.route_is_live(data, "kimi-k3-unwired", as_of=date(2026, 8, 28)))
+
+    def test_allowlisted_route_id_cannot_be_repointed_to_kimi(self):
+        data = copy.deepcopy(live())
+        route = data["routes"]["opus-4.8-teamclaude"]
+        route["model"] = "kimi-k3"
+        route["provider"] = None
+        route["host"] = "moonshot-api"
+        route["harness"] = "http"
+        route["invocation_id"] = "kimi-k3"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("waiver forbidden" in e and "frozen migration identity" in e for e in errors),
+            errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "opus-4.8-teamclaude", as_of=date(2026, 8, 28)))
         data["intake"]["legacy_waiver_routes"] = list(data["intake"]["legacy_waiver_routes"]) + [
             "kimi-k3-unwired"
         ]
@@ -1488,6 +1537,47 @@ class OfficialSourceAndPlaceholderTests(unittest.TestCase):
             any("kimi-k3" in e and "allowed official domain" in e for e in errors),
             errors,
         )
+
+    def test_catalog_cannot_add_example_com_to_anthropic_trust_root(self):
+        data = copy.deepcopy(live())
+        data["official_sources"]["allowed_domains_by_family"]["anthropic"].append("example.com")
+        data["models"]["claude-opus-5"]["official_sources"] = ["https://example.com/claude-opus-5"]
+        data["official_sources"]["by_family"]["anthropic"]["urls"] = [
+            "https://example.com/claude-opus-5"
+        ]
+        data["routes"]["opus-5-teamclaude"]["attestations"]["official_id"]["source"] = (
+            "https://example.com/claude-opus-5"
+        )
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("code-owned official-domain trust root" in e for e in errors), errors)
+        self.assertTrue(any("example.com" in e and "allowed official domain" in e for e in errors), errors)
+
+
+class OperationalPriorTrustRootTests(unittest.TestCase):
+    def test_arbitrary_existing_readme_cannot_support_operational_prior(self):
+        data = copy.deepcopy(live())
+        row = data["rankings"]["dispatch"]["quality"][0]
+        self.assertEqual(row["basis"], "operational_prior")
+        row["source"] = "README.md"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("code-approved structured source" in e and "README.md" in e for e in errors), errors)
+
+    def test_every_operational_prior_uses_exact_approved_structured_binding(self):
+        registry = live()
+        for role, ranking in registry["rankings"].items():
+            for i, row in enumerate(ranking.get("quality") or []):
+                if row.get("basis") != "operational_prior":
+                    continue
+                key = (role, row["route"])
+                self.assertIn(key, mr.OPERATIONAL_PRIOR_SOURCES, key)
+                self.assertEqual(row["source"], mr.OPERATIONAL_PRIOR_SOURCES[key])
+                self.assertEqual(
+                    mr._quality_row_errors(
+                        registry, role, i, row, registry["routes"], registry["models"],
+                    ),
+                    [],
+                    key,
+                )
 
     def test_review_e_placeholder_remains_exempt_from_official_domains(self):
         registry = live()

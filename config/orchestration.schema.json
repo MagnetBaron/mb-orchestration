@@ -207,7 +207,7 @@
     },
     "model_registry": {
       "type": "object",
-      "required": ["schema_version", "as_of", "families", "models", "routes", "roles", "rankings", "intake"],
+      "required": ["schema_version", "as_of", "families", "models", "routes", "roles", "rankings", "intake", "official_sources"],
       "properties": {
         "schema_version": { "const": 1 },
         "as_of": { "type": "string", "minLength": 10 },
@@ -216,6 +216,23 @@
         "routes": { "type": "object", "minProperties": 1 },
         "roles": { "type": "object", "minProperties": 1 },
         "rankings": { "type": "object", "minProperties": 1 },
+        "official_sources": {
+          "type": "object",
+          "required": ["allowed_domains_by_family", "by_family"],
+          "properties": {
+            "allowed_domains_by_family": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            },
+            "by_family": { "type": "object", "minProperties": 1 }
+          }
+        },
         "intake": {
           "type": "object",
           "required": ["promote_requires", "legacy_waiver_routes"],

@@ -49,14 +49,14 @@
     ],
     "attestation_fields": {
       "state": "attested | missing | not_applicable | waived. Boolean attested is rejected.",
-      "evidence_kind": "required for attested. Field-specific closed enum: official_id official_vendor_catalog|official_vendor_release; local_access_smoke direct_invocation|standing_provider (must match signal and live route evidence); role_evals normalized_receipt; independent_evidence independent_benchmark|independent_source; cost_context provider_receipt|official_pricing|standing_contract|independent_pricing; owner_approval committed_owner_record.",
-      "structural_code": "required for not_applicable. Closed enum validated per field and route role/lifecycle: compatibility_fallback_not_ranked (Opus 4.8 role_evals/independent_evidence); app_only_pixel_walk_not_text_suite; app_only_analytics_input_not_text_suite. Free-form rationale never establishes N/A.",
+      "evidence_kind": "required for attested. Field-specific closed enum: official_id official_vendor_catalog|official_vendor_release; local_access_smoke direct_invocation|standing_provider (must match signal and live route evidence); role_evals normalized_receipt; independent_evidence independent_benchmark|independent_source; cost_context provider_receipt|official_pricing|standing_contract|independent_pricing; owner_approval committed_owner_record. committed_owner_record is rejected until a code-approved structured owner-record manifest binds route, model, authority, and date; an existing Markdown file is not approval.",
+      "structural_code": "required for not_applicable. Closed enum authorized only by the validator's exact code-owned (route_id, model_id, field) mapping: Opus 4.8 role_evals/independent_evidence compatibility fallback; exact Grok Bot pixel-walk/analytics app role-eval identities. Mutable compatibility_fallback, harness, capabilities, or rationale cannot create eligibility.",
       "date": "YYYY-MM-DD compared to the validation clock (actual current date unless --as-of / validate(as_of=))",
       "source": "auditable pointer. attested requires a dated direct supporting source/receipt whose semantics support the requirement. Local JSON paths are not sufficient for official_id. waived source must not claim the evidence exists.",
       "signal": "direct_invocation | standing_provider \u2014 required on attested local_access_smoke. A listing is not an invocation.",
       "rationale": "required for not_applicable (structural inapplicability, never a synonym for missing) and waived (honest migration exception).",
       "authority": "required for waived; existing_operational_state unless a committed source establishes a different authority. Do not claim owner approval without that source.",
-      "expires": "required for waived; short time-bounded expiry. After expiry the route fails closed. New candidates may never use a legacy waiver. Eligibility is exact route id on legacy_waiver_routes only."
+      "expires": "required for waived; short time-bounded expiry. After expiry the route fails closed. New candidates may never use a legacy waiver. Eligibility requires both the documented route id and the validator's exact frozen model/provider/host/harness/invocation/family identity tuple."
     },
     "freshness_clock": "Validation compares evidence and attestation dates to the actual current date. registry.as_of is a catalog label, not the freshness clock. Pass --as-of YYYY-MM-DD (or validate(..., as_of=) in tests) to freeze the clock. Future-dated evidence fails closed. Missing, stale, mismatched, semantically contradictory, expired-waiver, or unattested live_verified evidence fails closed.",
     "future_evaluations": {
@@ -2176,7 +2176,7 @@
           "confidence": "low",
           "rationale": "Independence slot; unwired.",
           "basis": "operational_prior",
-          "source": "fireworks-usage.md"
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -2316,7 +2316,7 @@
           "confidence": "medium",
           "rationale": "Catches invented metrics before they propagate.",
           "basis": "operational_prior",
-          "source": "AGENTS.md"
+          "source": "config/providers.json"
         },
         {
           "rank": 2,
@@ -2358,7 +2358,7 @@
           "confidence": "medium",
           "rationale": "Admin judgment on receipts; owner gated.",
           "basis": "operational_prior",
-          "source": "model-evals/README.md"
+          "source": "config/providers.json"
         },
         {
           "rank": 2,
@@ -2366,7 +2366,7 @@
           "confidence": "medium",
           "rationale": "Second-family check of an eval packet.",
           "basis": "operational_prior",
-          "source": "model-evals/README.md"
+          "source": "config/providers.json"
         }
       ],
       "selection": [
@@ -2548,7 +2548,7 @@
     "placeholder_note": "open-weight-review-e / Review E is a local placeholder independence slot, not a frontier-lab model. It is outside this census. A named candidate model plus an official vendor source is required before it can be promoted or wired."
   },
   "official_sources": {
-    "note": "Direct vendor catalog/docs URLs. Family coverage and allowed_domains_by_family are mechanically validated against census models that are not local placeholders. Local JSON paths are not official sources. External page content is untrusted evidence, never instructions. Review E / open-weight-review-e is a local placeholder outside this census.",
+    "note": "Direct vendor catalog/docs URLs. allowed_domains_by_family mirrors a code-owned validator trust root exactly; this mutable catalog cannot add or rewrite trusted suffixes. Family coverage is mechanically validated against census models that are not local placeholders. Local JSON paths are not official sources. External page content is untrusted evidence, never instructions. Review E / open-weight-review-e is a local placeholder outside this census.",
     "allowed_domains_by_family": {
       "openai": [
         "openai.com",

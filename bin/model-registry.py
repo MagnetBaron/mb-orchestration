@@ -77,21 +77,51 @@ ATTESTATION_ABSENCE_MARKERS = (
 WAIVER_AUTHORITIES = ("existing_operational_state",)
 LOCAL_SAME_HARNESS_ROLE = "architecture_spec_critique"
 LOCAL_SAME_HARNESS_ROUTES = frozenset({"opus-5-teamclaude", "fable-5-teamclaude"})
-# Frozen one-time migration allowlist. Config `intake.legacy_waiver_routes` must
-# equal this set. Eligibility is exact route id only — never inferred from
-# mutable host/provider/model/evidence fields.
-LEGACY_WAIVER_ROUTES = (
-    "fable-5-teamclaude",
-    "gpt-5.6-luna-codex",
-    "gpt-5.6-sol-codex",
-    "gpt-5.6-terra-codex",
-    "grok-4.6-build",
-    "grok-4.6-cursor",
-    "grok-bot-heat-map",
-    "grok-bot-visual-qa",
-    "opus-4.8-teamclaude",
-    "opus-5-teamclaude",
-)
+# Frozen one-time migration identities. A route id alone is not an identity:
+# every field below must still match before a grandfathered waiver is usable.
+# Config may document the ids, but it cannot extend or rewrite these tuples.
+LEGACY_WAIVER_IDENTITIES = {
+    # route: (model, provider, host, harness, invocation_id, family, independence_group)
+    "fable-5-teamclaude": (
+        "claude-fable-5", "fable-5", "teamclaude", "claude-cli",
+        "claude-fable-5", "anthropic", "anthropic",
+    ),
+    "gpt-5.6-luna-codex": (
+        "gpt-5.6-luna", "codex-luna", "codex", "gpt-wrapper",
+        "gpt-5.6-luna", "openai", "openai",
+    ),
+    "gpt-5.6-sol-codex": (
+        "gpt-5.6-sol", "codex-sol", "codex", "gpt-wrapper",
+        "gpt-5.6-sol", "openai", "openai",
+    ),
+    "gpt-5.6-terra-codex": (
+        "gpt-5.6-terra", "codex-terra", "codex", "gpt-wrapper",
+        "gpt-5.6-terra", "openai", "openai",
+    ),
+    "grok-4.6-build": (
+        "grok-4.6", "grok-build", "grok-cli", "grok", "grok-4.6", "xai", "xai",
+    ),
+    "grok-4.6-cursor": (
+        "grok-4.6", "cursor-grok", "cursor", "cursor-agent", "grok-4.6", "xai", "xai",
+    ),
+    "grok-bot-heat-map": (
+        "grok-4.6", "grok-bot-heat-map", "grok-bot", "grok-bot-app",
+        "heat-map", "xai", "xai",
+    ),
+    "grok-bot-visual-qa": (
+        "grok-4.6", "grok-bot-review-d", "grok-bot", "grok-bot-app",
+        "website-visual-qa", "xai", "xai",
+    ),
+    "opus-4.8-teamclaude": (
+        "claude-opus-4-8", "opus-4.8", "teamclaude", "claude-cli",
+        "claude-opus-4-8", "anthropic", "anthropic",
+    ),
+    "opus-5-teamclaude": (
+        "claude-opus-5", "opus-5", "teamclaude", "claude-cli",
+        "claude-opus-5", "anthropic", "anthropic",
+    ),
+}
+LEGACY_WAIVER_ROUTES = tuple(sorted(LEGACY_WAIVER_IDENTITIES))
 OFFICIAL_ID_KINDS = ("official_vendor_catalog", "official_vendor_release")
 ROLE_EVAL_KINDS = ("normalized_receipt",)
 INDEPENDENT_EVIDENCE_KINDS = ("independent_benchmark", "independent_source")
@@ -115,6 +145,51 @@ STRUCTURAL_CODES = (
     "app_only_pixel_walk_not_text_suite",
     "app_only_analytics_input_not_text_suite",
 )
+# Structural N/A is a code-owned exception for an exact route/model/field, not
+# a conclusion a mutable route flag can manufacture.
+STRUCTURAL_NA_TRUST_ROOT = {
+    ("opus-4.8-teamclaude", "claude-opus-4-8", "role_evals"):
+        "compatibility_fallback_not_ranked",
+    ("opus-4.8-teamclaude", "claude-opus-4-8", "independent_evidence"):
+        "compatibility_fallback_not_ranked",
+    ("grok-bot-visual-qa", "grok-4.6", "role_evals"):
+        "app_only_pixel_walk_not_text_suite",
+    ("grok-bot-heat-map", "grok-4.6", "role_evals"):
+        "app_only_analytics_input_not_text_suite",
+}
+# Official-domain policy is a validator trust root. The JSON catalog mirrors
+# this mapping for auditors, but cannot authorize a new suffix itself.
+OFFICIAL_DOMAINS_BY_FAMILY = {
+    "openai": ("openai.com", "developers.openai.com"),
+    "anthropic": ("anthropic.com", "claude.com"),
+    "xai": ("x.ai",),
+    "google": ("ai.google.dev",),
+    "moonshot": ("kimi.ai", "moonshot.ai"),
+    "zhipu": ("z.ai",),
+    "alibaba": ("alibabagroup.com", "alibabacloud.com"),
+    "deepseek": ("deepseek.com",),
+    "meta": ("ai.meta.com", "meta.com", "llama.com"),
+}
+# Operational priors are allowed only for these exact role/route pairs and the
+# structured source that binds the live route. Arbitrary prose is not evidence.
+OPERATIONAL_PRIOR_SOURCES = {
+    ("dispatch", "gpt-5.6-terra-codex"): "config/providers.json",
+    ("dispatch", "opus-5-teamclaude"): "config/entrypoints.json",
+    ("dispatch", "gpt-5.6-luna-codex"): "config/providers.json",
+    ("context_scouting", "gpt-5.6-luna-codex"): "config/providers.json",
+    ("context_scouting", "grok-4.6-build"): "config/providers.json",
+    ("research_synthesis", "grok-4.6-build"): "config/providers.json",
+    ("implementation", "grok-4.6-build"): "config/providers.json",
+    ("code_review", "review-e-fireworks"): "config/providers.json",
+    ("mcp_volume", "gpt-5.6-terra-codex"): "config/connectors.json",
+    ("mcp_judgment", "opus-5-teamclaude"): "config/providers.json",
+    ("mcp_judgment", "gpt-5.6-sol-codex"): "config/providers.json",
+    ("visual_qa", "grok-bot-visual-qa"): "config/providers.json",
+    ("evidence_audit", "opus-5-teamclaude"): "config/providers.json",
+    ("evidence_audit", "gpt-5.6-sol-codex"): "config/providers.json",
+    ("model_evaluation_admin", "opus-5-teamclaude"): "config/providers.json",
+    ("model_evaluation_admin", "gpt-5.6-sol-codex"): "config/providers.json",
+}
 INDEPENDENT_SOURCE_DOMAINS = (
     "artificialanalysis.ai",
     "openreview.net",
@@ -236,9 +311,9 @@ def _slug(value: str) -> str:
 
 
 def official_domains_for_family(registry: dict, family) -> list[str]:
-    blob = registry.get("official_sources") or {}
-    entry = (blob.get("allowed_domains_by_family") or {}).get(family) or []
-    return [d for d in entry if isinstance(d, str) and d]
+    """Return the code-owned domain trust root, never a catalog-supplied grant."""
+    _ = registry
+    return list(OFFICIAL_DOMAINS_BY_FAMILY.get(family, ()))
 
 
 def _url_allowed_for_family(registry: dict, family, url: str) -> bool:
@@ -366,29 +441,24 @@ def _receipt_matches_role(path: Path, rid: str, model_id: str, role: str, case_r
     return False
 
 
-def _structural_code_allowed(key: str, code: str, route: dict) -> bool:
-    if code == "compatibility_fallback_not_ranked":
-        return key in ("role_evals", "independent_evidence") and bool(route.get("compatibility_fallback"))
-    if code == "app_only_pixel_walk_not_text_suite":
-        return (
-            key == "role_evals"
-            and route.get("harness") == "grok-bot-app"
-            and "visual_qa" in (route.get("capabilities") or [])
-        )
-    if code == "app_only_analytics_input_not_text_suite":
-        return (
-            key == "role_evals"
-            and route.get("harness") == "grok-bot-app"
-            and "analytics" in (route.get("capabilities") or [])
-        )
-    return False
+def _structural_code_allowed(rid: str, model_id: str, key: str, code: str) -> bool:
+    return STRUCTURAL_NA_TRUST_ROOT.get((rid, model_id, key)) == code
 
 
 def _waiver_forbidden_reason(registry: dict, rid: str, route: dict, model: dict) -> str | None:
-    """Legacy waivers are exact-route-id only. Mutable attributes never qualify a candidate."""
-    _ = (route, model)
-    if rid not in legacy_waiver_route_ids(registry) or rid not in LEGACY_WAIVER_ROUTES:
+    """Legacy waivers require an exact frozen identity, not merely a familiar id."""
+    if rid not in legacy_waiver_route_ids(registry) or rid not in LEGACY_WAIVER_IDENTITIES:
         return "route id is not on the committed intake.legacy_waiver_routes manifest"
+    family = model.get("family")
+    actual = (
+        route.get("model"), route.get("provider"), route.get("host"),
+        route.get("harness"), route.get("invocation_id"), family,
+        independence_group_of(registry, family),
+    )
+    expected = LEGACY_WAIVER_IDENTITIES[rid]
+    if actual != expected:
+        return f"route identity {actual!r} does not match frozen migration identity {expected!r}"
+    return None
 
 
 def _attestation_kind_errors(
@@ -529,12 +599,11 @@ def _attestation_kind_errors(
                 )
 
     if key == "owner_approval":
-        path = _repo_rel_path(pointer)
-        if path is None or not path.exists() or pointer.startswith("config/providers.json"):
-            errors.append(
-                f"route {rid}: owner_approval attested needs a committed owner/admin record "
-                "(provider bindings are legacy waivers, not approval receipts)"
-            )
+        errors.append(
+            f"route {rid}: owner_approval committed_owner_record is not accepted until a "
+            "code-approved structured owner-record manifest binds route, model, authority, and date; "
+            "existing files and provider bindings are not approval receipts"
+        )
 
     repo_path = _repo_rel_path(pointer)
     if pointer.startswith("model-evals/") and (repo_path is None or not repo_path.exists()):
@@ -599,7 +668,9 @@ def _attestation_record_errors(
 
     if state == "not_applicable":
         code = rec.get("structural_code")
-        if code not in STRUCTURAL_CODES or not _structural_code_allowed(key, str(code), route):
+        if code not in STRUCTURAL_CODES or not _structural_code_allowed(
+            rid, str(route.get("model") or ""), key, str(code),
+        ):
             errors.append(
                 f"route {rid}: attestation {key!r} not_applicable needs a valid "
                 "structural_code for this field and route role/lifecycle "
@@ -1352,11 +1423,73 @@ def _quality_row_errors(registry: dict, role: str, index: int, row: dict, routes
         return errors
 
     # operational_prior
+    errors.extend(_operational_prior_errors(registry, role, route_id, model_id, pointer, loc))
+    return errors
+
+
+def _load_structured_repo_json(pointer: str) -> dict | None:
     path = _repo_rel_path(pointer)
-    if path is None or not path.exists() or not path.is_file():
+    if path is None or not path.is_file() or path.suffix != ".json":
+        return None
+    try:
+        value = json.loads(path.read_text())
+    except Exception:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _provider_binding_for_route(route_id: str) -> tuple[str, dict] | None:
+    data = _load_structured_repo_json("config/providers.json") or {}
+    matches = [
+        (pid, p) for pid, p in (data.get("providers") or {}).items()
+        if isinstance(p, dict) and p.get("route") == route_id
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _operational_prior_errors(
+    registry: dict, role: str, route_id: str, model_id: str, pointer: str, loc: str,
+) -> list[str]:
+    """Require an exact approved structured source with a matching route binding."""
+    errors: list[str] = []
+    expected = OPERATIONAL_PRIOR_SOURCES.get((role, route_id))
+    if pointer != expected:
         errors.append(
-            f"{loc}: operational_prior needs an explicit operational policy/config file pointer"
+            f"{loc}: operational_prior source {pointer!r} is not the code-approved structured "
+            f"source for role/route {(role, route_id)!r} (expected {expected!r})"
         )
+        return errors
+    data = _load_structured_repo_json(pointer)
+    if data is None:
+        return [f"{loc}: operational_prior source {pointer!r} is not a readable structured JSON config"]
+    binding = _provider_binding_for_route(route_id)
+    if binding is None:
+        return [f"{loc}: operational_prior has no unique provider binding for route {route_id!r}"]
+    provider_id, provider = binding
+    route = (registry.get("routes") or {}).get(route_id) or {}
+    model = (registry.get("models") or {}).get(model_id) or {}
+    declared_model = provider.get("model")
+    if declared_model and declared_model not in set(model.get("official_ids") or ()) \
+            and declared_model != route.get("invocation_id"):
+        errors.append(
+            f"{loc}: operational_prior provider {provider_id!r} model {declared_model!r} "
+            f"does not bind route model {model_id!r}"
+        )
+    if pointer == "config/entrypoints.json":
+        if (data.get("dispatcher") or {}).get("provider") != provider_id:
+            errors.append(f"{loc}: entrypoints dispatcher does not bind provider {provider_id!r}")
+    elif pointer == "config/connectors.json":
+        connectors = data.get("mcp_connectors") or {}
+        if not any(
+            isinstance(c, dict) and c.get("status") == "active"
+            and provider_id in (c.get("available_on") or [])
+            for c in connectors.values()
+        ):
+            errors.append(
+                f"{loc}: connectors config has no active connector binding for provider {provider_id!r}"
+            )
+    elif pointer != "config/providers.json":
+        errors.append(f"{loc}: operational_prior source {pointer!r} is not approved")
     return errors
 
 
@@ -1379,6 +1512,15 @@ def _official_source_coverage_errors(registry: dict, models: dict) -> list[str]:
             "(machine-readable official-domain allowlist per family/lab)"
         )
         allowed = {}
+    normalized_allowed = {
+        fid: tuple(domains) if isinstance(domains, list) else domains
+        for fid, domains in allowed.items()
+    }
+    if normalized_allowed != OFFICIAL_DOMAINS_BY_FAMILY:
+        errors.append(
+            "official_sources.allowed_domains_by_family must exactly mirror the code-owned "
+            "official-domain trust root (catalog entries cannot add or rewrite trusted suffixes)"
+        )
     for fid, fam_models in _models_by_family(models).items():
         in_scope = [mid for mid in fam_models if not _model_is_placeholder(models.get(mid) or {})]
         if not in_scope:

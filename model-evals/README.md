@@ -29,13 +29,20 @@ required promote checklist under `intake.promote_requires`.
    `attested` requires a field-specific `evidence_kind` and a dated supporting source whose
    semantics match the requirement (absence language such as “evaluation suite absent”,
    “missing”, or “no evidence” cannot pass). `missing` cannot promote. `not_applicable`
-   requires a closed `structural_code` validated for that field and route (for example
-   `compatibility_fallback_not_ranked` on Opus 4.8 role evals / independent evidence);
+   requires a closed `structural_code` authorized by an exact code-owned
+   `(route_id, model_id, field)` mapping (for example `compatibility_fallback_not_ranked`
+   only on Opus 4.8 role evals / independent evidence);
    free-form rationale never establishes N/A. `waived` is only for exact route ids on
    `intake.legacy_waiver_routes`, with `authority`, date, and short expiry; mutable
-   host/provider/model/evidence fields never qualify a candidate, and new routes cannot
-   be added to that allowlist automatically. `official_id` requires a direct official
-   https URL on a family domain from `official_sources.allowed_domains_by_family` —
+   host/provider/model/evidence fields never qualify a candidate: the validator also
+   requires the frozen model/provider/host/harness/invocation/family identity tuple.
+   New routes cannot be added to that allowlist automatically. `owner_approval` remains
+   waived on current operational routes; `committed_owner_record` is rejected until a
+   code-approved structured owner-record manifest binds route, model, authority, and date.
+   An existing Markdown file is not approval. `official_id` requires a direct official
+   https URL on a family domain from the validator's code-owned trust root; the documented
+   `official_sources.allowed_domains_by_family` must mirror it exactly and cannot add a
+   suffix. Therefore
    local JSON paths, example.com, and another family's domain are not sufficient.
    `local_access_smoke` also requires `signal` / `evidence_kind`: `direct_invocation`
    (a real host smoke) or `standing_provider` (an already-operational seat; a listing is
@@ -101,7 +108,9 @@ omitted. `flags: ["invented_metric"]` zeros the evidence-discipline term.
    and the receipt path as `source`. Without a same-role local receipt, keep
    the row labeled `independent_external_prior` / `vendor_external_prior` /
    `operational_prior`, cap confidence at medium/low, and attach a
-   basis-appropriate URL or policy/config pointer. Do not imply empirical
+   basis-appropriate URL or an exact code-approved structured config pointer whose
+   contents bind that role/route/model. Arbitrary existing prose such as README.md is
+   rejected. Do not imply empirical
    comparability. Do not merge scores across harnesses into one global
    leaderboard.
 3. Keep `selection` independent of `quality`. A scarce top model can rank

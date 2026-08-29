@@ -218,7 +218,7 @@ Diff review. Cross-family pair is Opus 5 + Sol. Fable is not a second family.
 | quality | 1 | `opus-5-teamclaude` | medium | independent_external_prior | https://artificialanalysis.ai/models/claude-opus-5 |
 | quality | 2 | `gpt-5.6-sol-codex` | medium | independent_external_prior | https://artificialanalysis.ai/models/gpt-5-6-sol-xhigh/ |
 | quality | 3 | `fable-5-teamclaude` | low | independent_external_prior | https://artificialanalysis.ai/models/claude-fable-5/ |
-| quality | 4 | `review-e-fireworks` | low | operational_prior | fireworks-usage.md |
+| quality | 4 | `review-e-fireworks` | low | operational_prior | config/providers.json |
 | selection | 1 | `opus-5-teamclaude` | high |  |  |
 | selection | 2 | `gpt-5.6-sol-codex` | high |  |  |
 | selection | 3 | `opus-4.8-teamclaude` | low |  |  |
@@ -263,7 +263,7 @@ Check claims against snapshots and sources. Catches invented metrics before they
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|
-| quality | 1 | `opus-5-teamclaude` | medium | operational_prior | AGENTS.md |
+| quality | 1 | `opus-5-teamclaude` | medium | operational_prior | config/providers.json |
 | quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior | config/providers.json |
 | selection | 1 | `opus-5-teamclaude` | medium |  |  |
 | selection | 2 | `gpt-5.6-sol-codex` | medium |  |  |
@@ -275,8 +275,8 @@ Administer candidate evals and receipts. Owner/admin gated; scores do not auto-w
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|
-| quality | 1 | `opus-5-teamclaude` | medium | operational_prior | model-evals/README.md |
-| quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior | model-evals/README.md |
+| quality | 1 | `opus-5-teamclaude` | medium | operational_prior | config/providers.json |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior | config/providers.json |
 | selection | 1 | `opus-5-teamclaude` | low |  |  |
 | selection | 2 | `gpt-5.6-sol-codex` | low |  |  |
 
