@@ -13,6 +13,8 @@ Encodes the economics the owner asked for, as legible deterministic rules:
 
 `capabilities_of(provider, connectors)` unions the provider's coarse capabilities with the
 connectors it appears in (`available_on`), so "who has Clarity/Chrome/GSC" is data-derived.
+Known connector IDs/aliases never count as coarse labels — a connector capability is granted
+only through an explicitly active connector whose `available_on` includes the provider.
 """
 from __future__ import annotations
 
@@ -76,13 +78,45 @@ def resets_before(row, task_seconds):
     return rw is not None and rw < task_seconds
 
 
+def connector_ids(connectors):
+    """Known connector IDs and aliases. These never count as coarse capability labels."""
+    names = set()
+    for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
+        names.add(cname)
+        alias = (meta or {}).get("alias")
+        if alias:
+            names.add(alias)
+    return names
+
+
+def lookup_connector(name, connectors):
+    """Resolve a connector by id or alias. Returns (canonical_id, meta) or (None, None)."""
+    if not name:
+        return None, None
+    mcp = (connectors or {}).get("mcp_connectors") or {}
+    if name in mcp:
+        return name, mcp[name]
+    for cname, meta in mcp.items():
+        if isinstance(meta, dict) and meta.get("alias") == name:
+            return cname, meta
+    return None, None
+
+
 def capabilities_of(provider_id, provider, connectors):
-    """Union of coarse capabilities (providers.json) and connector access (connectors.json)."""
-    caps = set(provider.get("capabilities", []))
+    """Union of coarse capabilities (providers.json) and connector access (connectors.json).
+
+    Connector IDs/aliases are recognized first and stripped from the raw capability list.
+    A connector name is granted only when the connector is active, its lifecycle predicate
+    passes, and `available_on` includes this provider.
+    """
+    known = connector_ids(connectors)
+    caps = {c for c in (provider.get("capabilities") or []) if c not in known}
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
         if not connector_is_active(meta):
-            continue  # primed/ready connectors are inert scaffolding — never routed/granted
+            continue  # primed/ready/missing/unknown are inert scaffolding — never routed/granted
         if provider_id in (meta.get("available_on") or []):
             caps.add(cname)
-            caps.add(meta.get("class", "connector"))
+            cls = meta.get("class", "connector")
+            if cls not in known:
+                caps.add(cls)
     return caps

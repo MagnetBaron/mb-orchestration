@@ -21,7 +21,7 @@
     "dispatch": "Queue/assign/risk-gate", "mcp_bulk": "High-volume connector fetches", "mcp_judgment": "Interpret fetched data",
     "browser": "Drive a real browser (Chrome) — preview walks, dashboards", "visual_qa": "Storefront pixel review",
     "analytics": "Read analytics UIs (Clarity heatmaps/replays)", "ide": "In-editor agent",
-    "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. The router checks BOTH: a coarse tag here, a connector name there. This is how 'which AI has Clarity/Chrome/GSC access' is system-determined, not guessed."
+    "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. Connector IDs/aliases are never coarse labels: a connector capability is granted only by an active connector whose available_on includes the provider. Doctor rejects provider.capabilities that collide with a connector name."
   },
   "providers": {
     "codex-luna": {

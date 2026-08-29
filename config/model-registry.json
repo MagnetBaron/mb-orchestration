@@ -18,7 +18,9 @@
     "duplicate_physical_invocations_fail_closed": true,
     "cross_family_uses_independence_groups": true,
     "freshness_uses_current_date": true,
-    "required_tools_are_not_capabilities": true
+    "required_tools_are_not_capabilities": true,
+    "resolver_api_fails_closed": true,
+    "last_resort_coding_requires_concrete_coder": true
   },
   "intake": {
     "phases": [

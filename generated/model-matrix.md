@@ -4,6 +4,8 @@ Generated from `config/model-registry.json` as of 2026-08-28.
 Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.
 
 A catalog entry is not a usable route. Only `live_verified` routes resolve.
+The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence never returns).
+Last-resort coding requires a concrete live provider with `implement`/`ide` and `code` on both the provider and its bound live route; sharing a plan is not enough.
 Quality rank is not selection priority. Rank never grants tools or data.
 Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.
 live_verified freshness is compared to the current date (or `--as-of`), not frozen `registry.as_of`.
@@ -240,11 +242,13 @@ Administer candidate evals and receipts. Owner/admin gated; scores do not auto-w
 - `duplicate_physical_invocations_fail_closed`: true
 - `fable_is_same_family_as_opus`: true
 - `freshness_uses_current_date`: true
+- `last_resort_coding_requires_concrete_coder`: true
 - `only_live_verified_resolves`: true
 - `quality_is_not_price`: true
 - `quality_rank_is_not_selection_priority`: true
 - `rankings_are_role_and_harness_specific`: true
 - `required_tools_are_not_capabilities`: true
+- `resolver_api_fails_closed`: true
 - `single_dispatcher`: entrypoints.json dispatcher.provider is the only authority assignment; rankings never grant dispatch
 - `tools_never_follow_rank`: true
 - `unknown_availability_fails_closed`: true

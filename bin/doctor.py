@@ -195,8 +195,10 @@ def _check_server_block(name, server):
 def check_connector_lifecycle(conns, providers):
     """Validate the MCP strap-in lifecycle (status enum + optional bundled server block) and
     PROVE inertness: a connector that is not 'active' (i.e. primed/ready) must never be treated
-    as live — the router must not grant it to any seat. This is SHAPE + pure-logic only; it
-    NEVER opens a socket, spawns a subprocess, or hits the network (the whole point of priming)."""
+    as live — the router must not grant it to any provider, including seats outside available_on
+    and providers that copied the connector name into coarse capabilities. Rejects capability/
+    connector-name collisions. This is SHAPE + pure-logic only; it NEVER opens a socket, spawns
+    a subprocess, or hits the network (the whole point of priming)."""
     if not conns:
         return
     prov = (providers or {}).get("providers", {})
@@ -205,6 +207,15 @@ def check_connector_lifecycle(conns, providers):
     except Exception as exc:  # pragma: no cover
         routing = None
         err(f"connector lifecycle: cannot import routing for the inertness proof: {exc}")
+    known = routing.connector_ids(conns) if routing is not None else set()
+    for pid, p in prov.items():
+        for cap in (p.get("capabilities") or []) if isinstance(p, dict) else []:
+            if cap in known:
+                err(
+                    f"provider {pid}: capability {cap!r} collides with a connector id/alias — "
+                    "connector access is granted only via connectors.json available_on + status=active, "
+                    "never as a coarse provider capability"
+                )
     for name, m in conns.get("mcp_connectors", {}).items():
         status = m.get("status")
         if status not in VALID_CONNECTOR_STATUS:
@@ -220,11 +231,13 @@ def check_connector_lifecycle(conns, providers):
             if status == "active":
                 err(f"connector {name}: carries a bundled 'server' block but status is 'active' — "
                     "a repo-carried server definition must stay primed/ready (inert) until the admin activates it")
-        # INERTNESS PROOF (pure function): a non-active connector is granted to NO seat.
+        # INERTNESS PROOF (pure function): a non-active connector is granted to NO provider,
+        # not only those listed in available_on (coarse-label leaks must not hide).
         if status != "active" and routing is not None:
-            for pid in m.get("available_on", []):
+            alias = m.get("alias")
+            for pid in prov:
                 caps = routing.capabilities_of(pid, prov.get(pid, {}), conns)
-                if name in caps:
+                if name in caps or (alias and alias in caps):
                     err(f"connector {name}: status={status} but the router still grants it to seat "
                         f"{pid!r} — a non-active connector MUST be inert (never routed). "
                         "See bin/routing.connector_is_active.")
@@ -244,6 +257,10 @@ def check_skills(skills, providers, conns):
     for p in provs.values():
         coarse.update(p.get("capabilities", []) or [])
     connector_names = set((conns or {}).get("mcp_connectors", {}))
+    for m in (conns or {}).get("mcp_connectors", {}).values():
+        if isinstance(m, dict) and m.get("alias"):
+            connector_names.add(m["alias"])
+    coarse -= connector_names
     try:
         gen = load_module("gen_roles_skills", HERE / "generate-roles.py")
     except Exception as exc:

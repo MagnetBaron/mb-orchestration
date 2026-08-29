@@ -535,6 +535,91 @@ class OperationalLiveRouteTests(unittest.TestCase):
         self.assertTrue(mr.route_is_live(registry, "grok-4.6-build", as_of=date(2026, 8, 28)))
 
 
+class LastResortCodingTests(unittest.TestCase):
+    """Last-resort coding names a concrete live implement/ide + code provider, else PARK."""
+
+    def _spent_workers(self):
+        return [
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "spent",
+             "billing": "included", "intake": False, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "xai"},
+            {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": "spent",
+             "billing": "included", "intake": False, "window_kinds": ["monthly"],
+             "runway_seconds": 864000 * 20, "family": "cursor-pool"},
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+             "billing": "included", "intake": True, "window_kinds": ["weekly"],
+             "runway_seconds": 864000, "family": "openai"},
+        ]
+
+    def _impl(self, provs, registry, rows=None):
+        return rr.pick_implement(
+            provs, connectors(), rows or self._spent_workers(),
+            "repo-code", "", "", False, 0, registry,
+        )
+
+    def test_live_intake_without_coder_parks(self):
+        steps = self._impl(providers(), live())
+        self.assertFalse(any(s.get("last_resort") for s in steps))
+        self.assertFalse(any(s.get("seat") == "dispatch/intake" for s in steps))
+        self.assertTrue(any(not s.get("available") and "PARK" in (s.get("why") or "") for s in steps))
+        for pid in ("codex-luna", "codex-terra", "codex-sol"):
+            self.assertFalse(any(s.get("seat") == pid for s in steps), pid)
+
+    def test_luna_terra_sol_are_not_coders(self):
+        provs = providers()
+        registry = live()
+        for pid in ("codex-luna", "codex-terra", "codex-sol"):
+            self.assertFalse(rr.provider_can_code(provs["providers"][pid], registry), pid)
+        self.assertIsNone(rr.last_resort_coder(
+            provs["providers"], registry, "codex-200", lambda pid: True,
+        ))
+
+    def test_concrete_intake_coder_is_named(self):
+        provs = providers()
+        registry = copy.deepcopy(live())
+        luna = provs["providers"]["codex-luna"]
+        luna["functions"] = list(luna["functions"]) + ["implement"]
+        luna["capabilities"] = list(luna["capabilities"]) + ["code"]
+        registry["routes"]["gpt-5.6-luna-codex"]["capabilities"] = list(
+            registry["routes"]["gpt-5.6-luna-codex"]["capabilities"]
+        ) + ["code"]
+        self.assertTrue(rr.provider_can_code(luna, registry))
+        self.assertEqual(
+            rr.last_resort_coder(provs["providers"], registry, "codex-200", lambda pid: True),
+            "codex-luna",
+        )
+        steps = self._impl(provs, registry)
+        hit = [s for s in steps if s.get("last_resort")]
+        self.assertEqual(len(hit), 1, steps)
+        self.assertEqual(hit[0]["seat"], "codex-luna")
+        self.assertEqual(hit[0]["on"], "codex-plan")
+        self.assertNotEqual(hit[0]["seat"], "dispatch/intake")
+
+    def test_code_on_provider_but_not_route_parks(self):
+        provs = providers()
+        registry = live()
+        luna = provs["providers"]["codex-luna"]
+        luna["functions"] = list(luna["functions"]) + ["implement"]
+        luna["capabilities"] = list(luna["capabilities"]) + ["code"]
+        self.assertNotIn("code", registry["routes"]["gpt-5.6-luna-codex"]["capabilities"])
+        self.assertFalse(rr.provider_can_code(luna, registry))
+        steps = self._impl(provs, registry)
+        self.assertFalse(any(s.get("last_resort") for s in steps))
+        self.assertTrue(any(not s.get("available") for s in steps))
+
+    def test_implement_without_code_parks(self):
+        provs = providers()
+        registry = copy.deepcopy(live())
+        luna = provs["providers"]["codex-luna"]
+        luna["functions"] = list(luna["functions"]) + ["implement"]
+        registry["routes"]["gpt-5.6-luna-codex"]["capabilities"] = (
+            list(registry["routes"]["gpt-5.6-luna-codex"]["capabilities"]) + ["code"]
+        )
+        self.assertFalse(rr.provider_can_code(luna, registry))
+        steps = self._impl(provs, registry)
+        self.assertFalse(any(s.get("seat") == "codex-luna" for s in steps))
+
+
 class DuplicateInvocationTests(unittest.TestCase):
     def test_cloned_teamclaude_opus5_under_openai_fails_closed(self):
         data = copy.deepcopy(live())
@@ -621,6 +706,77 @@ class LiveEvidenceTests(unittest.TestCase):
         cursor = registry["routes"]["grok-4.6-cursor"]
         self.assertEqual(cursor["evidence_strength"], "owner_eval")
         self.assertEqual(cursor["attestations"]["local_access_smoke"]["signal"], "standing_provider")
+
+
+class ResolverLivePredicateTests(unittest.TestCase):
+    """Public resolve() filters with route_is_live; it does not depend on CLI assert_valid."""
+
+    def test_deleted_opus5_evidence_cannot_resolve_code_review(self):
+        data = copy.deepcopy(live())
+        del data["routes"]["opus-5-teamclaude"]["evidence"]
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", n=3, as_of=date(2026, 8, 28))
+        ids = [r["route"] for r in decision["routes"]]
+        self.assertNotIn("opus-5-teamclaude", ids)
+        self.assertIn("gpt-5.6-sol-codex", ids)
+
+    def test_empty_evidence_does_not_resolve(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence"] = []
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_stale_evidence_does_not_resolve(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence_date"] = "2024-01-01"
+        data["routes"]["opus-5-teamclaude"]["evidence"] = [
+            {"date": "2024-01-01", "route_state": "live_verified", "signal": "direct_invocation",
+             "kind": "local_smoke", "source": "stale"},
+        ]
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_future_evidence_does_not_resolve(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence_date"] = "2099-01-01"
+        data["routes"]["opus-5-teamclaude"]["evidence"] = [
+            {"date": "2099-01-01", "route_state": "live_verified", "signal": "direct_invocation",
+             "kind": "local_smoke", "source": "future"},
+        ]
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_unattested_does_not_resolve(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["attestations"]["local_access_smoke"]["attested"] = False
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_mismatched_latest_evidence_does_not_resolve(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-5-teamclaude"]["evidence"] = [
+            {"date": "2026-08-01", "route_state": "live_verified", "signal": "direct_invocation"},
+            {"date": "2026-08-28", "route_state": "unwired", "signal": "direct_invocation"},
+        ]
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_missing_attestations_do_not_resolve(self):
+        data = copy.deepcopy(live())
+        del data["routes"]["opus-5-teamclaude"]["attestations"]
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_stale_as_of_fails_closed_without_assert_valid(self):
+        decision = mr.resolve(live(), "code_review", as_of=date(2026, 12, 1))
+        self.assertFalse(decision["ok"])
+        self.assertEqual(decision["routes"], [])
+        self.assertIn("fail-closed", decision["reason"])
 
 
 class RequiredToolsVsCapabilitiesTests(unittest.TestCase):

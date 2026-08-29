@@ -594,14 +594,7 @@ def inventory(registry: dict) -> list[dict]:
 def _matches(row: dict, *, required_capabilities=None, required_tools=None,
              data_boundary=None, exclude_models=None, exclude_families=None,
              exclude_routes=None, hosts=None, quota_spent=None) -> bool:
-    if row["route_state"] not in ACTIVE_RESOLVE_STATES:
-        return False
-    if row.get("incubation"):
-        return False
-    if row["lifecycle"] not in ROUTABLE_LIFECYCLES:
-        return False
-    if row["lifecycle"] == "retired":
-        return False
+    """Role filters only. Live-ness is `route_is_live` — callers must pre-filter."""
     caps = set(row.get("capabilities") or [])
     tools = set(row.get("tools") or [])
     if required_capabilities and not set(required_capabilities).issubset(caps):
@@ -627,12 +620,18 @@ def _matches(row: dict, *, required_capabilities=None, required_tools=None,
 def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | None = None,
             required_capabilities=None, required_tools=None, data_boundary=None,
             exclude_models=None, exclude_families=None, exclude_routes=None,
-            hosts=None, quota_spent=None, use_quality: bool = False) -> dict:
-    """Fail-closed resolver. Only live_verified routes. Rank does not grant authority.
+            hosts=None, quota_spent=None, use_quality: bool = False,
+            as_of: date | None = None) -> dict:
+    """Fail-closed resolver. Rank does not grant authority.
+
+    Every candidate is filtered with `route_is_live` before matching/ranking. Missing,
+    stale, future, mismatched, or unattested evidence never returns the route — this
+    function does not depend on CLI `assert_valid`. `as_of` defaults to the current date.
 
     family_diversity=2 requires distinct configured independence groups AND distinct
     physical (host, harness, invocation_id) identities — never family strings alone.
     """
+    as_of = as_of or date.today()
     roles = registry.get("roles") or {}
     rankings = registry.get("rankings") or {}
     if role not in roles or role not in rankings:
@@ -654,6 +653,8 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
         if rid in seen or rid not in routes:
             continue
         seen.add(rid)
+        if not route_is_live(registry, rid, as_of=as_of):
+            continue
         row = _route_row(rid, routes[rid], models.get(routes[rid].get("model"), {}))
         row["independence_group"] = independence_group_of(registry, row.get("family"))
         row["physical"] = physical_invocation(row)
@@ -780,6 +781,8 @@ def render_matrix(registry: dict) -> str:
         "Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.",
         "",
         "A catalog entry is not a usable route. Only `live_verified` routes resolve.",
+        "The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence never returns).",
+        "Last-resort coding requires a concrete live provider with `implement`/`ide` and `code` on both the provider and its bound live route; sharing a plan is not enough.",
         "Quality rank is not selection priority. Rank never grants tools or data.",
         "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",
         "live_verified freshness is compared to the current date (or `--as-of`), not frozen `registry.as_of`.",
@@ -910,6 +913,11 @@ def main(argv=None) -> int:
     p_res.add_argument("--data-boundary", default="")
     p_res.add_argument("--quota-spent", default="")
     p_res.add_argument("--quality", action="store_true", help="order by quality rank instead of selection")
+    p_res.add_argument(
+        "--as-of",
+        default="",
+        help="YYYY-MM-DD live-route clock (default: actual current date, not registry.as_of)",
+    )
     p_res.add_argument("--json", action="store_true")
 
     p_rnk = sub.add_parser("rankings", help="quality vs selection for one role")
@@ -937,7 +945,9 @@ def main(argv=None) -> int:
                 print("model-registry OK")
         return 1 if errors else 0
 
-    assert_valid(registry, providers=providers)
+    as_of = _as_date(getattr(args, "as_of", "") or "") or None
+    if args.cmd != "resolve":
+        assert_valid(registry, providers=providers, as_of=as_of)
 
     if args.cmd == "inventory":
         rows = inventory(registry)
@@ -966,6 +976,7 @@ def main(argv=None) -> int:
             data_boundary=args.data_boundary or None,
             quota_spent=split(args.quota_spent) or None,
             use_quality=args.quality,
+            as_of=as_of,
         )
         if args.json:
             print(json.dumps(decision, indent=2))

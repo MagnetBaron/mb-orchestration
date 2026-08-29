@@ -105,14 +105,51 @@ def c_genuine_park():
 
 
 def c_dispatch_codes():
+    """Live Codex intake (Luna/Terra/Sol) has no coding function — last-resort PARKS."""
     def fn():
         with tempfile.TemporaryDirectory() as tmp:
             led = seed_ledger(tmp, {"grok-heavy": HARD, "cursor-models": HARD, "cursor-other-400": HARD})
             d = json.loads(run([PY, "bin/resolve-route.py", "--class", "repo-code", "--implement",
                                 "--ledger", led, "--json"]).stdout)
-            lr = any(s.get("last_resort") for s in d["implement"])
-            return lr, f"intake codes as last resort={lr}"
+            impl = d["implement"]
+            lr = [s for s in impl if s.get("last_resort")]
+            generic = any(s.get("seat") == "dispatch/intake" for s in impl)
+            parked = any(not s.get("available") and "PARK" in (s.get("why") or "") for s in impl)
+            ok = parked and not lr and not generic
+            return ok, f"parked={parked} last_resort={bool(lr)} generic_dispatch_intake={generic}"
     return fn
+
+
+def c_last_resort_names_coder():
+    """A concrete live implement/ide + code provider on the intake sub is named, not generic."""
+    spec_rr = importlib.util.spec_from_file_location("resolve_route_smoke", HERE / "resolve-route.py")
+    rr = importlib.util.module_from_spec(spec_rr)
+    spec_rr.loader.exec_module(rr)
+    provs = json.loads((ROOT / "config" / "providers.json").read_text())
+    registry = json.loads((ROOT / "config" / "model-registry.json").read_text())
+    conns = json.loads((ROOT / "config" / "connectors.json").read_text())
+    luna = provs["providers"]["codex-luna"]
+    luna["functions"] = list(luna["functions"]) + ["implement"]
+    luna["capabilities"] = list(luna["capabilities"]) + ["code"]
+    registry["routes"]["gpt-5.6-luna-codex"]["capabilities"] = list(
+        registry["routes"]["gpt-5.6-luna-codex"]["capabilities"]
+    ) + ["code"]
+    rows = [
+        {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "spent",
+         "billing": "included", "intake": False, "window_kinds": ["weekly"],
+         "runway_seconds": 1, "family": "xai"},
+        {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": "spent",
+         "billing": "included", "intake": False, "window_kinds": ["monthly"],
+         "runway_seconds": 1, "family": "cursor-pool"},
+        {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+         "billing": "included", "intake": True, "window_kinds": ["weekly"],
+         "runway_seconds": 864000, "family": "openai"},
+    ]
+    steps = rr.pick_implement(provs, conns, rows, "repo-code", "", "", False, 0, registry)
+    hit = [s for s in steps if s.get("last_resort")]
+    ok = (len(hit) == 1 and hit[0]["seat"] == "codex-luna" and hit[0]["on"] == "codex-plan"
+          and hit[0]["seat"] != "dispatch/intake")
+    return ok, f"last_resort={hit[0]['seat'] if hit else None} on={hit[0].get('on') if hit else None}"
 
 
 def c_drain_plan():
@@ -370,7 +407,8 @@ def main(argv=None):
     check("route: repo-code + auth → cross-family", c_resolve("repo-code", "routine", "auth", "cross-family"))
     check("never-strand: reserve Sol released for cross-family", c_never_strand())
     check("genuine park: real exhaustion parks; single-frontier survives", c_genuine_park())
-    check("dispatch codes last resort when workers spent", c_dispatch_codes())
+    check("last-resort parks without a coding-capable intake provider", c_dispatch_codes())
+    check("last-resort names a concrete coding-capable provider", c_last_resort_names_coder)
     check("run-brief dry-run plans + fails closed (shells nothing)", c_run_brief)
     check("run-ledger append→fold round-trip", c_runledger)
     check("drain-plan: metered last + reserve sizing", c_drain_plan)

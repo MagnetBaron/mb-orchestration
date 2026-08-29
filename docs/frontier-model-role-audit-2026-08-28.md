@@ -165,6 +165,8 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 - Fable is same-family, rare architecture/long-horizon escalation only.
 - Unknown, catalog-only, auth-blocked, incubation, and unwired availability fails closed.
 - A catalog entry is not a usable route.
+- `bin/model-registry.py resolve` is fail-closed: it filters every candidate with `route_is_live` and does not depend on CLI `assert_valid`. Missing, stale, future, mismatched, or unattested evidence never returns the route.
+- Last-resort coding requires a concrete live `implement`/`ide` provider with `code` on both the provider and its bound live route; sharing a plan (Luna/Terra/Sol) is not a coding grant.
 - `bin/model-registry.py resolve` returns `authority_grants: false`.
 - Rankings grant no authority or connectors.
 

@@ -13,8 +13,11 @@ It enforces the owner's economics (bin/routing.py):
     live families).
   * minimize API $ — included seats before metered.
   * use-before-lost — drain soon-to-reset weekly/monthly quota first.
-  * dispatch codes last — if every worker seat is spent, the intake/dispatch seat
-    implements (a 2-subscription setup routes coding to dispatch by design).
+  * dispatch codes last — if every worker seat is spent, a concrete live provider on
+    the intake subscription implements, and only if that provider is operationally
+    allowed to implement (`implement` or `ide`) and has `code` on both the provider
+    and its bound live route. Sharing a plan with Luna/Terra/Sol is not enough.
+    No such provider → PARK.
   * capability-aware — an implement seat must actually have the needed capability
     (browser/connector/etc., derived from providers.json + connectors.json).
   * no mid-turn swaps — --task-seconds flags a seat that would reset mid-task.
@@ -187,6 +190,47 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
     return {"satisfied": False, "chain": [first], "explanation": "PARK: " + msg}
 
 
+IMPLEMENT_FNS = frozenset({"implement", "ide"})
+
+
+def provider_can_code(provider, registry):
+    """True iff this provider may implement: implement/ide function, `code` on the provider
+    AND on its bound live catalog route. Live-route predicate is shared (route_is_live)."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+        return False
+    fns = set(provider.get("functions") or [])
+    if not (fns & IMPLEMENT_FNS):
+        return False
+    if "code" not in (provider.get("capabilities") or []):
+        return False
+    if not modelreg.provider_route_is_live(registry, provider):
+        return False
+    route = (registry.get("routes") or {}).get(provider.get("route") or "") or {}
+    return "code" in (route.get("capabilities") or [])
+
+
+def last_resort_coder(prov, registry, subscription, cap_ok):
+    """Concrete live coding-capable provider on this subscription, or None.
+
+    Fail closed: a live provider that merely shares the intake plan (Luna/Terra/Sol) is
+    not a coder. Prefer `implement` over `ide`, then stable pid order.
+    """
+    if not subscription:
+        return None
+    ranked = []
+    for pid, p in prov.items():
+        if not isinstance(p, dict) or p.get("backed_by") != subscription:
+            continue
+        if not provider_can_code(p, registry):
+            continue
+        if not cap_ok(pid):
+            continue
+        fns = set(p.get("functions") or [])
+        ranked.append((0 if "implement" in fns else 1, pid))
+    ranked.sort()
+    return ranked[0][1] if ranked else None
+
+
 def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels,
                    task_seconds, registry):
     prov = providers["providers"]
@@ -204,10 +248,9 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
             return True
         return needs_connector in routing.capabilities_of(pid, prov.get(pid, {}), connectors)
 
-    # candidate implement providers: live catalog route + implement/ide + needed capability
+    # candidate implement providers: live catalog route + implement/ide + code + needed capability
     impl_ids = [pid for pid, p in prov.items()
-                if ("implement" in p.get("functions", []) or "ide" in p.get("functions", []))
-                and p.get("enabled", True) and live_ok(pid) and cap_ok(pid)]
+                if provider_can_code(p, registry) and cap_ok(pid)]
 
     def best_seat(pid):
         seats = [s for s in provider_seats(pid, providers, rows) if routing.usable(s)]
@@ -233,36 +276,45 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                       "available": True, "tier": s["tier"], "billing": s.get("billing"),
                       "resets_mid_task": routing.resets_before(s, task_seconds)})
     else:
-        # never strand: no usable worker → the intake/dispatch seat codes (2-sub setups land here)
-        # last-resort still requires some provider on that subscription to have a live catalog route
-        def sub_has_live(sub):
-            return any(
-                p.get("backed_by") == sub and modelreg.provider_route_is_live(registry, p)
-                for p in prov.values() if isinstance(p, dict)
-            )
+        # never strand: no usable worker → a concrete live coding-capable provider on the
+        # intake subscription implements. Luna/Terra/Sol sharing the plan is not enough.
         last_dollar = [pid for pid, p in prov.items()
                        if "last_dollar" in (p.get("functions") or [])
-                       and p.get("enabled", True) and live_ok(pid)]
+                       and provider_can_code(p, registry) and cap_ok(pid)]
         intake = sorted(
-            [r for r in rows if r.get("intake") and routing.usable(r) and sub_has_live(r.get("subscription"))],
+            [r for r in rows if r.get("intake") and routing.usable(r)],
             key=routing.route_key,
         )
-        if intake:
-            steps.append({"seat": "dispatch/intake", "on": intake[0]["seat"],
-                          "why": "ALL worker seats spent → intake/dispatch codes as last resort (never strand; releases reserve)",
-                          "available": True, "tier": intake[0]["tier"], "last_resort": True})
+        coder = None
+        on_row = None
+        for row in intake:
+            pid = last_resort_coder(prov, registry, row.get("subscription"), cap_ok)
+            if pid:
+                coder, on_row = pid, row
+                break
+        if coder and on_row is not None:
+            steps.append({
+                "seat": coder, "on": on_row["seat"],
+                "why": (f"ALL worker seats spent → {coder} on intake codes as last resort "
+                        "(never strand; releases reserve; live implement/ide + code on "
+                        "provider and bound route)"),
+                "available": True, "tier": on_row["tier"], "last_resort": True,
+            })
         elif last_dollar:
             pid = last_dollar[0]
             s = best_seat(pid)
             if s:
                 steps.append({"seat": pid, "on": s["seat"],
-                              "why": "last-resort metered provider (live catalog route required)",
+                              "why": "last-resort metered provider (live implement/ide + code on provider and bound route)",
                               "available": True, "tier": s["tier"], "last_resort": True, "billing": s.get("billing")})
             else:
-                steps.append({"seat": "(none)", "why": "no usable implement seat anywhere — genuine full exhaustion → PARK",
+                steps.append({"seat": "(none)",
+                              "why": "no usable implement seat — intake has no live coding-capable provider → PARK",
                               "available": False, "tier": "spent"})
         else:
-            steps.append({"seat": "(none)", "why": "no usable implement seat anywhere — genuine full exhaustion → PARK",
+            steps.append({"seat": "(none)",
+                          "why": "no usable implement seat — intake has no live coding-capable provider "
+                                 "(implement/ide + code on provider and bound live route) → PARK",
                           "available": False, "tier": "spent"})
 
     if pixels or klass == "storefront-theme":

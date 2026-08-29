@@ -298,6 +298,96 @@ class ConnectorLifecycleTests(unittest.TestCase):
         doc.check_connector_lifecycle(conns, provs)
         self.assertTrue(any("github" in e and "wired-maybe" in e for e in doc.ERRORS), doc.ERRORS)
 
+    def _luna_github_primed(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        provs["providers"]["codex-luna"]["capabilities"] = list(
+            provs["providers"]["codex-luna"]["capabilities"]
+        ) + ["github"]
+        conns["mcp_connectors"]["github"]["status"] = "primed"
+        return provs, conns
+
+    def test_primed_github_coarse_label_does_not_leak_to_luna(self):
+        """Exact regression: github on codex-luna.capabilities + primed connector."""
+        provs, conns = self._luna_github_primed()
+        luna = provs["providers"]["codex-luna"]
+        caps = routing.capabilities_of("codex-luna", luna, conns)
+        self.assertNotIn("github", caps)
+        self.assertFalse(gen.seat_has_capability("codex-luna", "github", provs, conns))
+
+    def test_primed_github_coarse_label_skill_gate_fails(self):
+        provs, conns = self._luna_github_primed()
+        self.assertFalse(gen.seat_has_capability("codex-luna", "github", provs, conns))
+        skills = json.loads((CONFIG / "skills.json").read_text())
+        skills["skills"]["magnet-baron-skills:shopify-theme"]["required_capability"] = "github"
+        roles = live_roles()
+        orig = gen.mborch.load_config
+
+        def fake(name, required=True):
+            if name == "connectors.json":
+                return conns
+            if name == "skills.json":
+                return skills
+            return orig(name, required=required)
+
+        gen.mborch.load_config = fake
+        try:
+            with self.assertRaisesRegex(ValueError, r"lacks capability 'github'"):
+                dump_and_load(roles=roles, providers=provs)
+        finally:
+            gen.mborch.load_config = orig
+
+    def test_doctor_reports_github_capability_collision(self):
+        provs, conns = self._luna_github_primed()
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        blob = "\n".join(doc.ERRORS)
+        self.assertTrue(
+            any("codex-luna" in e and "github" in e and "collides" in e for e in doc.ERRORS),
+            blob,
+        )
+
+    def test_missing_unknown_primed_coarse_labels_do_not_grant(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        grok = provs["providers"]["grok-build"]
+        grok["capabilities"] = list(grok["capabilities"]) + ["github"]
+        for status in (None, "unknown", "primed", "ready"):
+            if status is None:
+                conns["mcp_connectors"]["github"].pop("status", None)
+            else:
+                conns["mcp_connectors"]["github"]["status"] = status
+            caps = routing.capabilities_of("grok-build", grok, conns)
+            self.assertNotIn("github", caps, status)
+            self.assertFalse(gen.seat_has_capability("grok-build", "github", provs, conns), status)
+            self.assertFalse(gen.seat_has_capability("codex-luna", "github", provs, conns), status)
+
+    def test_doctor_inertness_checks_providers_not_in_available_on(self):
+        """Coarse-label leak on a seat outside available_on is still a doctor error."""
+        provs, conns = self._luna_github_primed()
+        self.assertNotIn("codex-luna", conns["mcp_connectors"]["github"]["available_on"])
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        self.assertTrue(
+            any("codex-luna" in e and "github" in e for e in doc.ERRORS),
+            doc.ERRORS,
+        )
+
+    def test_active_connector_still_grants_via_available_on_not_coarse_label(self):
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        provs = live_providers()
+        self.assertEqual(conns["mcp_connectors"]["github"]["status"], "active")
+        self.assertIn(
+            "github",
+            routing.capabilities_of("grok-build", provs["providers"]["grok-build"], conns),
+        )
+        self.assertNotIn(
+            "github",
+            routing.capabilities_of("codex-luna", provs["providers"]["codex-luna"], conns),
+        )
+        self.assertTrue(gen.seat_has_capability("grok-build", "github", provs, conns))
+        self.assertFalse(gen.seat_has_capability("codex-luna", "github", provs, conns))
+
 
 if __name__ == "__main__":
     unittest.main()

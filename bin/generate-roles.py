@@ -98,18 +98,23 @@ def skill_md_path(skill_id: str) -> Path:
 
 
 def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) -> bool:
-    """A seat satisfies `cap` if it is a coarse capability tag for that seat in providers.json
-    `capabilities`, OR an MCP/store connector name in connectors.json whose `available_on` lists the
-    seat (the router checks BOTH — coarse tag here, connector name there). None = no capability gate."""
+    """A seat satisfies `cap` only through the right source.
+
+    Connector IDs/aliases are recognized first: a connector capability is granted only by an
+    explicitly active connector whose lifecycle predicate passes and whose `available_on`
+    includes the seat. Coarse provider capability labels never grant a known connector name
+    (primed/ready/missing/unknown stay inert even if the name was copied into capabilities).
+    None = no capability gate.
+    """
     if cap is None:
         return True
+    cid, meta = routing.lookup_connector(cap, connectors)
+    if cid is not None:
+        return routing.connector_is_active(meta) and seat in ((meta or {}).get("available_on") or [])
     prov = (providers_data.get("providers") or {}).get(seat, {})
-    if cap in (prov.get("capabilities") or []):
-        return True
-    conn = (connectors.get("mcp_connectors") or {}).get(cap)
-    if isinstance(conn, dict) and seat in (conn.get("available_on") or []):
-        return routing.connector_is_active(conn)
-    return False
+    if cap in routing.connector_ids(connectors):
+        return False
+    return cap in (prov.get("capabilities") or [])
 
 
 def provider_levels(providers_data: dict) -> dict[str, str]:
@@ -251,7 +256,7 @@ def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: di
                 if not seat_has_capability(role["seat"], cap, providers_data, connectors):
                     raise ValueError(
                         f"{name}: seat {role['seat']!r} lacks capability {cap!r} required by skill {sid!r} "
-                        "(providers.json capabilities / connectors.json available_on) — fail-closed")
+                        "(active connector available_on, or a non-connector coarse capability) — fail-closed")
         for host in set(role) & set(HOSTS):
             if host not in hosts:
                 raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")
