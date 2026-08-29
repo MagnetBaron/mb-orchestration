@@ -149,7 +149,7 @@
     "steps": [
       "1. Add a provider entry: id, level (the durable slot it fills), family, kind, model (the new id), functions, capabilities, prowess, billing, detect.",
       "2. To replace an incumbent, set `supersedes: <old-id>` and remove/disable the old entry; keep the SAME level so routing is unchanged.",
-      "3. Add or update the matching route in config/model-registry.json. Catalog as catalog_verified/unwired first; promote to live_verified only after official-id, local smoke, role evals, independent evidence, cost/context, and owner approval.",
+      "3. Add or update the matching route in config/model-registry.json. Catalog as catalog_verified/unwired first; promote to live_verified only after official-id, local smoke, role evals, independent evidence, cost/context, and owner approval are typed-attested (attested|not_applicable; new candidates may never use a legacy waiver). official_id needs a direct official https URL. Same-harness receipts are the path to promoting a quality prior into a measured role ranking.",
       "4. If it should join review, add it to review_order at the position its selection priority earns and set review_eligible:true. Quality rank is not selection priority.",
       "5. Run bin/doctor.py (validates level/family/forbidden/order/registry) and bin/smoketest.py. Done — the router and recommendations pick it up."
     ],

@@ -24,13 +24,23 @@ required promote checklist under `intake.promote_requires`.
    - owner/admin approval recorded in the route `evidence` list
 
    Those six items are `intake.promote_requires`. Each `live_verified` route must carry an
-   `attestations` object with one entry per item: `attested: true`, a `date`, and an auditable
-   `source`. `local_access_smoke` also requires `signal`: `direct_invocation` (a real host
-   smoke) or `standing_provider` (an already-operational seat; a listing is not an invocation).
-   Do not invent new smokes to fill a checkbox. Validation compares evidence and attestation
-   dates to the **actual current date** unless you pass `--as-of YYYY-MM-DD` (or
+   `attestations` object with one entry per item and a typed `state`: `attested`,
+   `missing`, `not_applicable`, or `waived`. Boolean `attested: true` is rejected.
+   `attested` requires a dated supporting source whose semantics match the requirement
+   (absence language such as “no suite” or “not invented” cannot pass). `missing` cannot
+   promote. `not_applicable` needs a structural rationale. `waived` is only for
+   already-operational legacy/standing-provider seats, with `authority`, date, and short
+   expiry; new candidates may never use a legacy waiver. `official_id` requires a direct
+   official https URL — local JSON paths are not sufficient. `local_access_smoke` also
+   requires `signal`: `direct_invocation` (a real host smoke) or `standing_provider`
+   (an already-operational seat; a listing is not an invocation). Do not invent new
+   smokes to fill a checkbox. Validation compares evidence and attestation dates to the
+   **actual current date** unless you pass `--as-of YYYY-MM-DD` (or
    `validate(..., as_of=)` in tests). `registry.as_of` is a catalog label, not the freshness
-   clock. Future-dated, missing, stale, or mismatched evidence fails closed.
+   clock. Future-dated, missing, stale, mismatched, semantically contradictory, or
+   expired-waiver evidence fails closed. Review E / `open-weight-review-e` is a local
+   placeholder outside the census and cannot be promoted or wired until a named
+   candidate model plus an official source replaces it.
 
 Incubation (`incubation: true`) is for vendor-heavy or too-new candidates
 (example: GLM 5.3 Flash). It is still non-routable until promotion.
@@ -78,13 +88,21 @@ omitted. `flags: ["invented_metric"]` zeros the evidence-discipline term.
 ## After scoring
 
 1. Attach the receipt path and date to the route's `evidence` list.
-2. Update per-role `quality` ranks only from the same harness and effort.
+2. Update per-role `quality` ranks only from the same harness and effort,
+   and only then set `basis` to `local_same_harness`. Without a same-role
+   local receipt, keep the row labeled
+   `independent_external_prior` / `vendor_external_prior` /
+   `operational_prior` and do not imply empirical comparability.
    Do not merge scores across harnesses into one global leaderboard.
 3. Keep `selection` independent of `quality`. A scarce top model can rank
    first on quality while a cheaper live route remains the default.
-4. Run `python3 bin/model-registry.py validate` and
+4. Token-efficiency of context scouting, evidence audit, and
+   model-evaluation admin is a hypothesis to measure. The architecture
+   receipt does not evaluate `token-eff-1`. Commit before/after token
+   receipts before claiming realized savings.
+5. Run `python3 bin/model-registry.py validate` and
    `python3 bin/model-registry.py write-matrix`.
-5. Do not edit `generated/model-matrix.md` by hand.
+6. Do not edit `generated/model-matrix.md` by hand.
 
 ## What this does not do
 

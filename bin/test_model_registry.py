@@ -278,8 +278,10 @@ class RankingClaimTests(unittest.TestCase):
         by_route = {row["route"]: row for row in quality}
         self.assertEqual(by_route["opus-5-teamclaude"]["rank"], 1)
         self.assertEqual(by_route["opus-5-teamclaude"]["confidence"], "high")
+        self.assertEqual(by_route["opus-5-teamclaude"]["basis"], "local_same_harness")
         self.assertEqual(by_route["fable-5-teamclaude"]["rank"], 2)
         self.assertEqual(by_route["fable-5-teamclaude"]["confidence"], "low")
+        self.assertEqual(by_route["fable-5-teamclaude"]["basis"], "local_same_harness")
         self.assertNotIn("long-horizon breadth", by_route["fable-5-teamclaude"]["rationale"].lower())
         joined = (
             by_route["opus-5-teamclaude"]["rationale"]
@@ -356,6 +358,11 @@ class RankingClaimTests(unittest.TestCase):
         self.assertIn("almost tied", report)
         self.assertIn("does not enter the quality score", report)
         self.assertIn("untrusted evidence", report)
+        self.assertNotIn("pay for themselves", report)
+        self.assertNotIn("This catalog uses per-role, same-harness, same-effort tests", report)
+        self.assertIn("hypothesis to measure", report)
+        self.assertIn("existing_operational_state", report)
+        self.assertIn("temporarily grandfathered", report)
 
     def test_context_scouting_quality_is_not_price(self):
         rows = live()["rankings"]["context_scouting"]["quality"]
@@ -1111,7 +1118,7 @@ class ResolverLivePredicateTests(unittest.TestCase):
 
     def test_unattested_does_not_resolve(self):
         data = copy.deepcopy(live())
-        data["routes"]["opus-5-teamclaude"]["attestations"]["local_access_smoke"]["attested"] = False
+        data["routes"]["opus-5-teamclaude"]["attestations"]["local_access_smoke"]["state"] = "missing"
         self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
         decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
         self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
@@ -1153,6 +1160,204 @@ class RequiredToolsVsCapabilitiesTests(unittest.TestCase):
         self.assertTrue(by_cap["ok"])
         self.assertEqual(by_cap["routes"][0]["route"], "opus-5-teamclaude")
         self.assertFalse(by_cap["authority_grants"])
+
+
+class TypedAttestationTests(unittest.TestCase):
+    def test_live_routes_use_typed_state_not_boolean(self):
+        registry = live()
+        required = registry["intake"]["promote_requires"]
+        live_ids = [
+            rid for rid, route in registry["routes"].items()
+            if route.get("route_state") == "live_verified"
+        ]
+        self.assertGreaterEqual(len(live_ids), 10)
+        for rid in live_ids:
+            atts = registry["routes"][rid]["attestations"]
+            for key in required:
+                rec = atts[key]
+                self.assertIn(rec["state"], mr.ATTESTATION_STATES, f"{rid}.{key}")
+                self.assertNotIn("attested", rec)
+                if rec["state"] == "attested":
+                    src = f"{rec.get('source','')} {rec.get('rationale','')}"
+                    self.assertFalse(mr._absence_markers_in(src), f"{rid}.{key} {src}")
+                if rec["state"] == "waived":
+                    self.assertEqual(rec["authority"], "existing_operational_state")
+                    self.assertTrue(rec.get("expires"))
+                    self.assertTrue(rec.get("rationale"))
+                    self.assertNotIn("owner catalog promotion", (rec.get("source") or "").lower())
+
+    def test_semantic_contradiction_cannot_be_attested(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["role_evals"]
+        rec["state"] = "attested"
+        rec["source"] = "compatibility smoke only; no suite invented"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("absence" in e and "role_evals" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+
+    def test_attested_missing_source_or_date_fails(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["independent_evidence"]
+        rec.pop("source", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("independent_evidence" in e and "source" in e for e in errors), errors)
+        rec["source"] = "https://artificialanalysis.ai/models/claude-opus-5"
+        rec.pop("date", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("independent_evidence" in e and "date" in e for e in errors), errors)
+
+    def test_waiver_missing_source_date_or_expiry_fails(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["gpt-5.6-sol-codex"]["attestations"]["role_evals"]
+        self.assertEqual(rec["state"], "waived")
+        rec.pop("expires", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("role_evals" in e and "expiry" in e for e in errors), errors)
+        rec["expires"] = "2026-11-26"
+        rec.pop("date", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("role_evals" in e and "date" in e for e in errors), errors)
+        rec["date"] = "2026-08-28"
+        rec.pop("source", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("role_evals" in e and "source" in e for e in errors), errors)
+
+    def test_expired_waiver_fails_closed(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["gpt-5.6-sol-codex"]["attestations"]["role_evals"]
+        rec["expires"] = "2026-08-01"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("waiver expired" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(data, "gpt-5.6-sol-codex", as_of=date(2026, 8, 28)))
+
+    def test_waiver_on_new_unwired_candidate_fails(self):
+        data = copy.deepcopy(live())
+        route = data["routes"]["kimi-k3-unwired"]
+        route["route_state"] = "live_verified"
+        route["host"] = "none"
+        route["attestations"] = copy.deepcopy(data["routes"]["gpt-5.6-sol-codex"]["attestations"])
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("waiver forbidden" in e and "new/unwired" in e for e in errors),
+            errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "kimi-k3-unwired", as_of=date(2026, 8, 28)))
+
+    def test_local_json_path_is_not_official_id_attestation(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["official_id"]
+        rec["source"] = "models.claude-opus-5.official_ids"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("official https" in e for e in errors), errors)
+
+    def test_boolean_attested_is_rejected(self):
+        data = copy.deepcopy(live())
+        rec = data["routes"]["opus-5-teamclaude"]["attestations"]["cost_context"]
+        rec.pop("state", None)
+        rec["attested"] = True
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("boolean attested" in e or "typed state" in e for e in errors), errors)
+
+
+class QualityBasisTests(unittest.TestCase):
+    def test_every_quality_row_has_basis(self):
+        registry = live()
+        for role, rnk in registry["rankings"].items():
+            for i, row in enumerate(rnk.get("quality") or []):
+                self.assertIn(row.get("basis"), mr.QUALITY_BASES, f"{role}[{i}]")
+                if row["basis"] == "local_same_harness":
+                    self.assertEqual(role, "architecture_spec_critique")
+                    self.assertIn(row["route"], mr.LOCAL_SAME_HARNESS_ROUTES)
+
+    def test_non_architecture_quality_is_not_local_same_harness(self):
+        registry = live()
+        for role, rnk in registry["rankings"].items():
+            if role == "architecture_spec_critique":
+                continue
+            for row in rnk.get("quality") or []:
+                self.assertNotEqual(row.get("basis"), "local_same_harness", role)
+
+    def test_local_same_harness_on_other_role_fails(self):
+        data = copy.deepcopy(live())
+        data["rankings"]["code_review"]["quality"][0]["basis"] = "local_same_harness"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("local_same_harness is only" in e for e in errors), errors)
+
+    def test_missing_basis_fails(self):
+        data = copy.deepcopy(live())
+        data["rankings"]["dispatch"]["quality"][0].pop("basis", None)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("basis must be" in e for e in errors), errors)
+
+    def test_non_local_quality_confidence_is_not_high(self):
+        registry = live()
+        for role, rnk in registry["rankings"].items():
+            for row in rnk.get("quality") or []:
+                if row.get("basis") != "local_same_harness":
+                    self.assertNotEqual(row.get("confidence"), "high", f"{role} {row['route']}")
+
+
+class OfficialSourceAndPlaceholderTests(unittest.TestCase):
+    def test_every_census_model_has_official_https_source(self):
+        registry = live()
+        labs = registry["census"]["labs_in_scope"]
+        for lab in mr.REQUIRED_CENSUS_LABS:
+            self.assertIn(lab, labs)
+        self.assertFalse(any("review e" in str(x).lower() or "open-weight" in str(x).lower() for x in labs))
+        for mid, model in registry["models"].items():
+            if mr._model_is_placeholder(model):
+                self.assertEqual(mr.official_urls_for_model(registry, mid, model), [])
+                continue
+            urls = mr.official_urls_for_model(registry, mid, model)
+            self.assertTrue(urls, mid)
+            self.assertTrue(all(u.startswith("https://") for u in urls), mid)
+
+    def test_review_e_is_local_placeholder_outside_census(self):
+        registry = live()
+        model = registry["models"]["open-weight-review-e"]
+        self.assertTrue(mr._model_is_placeholder(model))
+        self.assertIn("open-weight-review-e", registry["census"]["placeholder_model_ids"])
+        self.assertEqual(registry["routes"]["review-e-fireworks"]["route_state"], "unwired")
+        self.assertFalse(mr.route_is_live(registry, "review-e-fireworks", as_of=date(2026, 8, 28)))
+
+    def test_placeholder_cannot_be_promoted_or_wired(self):
+        data = copy.deepcopy(live())
+        data["routes"]["review-e-fireworks"]["route_state"] = "live_verified"
+        data["routes"]["review-e-fireworks"]["host"] = "fireworks"
+        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        self.assertTrue(any("placeholder" in e and "live_verified" in e for e in errors), errors)
+        data = copy.deepcopy(live())
+        provs = providers()
+        provs["providers"]["review-e"]["wired"] = True
+        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=provs)
+        self.assertTrue(any("cannot be wired" in e for e in errors), errors)
+
+    def test_inventory_and_matrix_show_waivers(self):
+        registry = live()
+        rows = {r["route"]: r for r in mr.inventory(registry)}
+        self.assertTrue(rows["gpt-5.6-sol-codex"]["waivers"])
+        self.assertTrue(any(w["field"] == "role_evals" for w in rows["gpt-5.6-sol-codex"]["waivers"]))
+        self.assertTrue(rows["review-e-fireworks"]["placeholder"])
+        matrix = mr.render_matrix(registry)
+        self.assertIn("grandfathered", matrix)
+        self.assertIn("local placeholder", matrix.lower())
+        self.assertIn("https://openai.com/index/gpt-5-6/", matrix)
+        self.assertIn("local_same_harness", matrix)
+
+
+class TokenEfficiencyClaimTests(unittest.TestCase):
+    def test_intake_requires_before_after_receipts_to_claim_savings(self):
+        intake = live()["intake"]["future_evaluations"]["token_efficiency_savings"]
+        self.assertEqual(intake["status"], "hypothesis_to_measure")
+        self.assertIn("before_after_token_receipts", intake["requires_before_claiming_savings"])
+        self.assertIn("token-eff-1", " ".join(intake["requires_before_claiming_savings"]))
+        receipt = (REPO / "model-evals" / "receipts" / "2026-08-28-architecture-spec-critique.jsonl").read_text()
+        self.assertNotIn("token-eff-1", receipt)
+
+    def test_role_copy_does_not_claim_realized_savings(self):
+        desc = live()["roles"]["context_scouting"]["description"].lower()
+        self.assertIn("hypothesis to measure", desc)
+        self.assertNotIn("pay for themselves", desc)
 
 
 class DispatcherAuthorityTests(unittest.TestCase):

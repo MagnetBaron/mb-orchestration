@@ -46,6 +46,39 @@ EVIDENCE_STRENGTHS = (
 # live_verified local-access signal: a direct invocation, or an explicit standing-provider
 # operational signal. A listing is not an invocation; both must be labeled, never implied.
 LIVE_SIGNALS = ("direct_invocation", "standing_provider")
+ATTESTATION_STATES = ("attested", "missing", "not_applicable", "waived")
+QUALITY_BASES = (
+    "local_same_harness",
+    "independent_external_prior",
+    "vendor_external_prior",
+    "operational_prior",
+)
+# Source text that cannot satisfy `attested` (absence is not evidence).
+ATTESTATION_ABSENCE_MARKERS = (
+    "no suite",
+    "not invented",
+    "missing",
+    "not available",
+    "no dedicated",
+    "no new ",
+    "no independent-anchor",
+    "no separate",
+    "none invented",
+)
+WAIVER_AUTHORITIES = ("existing_operational_state",)
+LOCAL_SAME_HARNESS_ROLE = "architecture_spec_critique"
+LOCAL_SAME_HARNESS_ROUTES = frozenset({"opus-5-teamclaude", "fable-5-teamclaude"})
+REQUIRED_CENSUS_LABS = (
+    "OpenAI",
+    "Anthropic",
+    "xAI",
+    "Google",
+    "Moonshot",
+    "Z.AI",
+    "Alibaba",
+    "DeepSeek",
+    "Meta",
+)
 REQUIRED_RANKING_KINDS = ("quality", "selection")
 OPTIONAL_RANKING_KINDS = ("efficiency",)
 DATA_BOUNDARIES = ("subscription", "metered_third_party", "local", "unknown")
@@ -90,6 +123,197 @@ def _as_date(value) -> date | None:
         return date.fromisoformat(str(value)[:10])
     except Exception:
         return None
+
+
+def _is_https_url(value) -> bool:
+    return isinstance(value, str) and value.startswith("https://") and len(value) > 8
+
+
+def _model_is_placeholder(model) -> bool:
+    if not isinstance(model, dict):
+        return False
+    return bool(
+        model.get("placeholder")
+        or model.get("local_placeholder")
+        or model.get("kind") == "local_placeholder"
+    )
+
+
+def _absence_markers_in(text: str) -> list[str]:
+    low = (text or "").lower()
+    return [m.strip() for m in ATTESTATION_ABSENCE_MARKERS if m in low]
+
+
+def official_urls_for_model(registry: dict, model_id: str, model: dict | None = None) -> list[str]:
+    """Direct official vendor https URLs for a model (model-level + family coverage)."""
+    models = registry.get("models") or {}
+    model = model if isinstance(model, dict) else (models.get(model_id) or {})
+    urls: list[str] = []
+    for u in model.get("official_sources") or []:
+        if _is_https_url(u):
+            urls.append(u)
+    fam = model.get("family")
+    entry = ((registry.get("official_sources") or {}).get("by_family") or {}).get(fam) or {}
+    covers = entry.get("covers_models")
+    if isinstance(covers, list) and model_id in covers:
+        for u in entry.get("urls") or []:
+            if _is_https_url(u):
+                urls.append(u)
+    seen: set[str] = set()
+    out: list[str] = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def _waiver_forbidden_reason(route: dict, model: dict) -> str | None:
+    """Legacy waivers are only for already-operational seats, never new candidates."""
+    if _model_is_placeholder(model):
+        return "placeholder models cannot use a legacy waiver"
+    if route.get("incubation"):
+        return "incubation candidates cannot use a legacy waiver"
+    if route.get("host") in (None, "", "none", "unknown"):
+        return "new/unwired candidates cannot use a legacy waiver"
+    if not route.get("provider"):
+        return "new/unwired candidates cannot use a legacy waiver"
+    if route.get("evidence_strength") in ("vendor_self_reported", "independent_benchmark", "none"):
+        return "new catalog candidates cannot use a legacy waiver"
+    return None
+
+
+def _attestation_record_errors(
+    registry: dict,
+    rid: str,
+    route: dict,
+    model: dict,
+    key: str,
+    rec,
+    as_of: date,
+    freshness_days: int,
+) -> list[str]:
+    """Field-specific typed attestation checks. Empty = this field is live-eligible."""
+    errors: list[str] = []
+    if not isinstance(rec, dict):
+        errors.append(f"route {rid}: attestation {key!r} missing or not attested")
+        return errors
+    state = rec.get("state")
+    if state not in ATTESTATION_STATES:
+        if rec.get("attested") is True:
+            errors.append(
+                f"route {rid}: attestation {key!r} uses boolean attested; "
+                "typed state attested|missing|not_applicable|waived is required"
+            )
+        else:
+            errors.append(f"route {rid}: attestation {key!r} missing or not attested")
+        return errors
+    if state == "missing":
+        errors.append(
+            f"route {rid}: attestation {key!r} is missing; cannot be live_verified"
+        )
+        return errors
+
+    src = rec.get("source")
+    d = _as_date(rec.get("date"))
+    rationale = rec.get("rationale") or ""
+
+    if state == "attested":
+        if d is None:
+            errors.append(f"route {rid}: attestation {key!r} needs a valid date")
+        elif d > as_of:
+            errors.append(
+                f"route {rid}: attestation {key!r} date {d.isoformat()} is in the future"
+            )
+        elif (as_of - d).days > freshness_days:
+            errors.append(f"route {rid}: attestation {key!r} is stale")
+        if not src:
+            errors.append(f"route {rid}: attestation {key!r} needs an auditable source")
+        markers = _absence_markers_in(f"{src} {rationale}")
+        if markers:
+            errors.append(
+                f"route {rid}: attestation {key!r} is attested but source semantics "
+                f"indicate absence ({', '.join(markers)})"
+            )
+        if key == "local_access_smoke" and rec.get("signal") not in LIVE_SIGNALS:
+            errors.append(
+                f"route {rid}: local_access_smoke attestation needs signal "
+                "direct_invocation|standing_provider"
+            )
+        if key == "official_id":
+            if not (model.get("official_ids") or []):
+                errors.append(
+                    f"route {rid}: official_id attestation but model has no official_ids"
+                )
+            official_urls = official_urls_for_model(registry, route.get("model") or "", model)
+            src_text = str(src or "")
+            if not official_urls or not any(u in src_text for u in official_urls):
+                errors.append(
+                    f"route {rid}: official_id attestation needs a direct official https "
+                    "source URL (local JSON paths are not sufficient)"
+                )
+        parts = str(src or "").split()
+        src0 = parts[0] if parts else ""
+        if src0.startswith("model-evals/") and not (mborch.REPO / src0).exists():
+            errors.append(f"route {rid}: attestation {key!r} source {src0} is missing")
+        return errors
+
+    if state == "not_applicable":
+        if not isinstance(rationale, str) or not rationale.strip():
+            errors.append(
+                f"route {rid}: attestation {key!r} not_applicable needs a structural rationale"
+            )
+        else:
+            low = rationale.strip().lower()
+            if low in {"missing", "not available", "none", "n/a"} or _absence_markers_in(low) == [low]:
+                errors.append(
+                    f"route {rid}: attestation {key!r} not_applicable is not a synonym for missing"
+                )
+        if d is None:
+            errors.append(f"route {rid}: attestation {key!r} needs a valid date")
+        elif d > as_of:
+            errors.append(
+                f"route {rid}: attestation {key!r} date {d.isoformat()} is in the future"
+            )
+        return errors
+
+    # waived
+    forbidden = _waiver_forbidden_reason(route, model)
+    if forbidden:
+        errors.append(f"route {rid}: attestation {key!r} waiver forbidden ({forbidden})")
+    if not isinstance(rationale, str) or not rationale.strip():
+        errors.append(f"route {rid}: attestation {key!r} waived needs an honest rationale")
+    if rec.get("authority") not in WAIVER_AUTHORITIES:
+        errors.append(
+            f"route {rid}: attestation {key!r} waived needs authority "
+            "existing_operational_state (do not claim owner approval without a committed source)"
+        )
+    if not src:
+        errors.append(f"route {rid}: attestation {key!r} waived needs a source")
+    if d is None:
+        errors.append(f"route {rid}: attestation {key!r} needs a valid date")
+    elif d > as_of:
+        errors.append(
+            f"route {rid}: attestation {key!r} date {d.isoformat()} is in the future"
+        )
+    exp = _as_date(rec.get("expires"))
+    if exp is None:
+        errors.append(f"route {rid}: attestation {key!r} waived needs a short expiry date")
+    else:
+        if as_of > exp:
+            errors.append(
+                f"route {rid}: attestation {key!r} waiver expired {exp.isoformat()}"
+            )
+        if d and (exp - d).days > freshness_days:
+            errors.append(
+                f"route {rid}: attestation {key!r} waiver expiry {exp.isoformat()} "
+                f"exceeds freshness_days={freshness_days}"
+            )
+        if d and exp < d:
+            errors.append(
+                f"route {rid}: attestation {key!r} waiver expiry is before the waiver date"
+            )
+    return errors
 
 
 def _sorted_items(mapping: dict) -> list[tuple[str, dict]]:
@@ -260,6 +484,11 @@ def _live_route_errors(registry: dict, rid: str, route: dict, as_of: date) -> li
         errors.append(f"route {rid}: incubation routes cannot be live_verified")
     models = registry.get("models") or {}
     model = models.get(route.get("model")) or {}
+    if _model_is_placeholder(model):
+        errors.append(
+            f"route {rid}: local placeholder {route.get('model')!r} cannot be live_verified "
+            "until a named candidate model plus an official source replaces it"
+        )
     life = route.get("lifecycle_override") or model.get("lifecycle")
     if life not in ROUTABLE_LIFECYCLES:
         errors.append(f"route {rid}: lifecycle {life!r} cannot be live_verified")
@@ -327,31 +556,11 @@ def _live_route_errors(registry: dict, rid: str, route: dict, as_of: date) -> li
         )
     else:
         for key in required:
-            rec = atts.get(key)
-            if not isinstance(rec, dict) or rec.get("attested") is not True:
-                errors.append(f"route {rid}: attestation {key!r} missing or not attested")
-                continue
-            d = _as_date(rec.get("date"))
-            if d is None:
-                errors.append(f"route {rid}: attestation {key!r} needs a valid date")
-            elif d > as_of:
-                errors.append(
-                    f"route {rid}: attestation {key!r} date {d.isoformat()} is in the future"
+            errors.extend(
+                _attestation_record_errors(
+                    registry, rid, route, model, key, atts.get(key), as_of, freshness_days,
                 )
-            elif (as_of - d).days > freshness_days:
-                errors.append(f"route {rid}: attestation {key!r} is stale")
-            if not rec.get("source"):
-                errors.append(f"route {rid}: attestation {key!r} needs an auditable source")
-            if key == "local_access_smoke" and rec.get("signal") not in LIVE_SIGNALS:
-                errors.append(
-                    f"route {rid}: local_access_smoke attestation needs signal "
-                    "direct_invocation|standing_provider"
-                )
-            if key == "official_id" and not (model.get("official_ids") or []):
-                errors.append(f"route {rid}: official_id attestation but model has no official_ids")
-            src = str(rec.get("source") or "").split()[0]
-            if src.startswith("model-evals/") and not (mborch.REPO / src).exists():
-                errors.append(f"route {rid}: attestation {key!r} source {src} is missing")
+            )
     return errors
 
 
@@ -445,6 +654,20 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
             errors.append(f"model {mid}: official_ids must be a non-empty list of strings")
         if AUTHORITY_KEYS.intersection(model):
             errors.append(f"model {mid}: rank/catalog must not grant {sorted(AUTHORITY_KEYS.intersection(model))}")
+        placeholder = _model_is_placeholder(model)
+        urls = official_urls_for_model(registry, mid, model)
+        if placeholder:
+            if urls:
+                errors.append(
+                    f"model {mid}: local placeholder must not carry official vendor sources "
+                    "until a named candidate replaces it"
+                )
+        else:
+            if not urls:
+                errors.append(
+                    f"model {mid}: needs at least one direct official https source "
+                    "(local JSON paths are not sufficient)"
+                )
 
     seen_invocations: dict[tuple, list[str]] = {}
     for rid, route in routes.items():
@@ -470,6 +693,12 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
         if route.get("data_boundary") not in DATA_BOUNDARIES:
             errors.append(f"route {rid}: data_boundary {route.get('data_boundary')!r} not in {DATA_BOUNDARIES}")
         errors.extend(_route_local_errors(registry, rid, route))
+        model = models.get(route.get("model")) or {}
+        if _model_is_placeholder(model) and state == "catalog_verified":
+            errors.append(
+                f"route {rid}: local placeholder {route.get('model')!r} cannot be promoted "
+                "until a named candidate model plus an official source replaces it"
+            )
         if state in ACTIVE_RESOLVE_STATES:
             errors.extend(_live_route_errors(registry, rid, route, as_of))
         else:
@@ -564,6 +793,20 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                     ranks.append(n)
                 if row.get("confidence") not in (None, "high", "medium", "low"):
                     errors.append(f"rankings.{rid}.{kind}[{i}]: confidence must be high|medium|low")
+                if kind == "quality":
+                    basis = row.get("basis")
+                    if basis not in QUALITY_BASES:
+                        errors.append(
+                            f"rankings.{rid}.{kind}[{i}]: basis must be "
+                            "local_same_harness|independent_external_prior|"
+                            "vendor_external_prior|operational_prior"
+                        )
+                    elif basis == "local_same_harness":
+                        if rid != LOCAL_SAME_HARNESS_ROLE or row.get("route") not in LOCAL_SAME_HARNESS_ROUTES:
+                            errors.append(
+                                f"rankings.{rid}.{kind}[{i}]: local_same_harness is only the "
+                                "architecture_spec_critique Opus 5 vs Fable 5 receipt"
+                            )
             if len(ranks) != len(set(ranks)):
                 errors.append(f"rankings.{rid}.{kind}: rank/priority values must be unique")
 
@@ -582,6 +825,14 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                     "provider capabilities, and bound-route capabilities together"
                 )
             route_id = p.get("route")
+            if p.get("wired") is True and route_id:
+                bound = routes.get(route_id) or {}
+                bound_model = models.get(bound.get("model")) or {}
+                if _model_is_placeholder(bound_model):
+                    errors.append(
+                        f"provider {pid}: placeholder model {bound.get('model')!r} cannot be "
+                        "wired until a named candidate plus an official source replaces it"
+                    )
             if not route_id:
                 continue
             if route_id not in routes:
@@ -628,17 +879,101 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
     if census:
         if not census.get("as_of") or not census.get("scope"):
             errors.append("model-registry: census.as_of and census.scope are required when census is present")
+        labs = census.get("labs_in_scope") or []
+        if not isinstance(labs, list):
+            errors.append("census: labs_in_scope must be a list")
+            labs = []
+        for lab in REQUIRED_CENSUS_LABS:
+            if lab not in labs:
+                errors.append(f"census: labs_in_scope missing {lab!r}")
+        for lab in labs:
+            low = str(lab).lower()
+            if "review e" in low or "open-weight" in low:
+                errors.append(
+                    "census: Review E / open-weight is a local placeholder slot, "
+                    "not a frontier lab in scope"
+                )
         for mid in census.get("required_model_ids") or []:
             if mid not in models:
                 errors.append(f"census: required model {mid!r} is missing")
                 continue
+            if _model_is_placeholder(models.get(mid) or {}):
+                errors.append(f"census: placeholder {mid!r} cannot be a required census model")
             if not any(r.get("model") == mid for r in routes.values()):
                 errors.append(f"census: required model {mid!r} has no route")
         for mid in census.get("ambiguous_ids_forbidden") or []:
             if mid in models:
                 errors.append(f"census: ambiguous model id {mid!r} is forbidden")
+        for mid in census.get("placeholder_model_ids") or []:
+            if mid not in models or not _model_is_placeholder(models.get(mid) or {}):
+                errors.append(f"census: placeholder_model_ids {mid!r} must name a placeholder model")
+
+    errors.extend(_official_source_coverage_errors(registry, models))
 
     return errors
+
+
+def _official_source_coverage_errors(registry: dict, models: dict) -> list[str]:
+    """Family coverage lists must be complete; every in-scope model needs an official URL."""
+    errors: list[str] = []
+    blob = registry.get("official_sources")
+    if not isinstance(blob, dict) or not isinstance(blob.get("by_family"), dict):
+        errors.append(
+            "model-registry: official_sources.by_family is required "
+            "(direct vendor URLs per family with explicit model coverage)"
+        )
+        return errors
+    by_family = blob["by_family"]
+    families = registry.get("families") or {}
+    for fid, fam_models in _models_by_family(models).items():
+        in_scope = [mid for mid in fam_models if not _model_is_placeholder(models.get(mid) or {})]
+        if not in_scope:
+            continue
+        if fid not in by_family:
+            errors.append(f"official_sources: family {fid!r} has in-scope models but no coverage entry")
+            continue
+        entry = by_family.get(fid) or {}
+        urls = entry.get("urls") or []
+        if not isinstance(urls, list) or not urls or any(not _is_https_url(u) for u in urls):
+            errors.append(f"official_sources.{fid}: urls must be a non-empty list of https URLs")
+        covers = entry.get("covers_models")
+        if not isinstance(covers, list) or not covers:
+            errors.append(f"official_sources.{fid}: covers_models must list the in-scope models")
+            continue
+        for mid in covers:
+            m = models.get(mid)
+            if not isinstance(m, dict):
+                errors.append(f"official_sources.{fid}: covers unknown model {mid!r}")
+                continue
+            if m.get("family") != fid:
+                errors.append(
+                    f"official_sources.{fid}: covers {mid!r} which is family {m.get('family')!r}"
+                )
+            if _model_is_placeholder(m):
+                errors.append(f"official_sources.{fid}: placeholder {mid!r} is outside the census")
+        missing = [mid for mid in in_scope if mid not in covers]
+        extra = [mid for mid in covers if mid in models and mid not in in_scope]
+        if missing:
+            errors.append(
+                f"official_sources.{fid}: covers_models missing {missing}"
+            )
+        if extra:
+            errors.append(
+                f"official_sources.{fid}: covers_models has non-census/placeholder ids {extra}"
+            )
+    for fid in by_family:
+        if fid not in families:
+            errors.append(f"official_sources: family {fid!r} is not declared")
+    return errors
+
+
+def _models_by_family(models: dict) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for mid, model in (models or {}).items():
+        if not isinstance(model, dict):
+            continue
+        out.setdefault(model.get("family") or "", []).append(mid)
+    return out
 
 
 def assert_valid(registry: dict, **kw) -> dict:
@@ -678,6 +1013,22 @@ def _route_row(rid: str, route: dict, model: dict) -> dict:
         "compatibility_fallback": bool(route.get("compatibility_fallback")),
         "fallback_until": route.get("fallback_until"),
         "notes": route.get("notes") or model.get("notes") or "",
+        "placeholder": _model_is_placeholder(model),
+        "attestation_states": {
+            key: rec.get("state")
+            for key, rec in (route.get("attestations") or {}).items()
+            if isinstance(rec, dict)
+        },
+        "waivers": [
+            {
+                "field": key,
+                "expires": rec.get("expires"),
+                "authority": rec.get("authority"),
+                "rationale": rec.get("rationale"),
+            }
+            for key, rec in (route.get("attestations") or {}).items()
+            if isinstance(rec, dict) and rec.get("state") == "waived"
+        ],
     }
 
 
@@ -874,6 +1225,93 @@ def live_review_providers(registry: dict, providers: dict, as_of: date | None = 
     return out
 
 
+def _attestation_evaluation_label(route: dict) -> str:
+    atts = route.get("attestations") or {}
+    smoke = atts.get("local_access_smoke") or {}
+    waived = [
+        key for key, rec in atts.items()
+        if isinstance(rec, dict) and rec.get("state") == "waived"
+    ]
+    if smoke.get("state") == "attested" and smoke.get("signal") == "direct_invocation":
+        label = "direct"
+    elif smoke.get("state") == "attested" and smoke.get("signal") == "standing_provider":
+        label = "standing"
+    else:
+        label = "unevaluated"
+    if waived:
+        label += "+grandfathered"
+    return label
+
+
+def _render_attestation_section(registry: dict) -> list[str]:
+    keys = list((registry.get("intake") or {}).get("promote_requires") or [])
+    lines = [
+        "",
+        "## Live-route attestations",
+        "",
+        "Typed promotion state. `attested` means a dated supporting source exists and its semantics match the requirement. `waived` is a time-bounded legacy/standing-provider migration exception and does **not** assert that the evidence exists. `not_applicable` is structural only, never a synonym for missing. `missing` cannot be `live_verified`.",
+        "",
+        "Evaluation: `direct` = `local_access_smoke` attested with `direct_invocation`; `standing` = standing-provider signal. `+grandfathered` means at least one field is `waived`.",
+        "",
+        "| route | evaluation | "
+        + " | ".join(keys)
+        + " | waivers expire |",
+        "|---|---|" + "|".join(["---"] * len(keys)) + "|---|",
+    ]
+    for rid, route in _sorted_items(registry.get("routes") or {}):
+        if route.get("route_state") not in ACTIVE_RESOLVE_STATES:
+            continue
+        atts = route.get("attestations") or {}
+        cells = []
+        expires = []
+        for key in keys:
+            rec = atts.get(key) if isinstance(atts.get(key), dict) else {}
+            state = rec.get("state") or ""
+            extra = ""
+            if key == "local_access_smoke" and rec.get("signal"):
+                extra = f"/{rec.get('signal')}"
+            cells.append(f"{state}{extra}")
+            if rec.get("state") == "waived" and rec.get("expires"):
+                expires.append(str(rec.get("expires")))
+        exp = ", ".join(sorted(set(expires))) or "—"
+        lines.append(
+            f"| `{rid}` | {_attestation_evaluation_label(route)} | "
+            + " | ".join(cells)
+            + f" | {exp} |"
+        )
+    return lines
+
+
+def _render_official_source_section(registry: dict) -> list[str]:
+    blob = registry.get("official_sources") or {}
+    by_family = blob.get("by_family") or {}
+    lines = [
+        "",
+        "## Official vendor sources",
+        "",
+        "Direct official https URLs. Family coverage is mechanically validated. Local JSON paths are not official sources. Review E / `open-weight-review-e` is a local placeholder outside the census.",
+        "",
+        "| family | covers | urls |",
+        "|---|---|---|",
+    ]
+    for fid, entry in _sorted_items(by_family):
+        covers = ", ".join(f"`{m}`" for m in (entry.get("covers_models") or []))
+        urls = " · ".join(entry.get("urls") or [])
+        lines.append(f"| `{fid}` | {covers} | {urls} |")
+    placeholders = [
+        mid for mid, model in _sorted_items(registry.get("models") or {})
+        if _model_is_placeholder(model)
+    ]
+    if placeholders:
+        lines += [
+            "",
+            "Local placeholders (not labs in scope; cannot be promoted or wired until a named candidate plus official source replaces them): "
+            + ", ".join(f"`{m}`" for m in placeholders)
+            + ".",
+        ]
+    return lines
+
+
 def render_matrix(registry: dict) -> str:
     """Byte-idempotent markdown audit surface. Stable key order, trailing newline."""
     lines = [
@@ -888,7 +1326,11 @@ def render_matrix(registry: dict) -> str:
         "Quality rank is not selection priority. Rank never grants tools or data.",
         "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",
         "live_verified freshness is compared to the current date (or `--as-of`), not frozen `registry.as_of`.",
-        "Promotion attestations (`intake.promote_requires`) live on each live route; `direct_invocation` vs `standing_provider` is explicit.",
+        "Promotion attestations (`intake.promote_requires`) use typed state: attested, missing, not_applicable, waived.",
+        "`attested` requires a dated source whose semantics support the requirement; absence language cannot pass.",
+        "`waived` is a time-bounded legacy/standing-provider migration exception and does not assert the evidence exists.",
+        "Quality rows carry an explicit `basis`. The only local same-harness role comparison is architecture_spec_critique Opus 5 vs Fable 5.",
+        "Token-efficiency of added roles is a hypothesis to measure, not a realized-savings claim.",
         "",
     ]
     census = registry.get("census") or {}
@@ -904,15 +1346,18 @@ def render_matrix(registry: dict) -> str:
     lines += [
         "## Models",
         "",
-        "| id | family | lab | lifecycle | official ids | excluded |",
-        "|---|---|---|---|---|---|",
+        "| id | family | lab | lifecycle | official ids | official source | placeholder | excluded |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for mid, model in _sorted_items(registry.get("models") or {}):
         ids = ", ".join(model.get("official_ids") or [])
         excl = "yes" if model.get("excluded") else "no"
+        placeholder = "yes" if _model_is_placeholder(model) else "no"
+        srcs = official_urls_for_model(registry, mid, model)
+        src = srcs[0] if srcs else ("—" if placeholder == "yes" else "")
         lines.append(
             f"| `{mid}` | {model.get('family','')} | {model.get('lab','')} | "
-            f"{model.get('lifecycle','')} | {ids} | {excl} |"
+            f"{model.get('lifecycle','')} | {ids} | {src} | {placeholder} | {excl} |"
         )
     lines += [
         "",
@@ -938,7 +1383,15 @@ def render_matrix(registry: dict) -> str:
             f"`{route.get('invocation_id')}` | {route.get('evidence_date')} "
             f"{route.get('evidence_strength')} | {signal or '—'} | {route.get('provider') or '—'} |"
         )
+    lines += _render_attestation_section(registry)
+    lines += _render_official_source_section(registry)
     lines += ["", "## Per-role rankings (selection vs quality)", ""]
+    lines.append(
+        "Quality `basis` is machine-readable. `local_same_harness` is only the committed "
+        "architecture_spec_critique Opus 5 vs Fable 5 receipt (n=1). Other quality rows are "
+        "external or operational priors, not same-role local comparisons."
+    )
+    lines.append("")
     for role in REQUIRED_ROLES:
         rnk = (registry.get("rankings") or {}).get(role) or {}
         lines.append(f"### `{role}`")
@@ -947,12 +1400,14 @@ def render_matrix(registry: dict) -> str:
         if desc:
             lines.append(desc)
             lines.append("")
-        lines.append("| kind | n | route | confidence |")
-        lines.append("|---|---:|---|---|")
+        lines.append("| kind | n | route | confidence | basis |")
+        lines.append("|---|---:|---|---|---|")
         for kind, key in (("quality", "rank"), ("selection", "priority"), ("efficiency", "rank")):
             for row in rnk.get(kind) or []:
+                basis = row.get("basis") or "" if kind == "quality" else ""
                 lines.append(
-                    f"| {kind} | {row.get(key)} | `{row.get('route')}` | {row.get('confidence') or ''} |"
+                    f"| {kind} | {row.get(key)} | `{row.get('route')}` | "
+                    f"{row.get('confidence') or ''} | {basis} |"
                 )
         lines.append("")
     lines.append("## Invariants")

@@ -9,7 +9,11 @@ Last-resort coding requires a concrete live provider with `implement`/`ide` and 
 Quality rank is not selection priority. Rank never grants tools or data.
 Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.
 live_verified freshness is compared to the current date (or `--as-of`), not frozen `registry.as_of`.
-Promotion attestations (`intake.promote_requires`) live on each live route; `direct_invocation` vs `standing_provider` is explicit.
+Promotion attestations (`intake.promote_requires`) use typed state: attested, missing, not_applicable, waived.
+`attested` requires a dated source whose semantics support the requirement; absence language cannot pass.
+`waived` is a time-bounded legacy/standing-provider migration exception and does not assert the evidence exists.
+Quality rows carry an explicit `basis`. The only local same-harness role comparison is architecture_spec_critique Opus 5 vs Fable 5.
+Token-efficiency of added roles is a hypothesis to measure, not a realized-savings claim.
 
 ## Census scope
 
@@ -19,38 +23,38 @@ Promotion attestations (`intake.promote_requires`) live on each live route; `dir
 
 ## Models
 
-| id | family | lab | lifecycle | official ids | excluded |
-|---|---|---|---|---|---|
-| `claude-fable-5` | anthropic | Anthropic | restricted | claude-fable-5, fable-5 | no |
-| `claude-opus-4-8` | anthropic | Anthropic | superseded | claude-opus-4-8, opus-4.8, claude-opus-4.8 | no |
-| `claude-opus-5` | anthropic | Anthropic | stable | claude-opus-5, opus-5 | no |
-| `deepseek-v4-flash` | deepseek | DeepSeek | stable | deepseek-v4-flash | no |
-| `deepseek-v4-pro` | deepseek | DeepSeek | stable | deepseek-v4-pro | no |
-| `gemini-3-flash-preview` | google | Google | preview | gemini-3-flash-preview | no |
-| `gemini-3.1-flash-lite` | google | Google | stable | gemini-3.1-flash-lite | no |
-| `gemini-3.1-pro-preview` | google | Google | preview | gemini-3.1-pro-preview | no |
-| `gemini-3.5-flash` | google | Google | stable | gemini-3.5-flash | no |
-| `gemini-3.5-flash-lite` | google | Google | stable | gemini-3.5-flash-lite | no |
-| `gemini-3.6-flash` | google | Google | stable | gemini-3.6-flash | no |
-| `gemini-3.7-flash` | google | Google | preview | gemini-3.7-flash | no |
-| `glm-5.2` | zhipu | Z.AI | stable | glm-5.2, glm-5-2 | no |
-| `glm-5.3-flash` | zhipu | Z.AI | preview | glm-5.3-flash | no |
-| `gpt-5.3-codex-spark` | openai | OpenAI | stable | gpt-5.3-codex-spark | no |
-| `gpt-5.4` | openai | OpenAI | stable | gpt-5.4 | no |
-| `gpt-5.4-mini` | openai | OpenAI | stable | gpt-5.4-mini | no |
-| `gpt-5.5` | openai | OpenAI | stable | gpt-5.5 | no |
-| `gpt-5.6-luna` | openai | OpenAI | stable | gpt-5.6-luna | no |
-| `gpt-5.6-sol` | openai | OpenAI | stable | gpt-5.6-sol | no |
-| `gpt-5.6-terra` | openai | OpenAI | stable | gpt-5.6-terra | no |
-| `grok-4.5` | xai | xAI | superseded | grok-4.5 | no |
-| `grok-4.6` | xai | xAI | stable | grok-4.6, grok-4.6-build | no |
-| `kimi-k2.6` | moonshot | Moonshot | superseded | kimi-k2.6 | no |
-| `kimi-k2.7-code` | moonshot | Moonshot | stable | kimi-k2.7-code, kimi-for-coding | no |
-| `kimi-k3` | moonshot | Moonshot | stable | kimi-k3, kimi-k3-max | no |
-| `muse-code` | meta | Meta | preview | muse-code | no |
-| `muse-spark-1.2` | meta | Meta | preview | muse-spark-1.2 | no |
-| `open-weight-review-e` | open-weight | unspecified | restricted | review-e | no |
-| `qwen-3.8-max` | alibaba | Alibaba | stable | qwen-3.8-max, qwen3-8-max | no |
+| id | family | lab | lifecycle | official ids | official source | placeholder | excluded |
+|---|---|---|---|---|---|---|---|
+| `claude-fable-5` | anthropic | Anthropic | restricted | claude-fable-5, fable-5 | https://www.anthropic.com/news/claude-fable-5-mythos-5 | no | no |
+| `claude-opus-4-8` | anthropic | Anthropic | superseded | claude-opus-4-8, opus-4.8, claude-opus-4.8 | https://platform.claude.com/docs/en/about-claude/models/choosing-a-model | no | no |
+| `claude-opus-5` | anthropic | Anthropic | stable | claude-opus-5, opus-5 | https://www.anthropic.com/news/claude-opus-5 | no | no |
+| `deepseek-v4-flash` | deepseek | DeepSeek | stable | deepseek-v4-flash | https://api-docs.deepseek.com/news/news260813/ | no | no |
+| `deepseek-v4-pro` | deepseek | DeepSeek | stable | deepseek-v4-pro | https://api-docs.deepseek.com/news/news260813/ | no | no |
+| `gemini-3-flash-preview` | google | Google | preview | gemini-3-flash-preview | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.1-flash-lite` | google | Google | stable | gemini-3.1-flash-lite | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.1-pro-preview` | google | Google | preview | gemini-3.1-pro-preview | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.5-flash` | google | Google | stable | gemini-3.5-flash | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.5-flash-lite` | google | Google | stable | gemini-3.5-flash-lite | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.6-flash` | google | Google | stable | gemini-3.6-flash | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `gemini-3.7-flash` | google | Google | preview | gemini-3.7-flash | https://ai.google.dev/gemini-api/docs/models | no | no |
+| `glm-5.2` | zhipu | Z.AI | stable | glm-5.2, glm-5-2 | https://z.ai/blog/glm-5.2 | no | no |
+| `glm-5.3-flash` | zhipu | Z.AI | preview | glm-5.3-flash | https://z.ai/blog/glm-5.3-flash | no | no |
+| `gpt-5.3-codex-spark` | openai | OpenAI | stable | gpt-5.3-codex-spark | https://developers.openai.com/api/docs/models | no | no |
+| `gpt-5.4` | openai | OpenAI | stable | gpt-5.4 | https://developers.openai.com/api/docs/models | no | no |
+| `gpt-5.4-mini` | openai | OpenAI | stable | gpt-5.4-mini | https://developers.openai.com/api/docs/models | no | no |
+| `gpt-5.5` | openai | OpenAI | stable | gpt-5.5 | https://developers.openai.com/api/docs/models | no | no |
+| `gpt-5.6-luna` | openai | OpenAI | stable | gpt-5.6-luna | https://openai.com/index/gpt-5-6/ | no | no |
+| `gpt-5.6-sol` | openai | OpenAI | stable | gpt-5.6-sol | https://openai.com/index/gpt-5-6/ | no | no |
+| `gpt-5.6-terra` | openai | OpenAI | stable | gpt-5.6-terra | https://openai.com/index/gpt-5-6/ | no | no |
+| `grok-4.5` | xai | xAI | superseded | grok-4.5 | https://docs.x.ai/developers/pricing | no | no |
+| `grok-4.6` | xai | xAI | stable | grok-4.6, grok-4.6-build | https://docs.x.ai/developers/grok-4-6 | no | no |
+| `kimi-k2.6` | moonshot | Moonshot | superseded | kimi-k2.6 | https://platform.kimi.ai/ | no | no |
+| `kimi-k2.7-code` | moonshot | Moonshot | stable | kimi-k2.7-code, kimi-for-coding | https://platform.kimi.ai/ | no | no |
+| `kimi-k3` | moonshot | Moonshot | stable | kimi-k3, kimi-k3-max | https://platform.kimi.ai/ | no | no |
+| `muse-code` | meta | Meta | preview | muse-code | https://ai.meta.com/llama/ | no | no |
+| `muse-spark-1.2` | meta | Meta | preview | muse-spark-1.2 | https://ai.meta.com/llama/ | no | no |
+| `open-weight-review-e` | open-weight | local-placeholder | restricted | review-e | — | yes | no |
+| `qwen-3.8-max` | alibaba | Alibaba | stable | qwen-3.8-max, qwen3-8-max | https://www.alibabagroup.com/en-US/document-2021044032125272064 | no | no |
 
 ## Routes
 
@@ -91,148 +95,187 @@ Promotion attestations (`intake.promote_requires`) live on each live route; `dir
 | `qwen-3.8-max-unwired` | `qwen-3.8-max` | unwired | stable | none | none | `qwen-3.8-max` | 2026-08-28 independent_benchmark | — | — |
 | `review-e-fireworks` | `open-weight-review-e` | unwired | restricted | fireworks | http | `review-e` | 2026-08-28 none | — | review-e |
 
+## Live-route attestations
+
+Typed promotion state. `attested` means a dated supporting source exists and its semantics match the requirement. `waived` is a time-bounded legacy/standing-provider migration exception and does **not** assert that the evidence exists. `not_applicable` is structural only, never a synonym for missing. `missing` cannot be `live_verified`.
+
+Evaluation: `direct` = `local_access_smoke` attested with `direct_invocation`; `standing` = standing-provider signal. `+grandfathered` means at least one field is `waived`.
+
+| route | evaluation | official_id | local_access_smoke | role_evals | independent_evidence | cost_context | owner_approval | waivers expire |
+|---|---|---|---|---|---|---|---|---|
+| `fable-5-teamclaude` | direct+grandfathered | attested | attested/direct_invocation | attested | attested | attested | waived | 2026-11-26 |
+| `gpt-5.6-luna-codex` | standing+grandfathered | attested | attested/standing_provider | waived | waived | waived | waived | 2026-11-26 |
+| `gpt-5.6-sol-codex` | standing+grandfathered | attested | attested/standing_provider | waived | attested | attested | waived | 2026-11-26 |
+| `gpt-5.6-terra-codex` | standing+grandfathered | attested | attested/standing_provider | waived | waived | waived | waived | 2026-11-26 |
+| `grok-4.6-build` | standing+grandfathered | attested | attested/standing_provider | waived | attested | attested | waived | 2026-11-26 |
+| `grok-4.6-cursor` | standing+grandfathered | attested | attested/standing_provider | waived | attested | attested | waived | 2026-11-26 |
+| `grok-bot-heat-map` | standing+grandfathered | attested | attested/standing_provider | not_applicable | attested | waived | waived | 2026-11-26 |
+| `grok-bot-visual-qa` | standing+grandfathered | attested | attested/standing_provider | not_applicable | attested | waived | waived | 2026-11-26 |
+| `opus-4.8-teamclaude` | direct+grandfathered | attested | attested/direct_invocation | not_applicable | not_applicable | waived | waived | 2026-11-26 |
+| `opus-5-teamclaude` | direct+grandfathered | attested | attested/direct_invocation | attested | attested | attested | waived | 2026-11-26 |
+
+## Official vendor sources
+
+Direct official https URLs. Family coverage is mechanically validated. Local JSON paths are not official sources. Review E / `open-weight-review-e` is a local placeholder outside the census.
+
+| family | covers | urls |
+|---|---|---|
+| `alibaba` | `qwen-3.8-max` | https://www.alibabagroup.com/en-US/document-2021044032125272064 |
+| `anthropic` | `claude-fable-5`, `claude-opus-4-8`, `claude-opus-5` | https://platform.claude.com/docs/en/about-claude/models/choosing-a-model · https://www.anthropic.com/news/claude-opus-5 · https://www.anthropic.com/news/claude-fable-5-mythos-5 |
+| `deepseek` | `deepseek-v4-flash`, `deepseek-v4-pro` | https://api-docs.deepseek.com/news/news260813/ |
+| `google` | `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-3.1-pro-preview`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, `gemini-3.7-flash` | https://ai.google.dev/gemini-api/docs/models |
+| `meta` | `muse-code`, `muse-spark-1.2` | https://ai.meta.com/llama/ |
+| `moonshot` | `kimi-k2.6`, `kimi-k2.7-code`, `kimi-k3` | https://platform.kimi.ai/ |
+| `openai` | `gpt-5.3-codex-spark`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.5`, `gpt-5.6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra` | https://developers.openai.com/api/docs/models · https://openai.com/index/gpt-5-6/ |
+| `xai` | `grok-4.5`, `grok-4.6` | https://docs.x.ai/developers/grok-4-6 · https://docs.x.ai/developers/pricing |
+| `zhipu` | `glm-5.2`, `glm-5.3-flash` | https://z.ai/blog/glm-5.3-flash · https://z.ai/blog/glm-5.2 |
+
+Local placeholders (not labs in scope; cannot be promoted or wired until a named candidate plus official source replaces them): `open-weight-review-e`.
+
 ## Per-role rankings (selection vs quality)
+
+Quality `basis` is machine-readable. `local_same_harness` is only the committed architecture_spec_critique Opus 5 vs Fable 5 receipt (n=1). Other quality rows are external or operational priors, not same-role local comparisons.
 
 ### `dispatch`
 
 Classify, stamp review, brief, assign. Authority is entrypoints.json, not model rank. Luna/Terra rank for dispatch work quality.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `gpt-5.6-terra-codex` | medium |
-| quality | 2 | `opus-5-teamclaude` | medium |
-| quality | 3 | `gpt-5.6-luna-codex` | medium |
-| selection | 1 | `gpt-5.6-luna-codex` | high |
-| selection | 2 | `gpt-5.6-terra-codex` | high |
-| selection | 3 | `opus-5-teamclaude` | high |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `gpt-5.6-terra-codex` | medium | operational_prior |
+| quality | 2 | `opus-5-teamclaude` | medium | operational_prior |
+| quality | 3 | `gpt-5.6-luna-codex` | medium | operational_prior |
+| selection | 1 | `gpt-5.6-luna-codex` | high |  |
+| selection | 2 | `gpt-5.6-terra-codex` | high |  |
+| selection | 3 | `opus-5-teamclaude` | high |  |
 
 ### `context_scouting`
 
-Cheap first pass to compress or extract facts before expensive seats. Added because it reduces expensive context.
+Cheap first pass to compress or extract facts before expensive seats. Expected to reduce expensive-seat token use; that is a hypothesis to measure, not a realized-savings claim.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `gpt-5.6-luna-codex` | medium |
-| quality | 2 | `grok-4.6-build` | medium |
-| selection | 1 | `gpt-5.6-luna-codex` | medium |
-| selection | 2 | `grok-4.6-build` | medium |
-| efficiency | 1 | `glm-5.3-flash-unwired` | low |
-| efficiency | 2 | `gemini-3.5-flash-lite-unwired` | low |
-| efficiency | 3 | `gpt-5.6-luna-codex` | medium |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `gpt-5.6-luna-codex` | medium | operational_prior |
+| quality | 2 | `grok-4.6-build` | medium | operational_prior |
+| selection | 1 | `gpt-5.6-luna-codex` | medium |  |
+| selection | 2 | `grok-4.6-build` | medium |  |
+| efficiency | 1 | `glm-5.3-flash-unwired` | low |  |
+| efficiency | 2 | `gemini-3.5-flash-lite-unwired` | low |  |
+| efficiency | 3 | `gpt-5.6-luna-codex` | medium |  |
 
 ### `research_synthesis`
 
 Long-context synthesis from already-fetched packets. Does not invent Google metrics.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | high |
-| quality | 2 | `gpt-5.6-sol-codex` | high |
-| quality | 3 | `grok-4.6-build` | medium |
-| quality | 4 | `kimi-k3-unwired` | low |
-| selection | 1 | `grok-4.6-build` | high |
-| selection | 2 | `gpt-5.6-terra-codex` | high |
-| selection | 3 | `opus-5-teamclaude` | medium |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium | independent_external_prior |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | independent_external_prior |
+| quality | 3 | `grok-4.6-build` | medium | operational_prior |
+| quality | 4 | `kimi-k3-unwired` | low | independent_external_prior |
+| selection | 1 | `grok-4.6-build` | high |  |
+| selection | 2 | `gpt-5.6-terra-codex` | high |  |
+| selection | 3 | `opus-5-teamclaude` | medium |  |
 
 ### `implementation`
 
 Repo/app code in an isolated worktree.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `gpt-5.6-sol-codex` | medium |
-| quality | 2 | `opus-5-teamclaude` | medium |
-| quality | 3 | `grok-4.6-build` | high |
-| quality | 4 | `qwen-3.8-max-unwired` | low |
-| quality | 5 | `deepseek-v4-pro-unwired` | low |
-| quality | 6 | `kimi-k2.7-code-unwired` | low |
-| quality | 7 | `muse-spark-1.2-unwired` | low |
-| selection | 1 | `grok-4.6-build` | high |
-| selection | 2 | `grok-4.6-cursor` | high |
-| efficiency | 1 | `deepseek-v4-flash-unwired` | low |
-| efficiency | 2 | `grok-4.6-build` | high |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `gpt-5.6-sol-codex` | medium | vendor_external_prior |
+| quality | 2 | `opus-5-teamclaude` | medium | independent_external_prior |
+| quality | 3 | `grok-4.6-build` | medium | operational_prior |
+| quality | 4 | `qwen-3.8-max-unwired` | low | independent_external_prior |
+| quality | 5 | `deepseek-v4-pro-unwired` | low | vendor_external_prior |
+| quality | 6 | `kimi-k2.7-code-unwired` | low | vendor_external_prior |
+| quality | 7 | `muse-spark-1.2-unwired` | low | vendor_external_prior |
+| selection | 1 | `grok-4.6-build` | high |  |
+| selection | 2 | `grok-4.6-cursor` | high |  |
+| efficiency | 1 | `deepseek-v4-flash-unwired` | low |  |
+| efficiency | 2 | `grok-4.6-build` | high |  |
 
 ### `architecture_spec_critique`
 
 Rare long-horizon / spec critique. Opus 5 first at current evidence; Fable is a low-confidence long-horizon escalation candidate. Same family.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | high |
-| quality | 2 | `fable-5-teamclaude` | low |
-| selection | 1 | `opus-5-teamclaude` | high |
-| selection | 2 | `fable-5-teamclaude` | medium |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | high | local_same_harness |
+| quality | 2 | `fable-5-teamclaude` | low | local_same_harness |
+| selection | 1 | `opus-5-teamclaude` | high |  |
+| selection | 2 | `fable-5-teamclaude` | medium |  |
 
 ### `code_review`
 
 Diff review. Cross-family pair is Opus 5 + Sol. Fable is not a second family.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | high |
-| quality | 2 | `gpt-5.6-sol-codex` | high |
-| quality | 3 | `fable-5-teamclaude` | low |
-| quality | 4 | `review-e-fireworks` | low |
-| selection | 1 | `opus-5-teamclaude` | high |
-| selection | 2 | `gpt-5.6-sol-codex` | high |
-| selection | 3 | `opus-4.8-teamclaude` | low |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium | independent_external_prior |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | independent_external_prior |
+| quality | 3 | `fable-5-teamclaude` | low | independent_external_prior |
+| quality | 4 | `review-e-fireworks` | low | operational_prior |
+| selection | 1 | `opus-5-teamclaude` | high |  |
+| selection | 2 | `gpt-5.6-sol-codex` | high |  |
+| selection | 3 | `opus-4.8-teamclaude` | low |  |
 
 ### `mcp_volume`
 
 High-volume connector fetches. Connector presence is required; public models do not create connectors.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `gpt-5.6-terra-codex` | high |
-| quality | 2 | `gemini-3.7-flash-unwired` | low |
-| selection | 1 | `gpt-5.6-terra-codex` | high |
-| selection | 2 | `gpt-5.6-luna-codex` | medium |
-| efficiency | 1 | `glm-5.3-flash-unwired` | low |
-| efficiency | 2 | `gemini-3.5-flash-lite-unwired` | low |
-| efficiency | 3 | `gemini-3.7-flash-unwired` | low |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `gpt-5.6-terra-codex` | medium | operational_prior |
+| quality | 2 | `gemini-3.7-flash-unwired` | low | vendor_external_prior |
+| selection | 1 | `gpt-5.6-terra-codex` | high |  |
+| selection | 2 | `gpt-5.6-luna-codex` | medium |  |
+| efficiency | 1 | `glm-5.3-flash-unwired` | low |  |
+| efficiency | 2 | `gemini-3.5-flash-lite-unwired` | low |  |
+| efficiency | 3 | `gemini-3.7-flash-unwired` | low |  |
 
 ### `mcp_judgment`
 
 Interpret already-fetched MCP output. Never row-dump fetch loops.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | high |
-| quality | 2 | `gpt-5.6-sol-codex` | high |
-| selection | 1 | `gpt-5.6-sol-codex` | high |
-| selection | 2 | `opus-5-teamclaude` | high |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium | operational_prior |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior |
+| selection | 1 | `gpt-5.6-sol-codex` | high |  |
+| selection | 2 | `opus-5-teamclaude` | high |  |
 
 ### `visual_qa`
 
 Storefront pixel review of a visitor preview URL.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `grok-bot-visual-qa` | high |
-| selection | 1 | `grok-bot-visual-qa` | high |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `grok-bot-visual-qa` | medium | operational_prior |
+| selection | 1 | `grok-bot-visual-qa` | high |  |
 
 ### `evidence_audit`
 
 Check claims against snapshots and sources. Catches invented metrics before they propagate.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | high |
-| quality | 2 | `gpt-5.6-sol-codex` | high |
-| selection | 1 | `opus-5-teamclaude` | medium |
-| selection | 2 | `gpt-5.6-sol-codex` | medium |
-| efficiency | 1 | `glm-5.3-flash-unwired` | low |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium | operational_prior |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior |
+| selection | 1 | `opus-5-teamclaude` | medium |  |
+| selection | 2 | `gpt-5.6-sol-codex` | medium |  |
+| efficiency | 1 | `glm-5.3-flash-unwired` | low |  |
 
 ### `model_evaluation_admin`
 
 Administer candidate evals and receipts. Owner/admin gated; scores do not auto-wire routes.
 
-| kind | n | route | confidence |
-|---|---:|---|---|
-| quality | 1 | `opus-5-teamclaude` | medium |
-| quality | 2 | `gpt-5.6-sol-codex` | medium |
-| selection | 1 | `opus-5-teamclaude` | low |
-| selection | 2 | `gpt-5.6-sol-codex` | low |
+| kind | n | route | confidence | basis |
+|---|---:|---|---|---|
+| quality | 1 | `opus-5-teamclaude` | medium | operational_prior |
+| quality | 2 | `gpt-5.6-sol-codex` | medium | operational_prior |
+| selection | 1 | `opus-5-teamclaude` | low |  |
+| selection | 2 | `gpt-5.6-sol-codex` | low |  |
 
 ## Invariants
 
