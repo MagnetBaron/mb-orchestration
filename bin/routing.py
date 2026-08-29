@@ -13,16 +13,18 @@ Encodes the economics the owner asked for, as legible deterministic rules:
 
 `capabilities_of(provider, connectors)` unions the provider's coarse capabilities with the
 connectors it appears in (`available_on`), so "who has Clarity/Chrome/GSC" is data-derived.
-Connector-derived labels (IDs, aliases, and classes) never count as coarse labels — a
-connector capability is granted only through an explicitly active connector whose
-`available_on` includes the provider. The coarse vocabulary is enumerated in
-`COARSE_CAPABILITIES` and is not connector-derived.
+Connector IDs and aliases are always connector-derived — even when they equal a coarse
+word such as `browser` — and are granted only through an explicitly active connector
+whose `available_on` includes the provider. A coarse exception applies only to connector
+`class` labels, and only when that class is declared in the capability catalog
+(`COARSE_CAPABILITIES`). Doctor rejects ID/alias collisions with that vocabulary.
 """
 from __future__ import annotations
 
 
-# Enumerated non-connector capability vocabulary. Connector IDs, aliases, and classes
-# never join this set. Must match providers.json `capability_catalog` keys (except `_note`).
+# Enumerated non-connector capability vocabulary. Must match providers.json
+# `capability_catalog` keys (except `_note`). Connector IDs and aliases never join
+# this set; a class label may match a catalog key and stay coarse.
 COARSE_CAPABILITIES = frozenset({
     "code", "review", "architecture", "dispatch", "mcp_bulk", "mcp_judgment",
     "browser", "visual_qa", "analytics", "ide",
@@ -92,7 +94,7 @@ def resets_before(row, task_seconds):
 
 
 def connector_ids(connectors):
-    """Known connector IDs and aliases (not classes)."""
+    """Known connector IDs and aliases (not classes). Always connector-derived."""
     names = set()
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
         names.add(cname)
@@ -102,24 +104,23 @@ def connector_ids(connectors):
     return names
 
 
-def connector_derived_labels(connectors):
-    """IDs, aliases, and classes. These never count as coarse capability labels.
+def connector_derived_labels(connectors, catalog=None):
+    """IDs, aliases, and non-catalog class labels.
 
-    Classes that collide with the enumerated coarse vocabulary (`code`, `review`, …)
-    stay coarse — they are not connector-derived.
+    IDs and aliases are always connector-derived and are never subtracted because
+    they collide with `COARSE_CAPABILITIES`. A class label is connector-derived
+    unless it is explicitly declared in the capability catalog (the coarse
+    exception is class-only).
     """
-    labels = set()
-    for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
-        labels.add(cname)
+    catalog = COARSE_CAPABILITIES if catalog is None else catalog
+    labels = connector_ids(connectors)
+    for _cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
         if not isinstance(meta, dict):
             continue
-        alias = meta.get("alias")
-        if alias:
-            labels.add(alias)
         cls = meta.get("class")
-        if cls:
+        if cls and cls not in catalog:
             labels.add(cls)
-    return labels - COARSE_CAPABILITIES
+    return labels
 
 
 def lookup_connector(name, connectors):
@@ -136,10 +137,12 @@ def lookup_connector(name, connectors):
 
 
 def connectors_for_label(name, connectors):
-    """Matching connectors for an ID, explicit alias, or non-coarse class.
+    """Matching connectors for an ID, explicit alias, or non-catalog class.
 
-    ID/alias resolves to exactly one connector. A class label matches every connector
-    that declares that class. Coarse vocabulary names never match by class.
+    ID/alias always resolves to exactly one connector, even if the name equals a
+    coarse word. A class label matches every connector that declares that class,
+    except when the class is declared in the capability catalog (class-only
+    coarse exception).
     """
     cid, meta = lookup_connector(name, connectors)
     if cid is not None:
@@ -183,9 +186,10 @@ def mcp_volume_matches(name, connectors, provider_id=None):
 def capabilities_of(provider_id, provider, connectors):
     """Union of coarse capabilities (providers.json) and connector access (connectors.json).
 
-    Connector-derived labels (IDs, aliases, classes) are stripped from the raw capability
-    list. A derived label is granted only when at least one matching connector is active,
-    its lifecycle predicate passes, and `available_on` includes this provider.
+    Connector IDs and aliases are stripped from the raw capability list even when they
+    equal a coarse word. A class is stripped only when it is not in the capability
+    catalog. A derived label is granted only when at least one matching connector is
+    active, its lifecycle predicate passes, and `available_on` includes this provider.
     """
     derived = connector_derived_labels(connectors)
     caps = {c for c in (provider.get("capabilities") or []) if c not in derived}

@@ -479,6 +479,181 @@ class ConnectorLifecycleTests(unittest.TestCase):
         self.assertFalse(gen.seat_has_capability("codex-luna", "google-mcp", provs, conns))
         self.assertIn("dfs-mcp", routing.capabilities_of("codex-terra", terra, conns))
 
+    def test_github_class_code_stays_coarse_not_derived(self):
+        """Class exception is catalog-only: github.class=code must not strip coarse `code`."""
+        conns = json.loads((CONFIG / "connectors.json").read_text())
+        self.assertEqual(conns["mcp_connectors"]["github"]["class"], "code")
+        derived = routing.connector_derived_labels(conns)
+        self.assertNotIn("code", derived)
+        grok = live_providers()["providers"]["grok-build"]
+        self.assertIn("code", routing.capabilities_of("grok-build", grok, conns))
+
+
+class ConnectorCoarseCollisionTests(unittest.TestCase):
+    """IDs and aliases stay connector-derived even when they equal a coarse word."""
+
+    def _conns(self):
+        return json.loads((CONFIG / "connectors.json").read_text())
+
+    def _provs(self):
+        return live_providers()
+
+    def _assert_doctor_collision(self, conns, provs, needle):
+        doc.ERRORS.clear()
+        doc.check_connector_lifecycle(conns, provs)
+        blob = "\n".join(doc.ERRORS)
+        self.assertTrue(
+            any("collides with coarse capability vocabulary" in e and needle in e for e in doc.ERRORS),
+            blob,
+        )
+
+    def _assert_no_coarse_browser(self, conns, provs):
+        review_d = provs["providers"]["grok-bot-review-d"]
+        heat = provs["providers"]["grok-bot-heat-map"]
+        self.assertIn("browser", review_d["capabilities"])
+        self.assertIn("browser", heat["capabilities"])
+        self.assertNotIn("browser", routing.capabilities_of("grok-bot-review-d", review_d, conns))
+        self.assertNotIn("browser", routing.capabilities_of("grok-bot-heat-map", heat, conns))
+        self.assertFalse(gen.seat_has_capability("grok-bot-review-d", "browser", provs, conns))
+        self.assertFalse(gen.seat_has_capability("grok-bot-heat-map", "browser", provs, conns))
+        luna = provs["providers"]["codex-luna"]
+        self.assertNotIn("browser", routing.capabilities_of("codex-luna", luna, conns))
+        self.assertFalse(gen.seat_has_capability("codex-luna", "browser", provs, conns))
+
+    def test_primed_alias_browser_does_not_grant_coarse_and_doctor_errors(self):
+        """Exact regression: primed connector alias `browser` cannot leak from coarse browser."""
+        conns = self._conns()
+        provs = self._provs()
+        conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
+        self.assertEqual(conns["mcp_connectors"]["mb-bundled-example"]["status"], "primed")
+        derived = routing.connector_derived_labels(conns)
+        self.assertIn("browser", derived)
+        self._assert_no_coarse_browser(conns, provs)
+        grok = provs["providers"]["grok-build"]
+        self.assertNotIn("browser", routing.capabilities_of("grok-build", grok, conns))
+        self.assertFalse(gen.seat_has_capability("grok-build", "browser", provs, conns))
+        self._assert_doctor_collision(conns, provs, "browser")
+
+    def test_primed_alias_browser_skill_gate_fails(self):
+        conns = self._conns()
+        provs = self._provs()
+        conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
+        grok = provs["providers"]["grok-build"]
+        grok["capabilities"] = list(grok["capabilities"]) + ["browser"]
+        self.assertFalse(gen.seat_has_capability("grok-build", "browser", provs, conns))
+        skills = json.loads((CONFIG / "skills.json").read_text())
+        skills["skills"]["magnet-baron-skills:shopify-theme"]["required_capability"] = "browser"
+        roles = live_roles()
+        orig = gen.mborch.load_config
+
+        def fake(name, required=True):
+            if name == "connectors.json":
+                return conns
+            if name == "skills.json":
+                return skills
+            return orig(name, required=required)
+
+        gen.mborch.load_config = fake
+        try:
+            with self.assertRaisesRegex(ValueError, r"lacks capability 'browser'"):
+                dump_and_load(roles=roles, providers=provs)
+        finally:
+            gen.mborch.load_config = orig
+
+    def test_primed_id_browser_does_not_grant_coarse_and_doctor_errors(self):
+        conns = self._conns()
+        provs = self._provs()
+        conns["mcp_connectors"]["browser"] = {
+            "status": "primed",
+            "available_on": ["grok-build"],
+            "mutating_tools": [],
+            "class": "bundled-sample",
+        }
+        derived = routing.connector_derived_labels(conns)
+        self.assertIn("browser", derived)
+        self._assert_no_coarse_browser(conns, provs)
+        self._assert_doctor_collision(conns, provs, "browser")
+
+    def test_active_alias_browser_does_not_grant_coarse_to_unassigned_seats(self):
+        conns = self._conns()
+        provs = self._provs()
+        conns["mcp_connectors"]["github"]["alias"] = "browser"
+        self.assertEqual(conns["mcp_connectors"]["github"]["status"], "active")
+        derived = routing.connector_derived_labels(conns)
+        self.assertIn("browser", derived)
+        self._assert_no_coarse_browser(conns, provs)
+        grok = provs["providers"]["grok-build"]
+        self.assertIn("browser", routing.capabilities_of("grok-build", grok, conns))
+        self.assertTrue(gen.seat_has_capability("grok-build", "browser", provs, conns))
+        self._assert_doctor_collision(conns, provs, "browser")
+
+    def test_active_id_browser_does_not_grant_coarse_to_unassigned_seats(self):
+        conns = self._conns()
+        provs = self._provs()
+        conns["mcp_connectors"]["browser"] = {
+            "status": "active",
+            "available_on": ["grok-build"],
+            "mutating_tools": [],
+            "class": "bundled-sample",
+        }
+        derived = routing.connector_derived_labels(conns)
+        self.assertIn("browser", derived)
+        self._assert_no_coarse_browser(conns, provs)
+        grok = provs["providers"]["grok-build"]
+        self.assertIn("browser", routing.capabilities_of("grok-build", grok, conns))
+        self.assertTrue(gen.seat_has_capability("grok-build", "browser", provs, conns))
+        self._assert_doctor_collision(conns, provs, "browser")
+
+    def test_class_browser_stays_coarse_id_alias_do_not(self):
+        conns = self._conns()
+        conns["mcp_connectors"]["mb-bundled-example"]["class"] = "browser"
+        derived = routing.connector_derived_labels(conns)
+        self.assertNotIn("browser", derived)
+        grok_bot = live_providers()["providers"]["grok-bot-review-d"]
+        self.assertIn(
+            "browser",
+            routing.capabilities_of("grok-bot-review-d", grok_bot, conns),
+        )
+        conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
+        derived = routing.connector_derived_labels(conns)
+        self.assertIn("browser", derived)
+        self.assertNotIn(
+            "browser",
+            routing.capabilities_of("grok-bot-review-d", grok_bot, conns),
+        )
+
+    def test_id_and_alias_collision_matrix_active_and_primed(self):
+        cases = [
+            ("primed_alias", "primed", "alias"),
+            ("active_alias", "active", "alias"),
+            ("primed_id", "primed", "id"),
+            ("active_id", "active", "id"),
+        ]
+        for name, status, kind in cases:
+            with self.subTest(name=name):
+                conns = self._conns()
+                provs = self._provs()
+                if kind == "alias":
+                    conns["mcp_connectors"]["mb-bundled-example"]["status"] = status
+                    if status == "active":
+                        conns["mcp_connectors"]["mb-bundled-example"].pop("server", None)
+                    conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
+                else:
+                    conns["mcp_connectors"]["browser"] = {
+                        "status": status,
+                        "available_on": ["grok-build"],
+                        "mutating_tools": [],
+                        "class": "bundled-sample",
+                    }
+                self.assertIn("browser", routing.connector_derived_labels(conns), name)
+                review_d = provs["providers"]["grok-bot-review-d"]
+                self.assertNotIn(
+                    "browser",
+                    routing.capabilities_of("grok-bot-review-d", review_d, conns),
+                    name,
+                )
+                self._assert_doctor_collision(conns, provs, "browser")
+
 
 if __name__ == "__main__":
     unittest.main()

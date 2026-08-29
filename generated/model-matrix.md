@@ -4,7 +4,7 @@ Generated from `config/model-registry.json` as of 2026-08-28.
 Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.
 
 A catalog entry is not a usable route. Only `live_verified` routes resolve.
-The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence or a route-local identity/family/invocation contradiction never returns).
+The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence, undeclared family/independence group, or a route-local identity/family/invocation contradiction never returns).
 Last-resort coding requires a concrete live provider with `implement`/`ide` and `code` on both the provider and its bound live route; sharing a plan is not enough.
 Quality rank is not selection priority. Rank never grants tools or data.
 Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.

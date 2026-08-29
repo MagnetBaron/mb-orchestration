@@ -197,7 +197,9 @@ def check_connector_lifecycle(conns, providers):
     PROVE inertness: a connector that is not 'active' (i.e. primed/ready) must never be treated
     as live — the router must not grant it to any provider, including seats outside available_on
     and providers that copied the connector name or class into coarse capabilities. Rejects
-    capability/connector-derived-label (id/alias/class) collisions. This is SHAPE + pure-logic
+    capability/connector-derived-label (id/alias/class) collisions, and rejects connector
+    ID/alias names that collide with the coarse vocabulary (class labels may match a catalog
+    key and stay coarse). This is SHAPE + pure-logic
     only; it NEVER opens a socket, spawns a subprocess, or hits the network (the whole point
     of priming)."""
     if not conns:
@@ -216,6 +218,7 @@ def check_connector_lifecycle(conns, providers):
             f"{sorted(routing.COARSE_CAPABILITIES)} — coarse vocabulary must stay enumerated "
             "and not connector-derived"
         )
+    coarse = set(routing.COARSE_CAPABILITIES) if routing is not None else catalog
     for pid, p in prov.items():
         for cap in (p.get("capabilities") or []) if isinstance(p, dict) else []:
             if cap in derived:
@@ -225,6 +228,20 @@ def check_connector_lifecycle(conns, providers):
                     "never as a coarse provider capability"
                 )
     for name, m in conns.get("mcp_connectors", {}).items():
+        if name in coarse:
+            err(
+                f"connector {name}: id {name!r} collides with coarse capability vocabulary — "
+                "IDs and aliases are always connector-derived; rename the connector"
+            )
+        if not isinstance(m, dict):
+            err(f"connector {name}: must be an object")
+            continue
+        alias = m.get("alias")
+        if alias in coarse:
+            err(
+                f"connector {name}: alias {alias!r} collides with coarse capability vocabulary — "
+                "IDs and aliases are always connector-derived; rename the alias"
+            )
         status = m.get("status")
         if status not in VALID_CONNECTOR_STATUS:
             err(

@@ -621,9 +621,9 @@ class LastResortCodingTests(unittest.TestCase):
 
 
 class NeedsMcpTests(unittest.TestCase):
-    """--needs-mcp resolves ID/alias/class through the connector lifecycle; else PARK."""
+    """--needs-mcp is a pipeline: connector match AND usable Terra, else PARK with no implement."""
 
-    def _rows(self):
+    def _rows(self, terra_tier="reserve"):
         return [
             {"seat": "grok-heavy", "subscription": "grok-heavy", "tier": "available",
              "billing": "included", "intake": False, "window_kinds": ["weekly"],
@@ -631,15 +631,15 @@ class NeedsMcpTests(unittest.TestCase):
             {"seat": "cursor-models", "subscription": "cursor-ultra", "tier": "available",
              "billing": "included", "intake": False, "window_kinds": ["monthly"],
              "runway_seconds": 864000 * 20, "family": "cursor-pool"},
-            {"seat": "codex-plan", "subscription": "codex-200", "tier": "reserve",
+            {"seat": "codex-plan", "subscription": "codex-200", "tier": terra_tier,
              "billing": "included", "intake": True, "window_kinds": ["weekly"],
              "runway_seconds": 864000, "family": "openai"},
         ]
 
-    def _impl(self, needs_mcp, conns=None):
+    def _impl(self, needs_mcp, conns=None, provs=None, rows=None, registry=None):
         return rr.pick_implement(
-            providers(), conns or connectors(), self._rows(),
-            "repo-code", "", needs_mcp, False, 0, live(),
+            provs or providers(), conns or connectors(), rows if rows is not None else self._rows(),
+            "repo-code", "", needs_mcp, False, 0, registry if registry is not None else live(),
         )
 
     def _assert_parked_no_continue(self, steps):
@@ -652,9 +652,13 @@ class NeedsMcpTests(unittest.TestCase):
             steps,
         )
         self.assertFalse(any(s.get("seat") == "grok-build" for s in steps), steps)
+        self.assertFalse(any(s.get("available") for s in steps), steps)
 
     def _assert_terra_then_implement(self, steps):
-        self.assertTrue(any(s.get("seat") == "codex-terra" for s in steps), steps)
+        self.assertTrue(
+            any(s.get("seat") == "codex-terra" and s.get("available") for s in steps),
+            steps,
+        )
         self.assertTrue(
             any(s.get("seat") == "grok-build" and s.get("available") for s in steps),
             steps,
@@ -668,6 +672,46 @@ class NeedsMcpTests(unittest.TestCase):
 
     def test_active_class(self):
         self._assert_terra_then_implement(self._impl("google-mcp"))
+
+    def test_active_connector_available_terra_continues(self):
+        steps = self._impl("google-search-console", rows=self._rows(terra_tier="available"))
+        self._assert_terra_then_implement(steps)
+
+    def test_active_connector_reserve_terra_continues(self):
+        self._assert_terra_then_implement(self._impl("google-search-console"))
+
+    def test_active_connector_spent_terra_parks(self):
+        steps = self._impl("google-search-console", rows=self._rows(terra_tier="spent"))
+        self._assert_parked_no_continue(steps)
+        self.assertTrue(any("no currently usable seat" in (s.get("why") or "") for s in steps), steps)
+
+    def test_active_connector_missing_terra_parks(self):
+        provs = providers()
+        del provs["providers"]["codex-terra"]
+        steps = self._impl("google-search-console", provs=provs)
+        self._assert_parked_no_continue(steps)
+        self.assertTrue(any("missing" in (s.get("why") or "") for s in steps), steps)
+
+    def test_active_connector_invalid_terra_route_parks(self):
+        registry = copy.deepcopy(live())
+        registry["routes"]["gpt-5.6-terra-codex"]["route_state"] = "catalog_verified"
+        self.assertFalse(mr.route_is_live(registry, "gpt-5.6-terra-codex", as_of=date(2026, 8, 28)))
+        steps = self._impl("google-search-console", registry=registry)
+        self._assert_parked_no_continue(steps)
+        self.assertTrue(any("no valid live route" in (s.get("why") or "") for s in steps), steps)
+
+    def test_active_connector_wrong_terra_route_parks(self):
+        provs = providers()
+        provs["providers"]["codex-terra"]["route"] = "grok-4.6-build"
+        steps = self._impl("google-search-console", provs=provs)
+        self._assert_parked_no_continue(steps)
+        self.assertTrue(any("wrong-route" in (s.get("why") or "") for s in steps), steps)
+
+    def test_active_connector_no_terra_seat_parks(self):
+        rows = [r for r in self._rows() if r["subscription"] != "codex-200"]
+        steps = self._impl("google-search-console", rows=rows)
+        self._assert_parked_no_continue(steps)
+        self.assertTrue(any("no currently usable seat" in (s.get("why") or "") for s in steps), steps)
 
     def test_primed(self):
         self._assert_parked_no_continue(self._impl("mb-bundled-example"))
@@ -687,6 +731,16 @@ class NeedsMcpTests(unittest.TestCase):
         conns = connectors()
         del conns["mcp_connectors"]["google-search-console"]["status"]
         self._assert_parked_no_continue(self._impl("google-search-console", conns=conns))
+
+    def test_failed_connector_does_not_continue_even_if_terra_available(self):
+        for label in ("mb-bundled-example", "no-such-connector", "gsc-indexing"):
+            with self.subTest(label=label):
+                self._assert_parked_no_continue(self._impl(label))
+
+    def test_primed_alias_colliding_with_coarse_parks(self):
+        conns = connectors()
+        conns["mcp_connectors"]["mb-bundled-example"]["alias"] = "browser"
+        self._assert_parked_no_continue(self._impl("browser", conns=conns))
 
 
 class DuplicateInvocationTests(unittest.TestCase):
@@ -748,6 +802,123 @@ class RouteLocalIdentityTests(unittest.TestCase):
         self.assertFalse(mr.route_is_live(data, "gpt-5.6-sol-codex", as_of=date(2026, 8, 28)))
         decision = mr.resolve(data, "code_review", as_of=date(2026, 8, 28))
         self.assertNotIn("gpt-5.6-sol-codex", [r["route"] for r in decision["routes"]])
+
+
+class FamilyIndependenceLiveTests(unittest.TestCase):
+    """Undeclared family/independence group fails route_is_live and cannot pair in resolve()."""
+
+    OTHER_FAMILIES = [
+        "openai", "xai", "google", "moonshot", "zhipu", "alibaba", "deepseek", "meta", "open-weight",
+    ]
+
+    def _resolve_pair(self, data):
+        return mr.resolve(
+            data, "code_review", family_diversity=2, as_of=date(2026, 8, 28),
+            exclude_families=self.OTHER_FAMILIES,
+        )
+
+    def _assert_not_live_or_paired(self, data, route_id="opus-4.8-teamclaude", spoof_family=None):
+        self.assertFalse(mr.route_is_live(data, route_id, as_of=date(2026, 8, 28)), route_id)
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any(route_id in e for e in errors), errors)
+        decision = mr.resolve(data, "code_review", family_diversity=2, as_of=date(2026, 8, 28))
+        ids = [r["route"] for r in decision["routes"]]
+        self.assertNotIn(route_id, ids)
+        if spoof_family:
+            self.assertNotIn(spoof_family, [r["family"] for r in decision["routes"]])
+        isolated = self._resolve_pair(data)
+        self.assertFalse(isolated["ok"], isolated)
+        self.assertNotIn(route_id, [r["route"] for r in isolated["routes"]])
+
+    def test_undeclared_spoof_family_does_not_pair_with_opus5(self):
+        """Exact regression: mutate Opus 4.8 family to undeclared-spoof; resolve must not pair it with Opus 5."""
+        data = copy.deepcopy(live())
+        data["models"]["claude-opus-4-8"]["family"] = "undeclared-spoof"
+        self.assertEqual(mr.independence_group_of(data, "undeclared-spoof"), "")
+        self._assert_not_live_or_paired(data, spoof_family="undeclared-spoof")
+        isolated = self._resolve_pair(data)
+        self.assertIn("fail-closed", isolated["reason"])
+        self.assertNotEqual(
+            set(r["family"] for r in isolated["routes"]),
+            {"anthropic", "undeclared-spoof"},
+        )
+
+    def test_missing_family_is_not_live(self):
+        data = copy.deepcopy(live())
+        del data["models"]["claude-opus-4-8"]["family"]
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("opus-4.8-teamclaude" in e and "has no family" in e for e in errors),
+            errors,
+        )
+        self._assert_not_live_or_paired(data)
+
+    def test_unknown_family_is_not_live(self):
+        data = copy.deepcopy(live())
+        data["models"]["claude-opus-4-8"]["family"] = "not-a-family"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("opus-4.8-teamclaude" in e and "is not declared" in e for e in errors),
+            errors,
+        )
+        self._assert_not_live_or_paired(data, spoof_family="not-a-family")
+
+    def test_missing_independence_group_is_not_live(self):
+        data = copy.deepcopy(live())
+        data["families"]["anthropic"] = {
+            "label": "Anthropic (Claude)",
+            "independence_group": "",
+        }
+        self.assertEqual(mr.independence_group_of(data, "anthropic"), "")
+        self.assertFalse(mr.route_is_live(data, "opus-5-teamclaude", as_of=date(2026, 8, 28)))
+        self.assertFalse(mr.route_is_live(data, "opus-4.8-teamclaude", as_of=date(2026, 8, 28)))
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(any("independence_group" in e for e in errors), errors)
+        decision = mr.resolve(data, "code_review", family_diversity=2, as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-5-teamclaude", [r["route"] for r in decision["routes"]])
+        self.assertNotIn("opus-4.8-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_conflicting_route_family_is_not_live(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-4.8-teamclaude"]["family"] = "openai"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("opus-4.8-teamclaude" in e and "does not match model" in e for e in errors),
+            errors,
+        )
+        self._assert_not_live_or_paired(data)
+
+    def test_conflicting_route_model_identity_is_not_live(self):
+        data = copy.deepcopy(live())
+        data["routes"]["opus-4.8-teamclaude"]["model"] = "gpt-5.6-sol"
+        errors = mr.validate(data, as_of=date(2026, 8, 28))
+        self.assertTrue(
+            any("opus-4.8-teamclaude" in e and "official id of family" in e for e in errors),
+            errors,
+        )
+        self.assertFalse(mr.route_is_live(data, "opus-4.8-teamclaude", as_of=date(2026, 8, 28)))
+        decision = mr.resolve(data, "code_review", family_diversity=2, as_of=date(2026, 8, 28))
+        self.assertNotIn("opus-4.8-teamclaude", [r["route"] for r in decision["routes"]])
+
+    def test_family_matrix_adjacent_states(self):
+        cases = [
+            ("missing_family", lambda d: d["models"]["claude-opus-4-8"].pop("family", None)),
+            ("unknown_family", lambda d: d["models"]["claude-opus-4-8"].__setitem__("family", "ghost")),
+            ("missing_group", lambda d: d["families"]["anthropic"].pop("independence_group", None)),
+            ("empty_group", lambda d: d["families"]["anthropic"].__setitem__("independence_group", "")),
+            ("route_family_conflict", lambda d: d["routes"]["opus-4.8-teamclaude"].__setitem__("family", "xai")),
+            ("route_model_conflict", lambda d: d["routes"]["opus-4.8-teamclaude"].__setitem__("model", "gpt-5.6-sol")),
+        ]
+        for name, mutate in cases:
+            with self.subTest(name=name):
+                data = copy.deepcopy(live())
+                mutate(data)
+                self.assertFalse(
+                    mr.route_is_live(data, "opus-4.8-teamclaude", as_of=date(2026, 8, 28)),
+                    name,
+                )
+                decision = mr.resolve(data, "code_review", family_diversity=2, as_of=date(2026, 8, 28))
+                self.assertNotIn("opus-4.8-teamclaude", [r["route"] for r in decision["routes"]], name)
 
 
 class LiveEvidenceTests(unittest.TestCase):

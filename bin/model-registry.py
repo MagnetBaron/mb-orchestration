@@ -96,12 +96,18 @@ def _sorted_items(mapping: dict) -> list[tuple[str, dict]]:
 
 
 def independence_group_of(registry: dict, family) -> str:
-    """Configured independence group, never a free-form family string alone."""
-    meta = (registry.get("families") or {}).get(family) or {}
+    """Configured independence group, never a free-form family string alone.
+
+    Missing, unknown, or empty groups return empty string so they cannot count
+    toward family diversity.
+    """
+    meta = (registry.get("families") or {}).get(family)
+    if not isinstance(meta, dict):
+        return ""
     group = meta.get("independence_group")
-    if isinstance(group, str) and group:
+    if isinstance(group, str) and group.strip():
         return group
-    return family or ""
+    return ""
 
 
 def physical_invocation(route_or_row: dict) -> tuple:
@@ -151,11 +157,35 @@ def _official_id_families(models: dict) -> dict[str, set]:
     return out
 
 
+def _family_declaration_errors(registry: dict, rid: str, route: dict, mid, model: dict) -> list[str]:
+    """Family must be declared, grouped, and agree with the route. Used by the live predicate."""
+    errors: list[str] = []
+    families = registry.get("families") if isinstance(registry.get("families"), dict) else {}
+    mf = model.get("family") if isinstance(model, dict) else None
+    if not mf:
+        errors.append(f"route {rid}: model {mid!r} has no family")
+        return errors
+    fam_meta = families.get(mf)
+    if not isinstance(fam_meta, dict):
+        errors.append(f"route {rid}: family {mf!r} is not declared")
+        return errors
+    group = fam_meta.get("independence_group")
+    if not isinstance(group, str) or not group.strip():
+        errors.append(f"route {rid}: family {mf!r} has no independence_group")
+    route_fam = route.get("family")
+    if route_fam not in (None, "") and route_fam != mf:
+        errors.append(
+            f"route {rid}: family {route_fam!r} does not match model {mid} family {mf!r}"
+        )
+    return errors
+
+
 def _route_local_errors(registry: dict, rid: str, route: dict) -> list[str]:
     """Route-local identity/family/invocation/shape invariants.
 
     Shared by `validate` and `route_is_live` so public `resolve()` cannot return a
-    route that CLI validation would reject for these reasons.
+    route that CLI validation would reject for these reasons. Undeclared family
+    or independence group is not live and cannot count toward family diversity.
     """
     errors: list[str] = []
     models = registry.get("models") or {}
@@ -166,6 +196,7 @@ def _route_local_errors(registry: dict, rid: str, route: dict) -> list[str]:
         model: dict = {}
     else:
         model = models[mid] if isinstance(models.get(mid), dict) else {}
+        errors.extend(_family_declaration_errors(registry, rid, route, mid, model))
     if not route.get("host") or not route.get("harness") or not route.get("invocation_id"):
         errors.append(f"route {rid}: host, harness, and invocation_id are required")
     if not isinstance(route.get("capabilities"), list):
@@ -192,9 +223,10 @@ def route_is_live(registry: dict, route_id, as_of: date | None = None) -> bool:
     """Shared live-route predicate: bound catalog route is live_verified, current, and valid.
 
     Unknown, missing, catalog-only, unwired, auth-blocked, disabled, incubation, stale,
-    future, unattested, or route-local identity/family/invocation contradiction fails closed.
-    Used by review, implement, MCP, last-resort, and public `resolve()` — there is no
-    Review E (or any provider) exception.
+    future, unattested, undeclared family/independence group, or route-local
+    identity/family/invocation contradiction fails closed. Used by review, implement,
+    MCP, last-resort, and public `resolve()` — there is no Review E (or any provider)
+    exception.
     """
     if not isinstance(registry, dict) or not route_id:
         return False
@@ -657,12 +689,14 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
     """Fail-closed resolver. Rank does not grant authority.
 
     Every candidate is filtered with `route_is_live` before matching/ranking. Missing,
-    stale, future, mismatched, unattested evidence, or a route-local identity/family/
-    invocation contradiction never returns the route — this function does not depend
-    on CLI `assert_valid`. `as_of` defaults to the current date.
+    stale, future, mismatched, unattested evidence, undeclared family/independence
+    group, or a route-local identity/family/invocation contradiction never returns
+    the route — this function does not depend on CLI `assert_valid`. `as_of` defaults
+    to the current date.
 
     family_diversity=2 requires distinct configured independence groups AND distinct
     physical (host, harness, invocation_id) identities — never family strings alone.
+    An empty/undeclared group cannot count toward diversity.
     """
     as_of = as_of or date.today()
     roles = registry.get("roles") or {}
@@ -724,7 +758,7 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
     for row in candidates:
         group = row.get("independence_group") or independence_group_of(registry, row.get("family"))
         phys = tuple(row.get("physical") or physical_invocation(row))
-        if family_diversity and (group in used_groups or phys in used_physical):
+        if family_diversity and (not group or group in used_groups or phys in used_physical):
             rejected_same_family.append(row["route"])
             continue
         picked.append(row)
@@ -814,7 +848,7 @@ def render_matrix(registry: dict) -> str:
         "Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.",
         "",
         "A catalog entry is not a usable route. Only `live_verified` routes resolve.",
-        "The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence or a route-local identity/family/invocation contradiction never returns).",
+        "The public resolver API is fail-closed: every candidate is filtered by `route_is_live` (missing/stale/future/mismatched/unattested evidence, undeclared family/independence group, or a route-local identity/family/invocation contradiction never returns).",
         "Last-resort coding requires a concrete live provider with `implement`/`ide` and `code` on both the provider and its bound live route; sharing a plan is not enough.",
         "Quality rank is not selection priority. Rank never grants tools or data.",
         "Descending ranks are evidence-bounded and role/harness-specific, not a universal ordering.",

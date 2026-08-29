@@ -21,7 +21,7 @@
     "dispatch": "Queue/assign/risk-gate", "mcp_bulk": "High-volume connector fetches", "mcp_judgment": "Interpret fetched data",
     "browser": "Drive a real browser (Chrome) — preview walks, dashboards", "visual_qa": "Storefront pixel review",
     "analytics": "Read analytics UIs (Clarity heatmaps/replays)", "ide": "In-editor agent",
-    "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, google-mcp, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. Connector IDs, aliases, and classes are never coarse labels: a connector capability is granted only by an active matching connector whose available_on includes the provider. Doctor rejects provider.capabilities that collide with a connector-derived label. This catalog is the enumerated coarse vocabulary (`bin/routing.COARSE_CAPABILITIES`)."
+    "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, google-mcp, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. Connector IDs and aliases are always derived, even if they equal a coarse word such as `browser`; a class label stays coarse only when it is declared in this catalog. A connector capability is granted only by an active matching connector whose available_on includes the provider. Doctor rejects provider.capabilities that collide with a connector-derived label, and rejects connector ID/alias collisions with this vocabulary. This catalog is the enumerated coarse vocabulary (`bin/routing.COARSE_CAPABILITIES`)."
   },
   "providers": {
     "codex-luna": {

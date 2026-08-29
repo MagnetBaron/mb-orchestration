@@ -117,6 +117,8 @@ def live_reviewers(providers, rows, ledger, registry):
             continue
         fam = p.get("family")
         group = modelreg.independence_group_of(registry, fam)
+        if not group:
+            continue
         route = (registry.get("routes") or {}).get(p.get("route") or "") or {}
         phys = modelreg.physical_invocation(route)
         seat = None
@@ -167,13 +169,17 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
         rest = ", ".join(r["provider"] for r in reviewers[1:]) or "(none — then park)"
         return {"satisfied": True, "chain": [first],
                 "explanation": f"single-frontier: {note_for(first)}. Fallback: {rest}.{warn}"}
-    # cross-family: two DIFFERENT independence groups AND unique physical invocations
+    # cross-family: two DIFFERENT declared independence groups AND unique physical invocations
     first = reviewers[0]
-    first_group = first.get("independence_group") or first["family"]
+    first_group = first.get("independence_group")
     first_phys = tuple(first.get("physical") or ())
+    if not first_group:
+        return {"satisfied": False, "chain": [first],
+                "explanation": "PARK: first reviewer has no declared independence group."}
     second = next(
         (r for r in reviewers[1:]
-         if (r.get("independence_group") or r["family"]) != first_group
+         if r.get("independence_group")
+         and r.get("independence_group") != first_group
          and tuple(r.get("physical") or ()) != first_phys),
         None,
     )
@@ -265,8 +271,9 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     workers.sort(key=lambda ps: routing.route_key(ps[1]))
 
     if needs_mcp:
-        # MCP bulk to Terra first — only if a real matching connector is active on Terra.
-        # Unknown/missing/primed/inactive/wrong-seat PARK; do not snapshot then continue.
+        # MCP bulk to Terra first. Any failed prerequisite PARKS the whole pipeline —
+        # do not snapshot then continue to Grok. Connector match, live Terra route,
+        # and a currently usable Terra seat are all required.
         matches, why = routing.mcp_volume_matches(needs_mcp, connectors, routing.MCP_VOLUME_PROVIDER)
         if not matches:
             steps.append({
@@ -276,10 +283,50 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                 "available": False, "tier": "spent",
             })
             return steps
-        terra = best_seat(routing.MCP_VOLUME_PROVIDER) if live_ok(routing.MCP_VOLUME_PROVIDER) else None
-        steps.append({"seat": routing.MCP_VOLUME_PROVIDER,
+        terra_pid = routing.MCP_VOLUME_PROVIDER
+        terra_prov = prov.get(terra_pid)
+        if not isinstance(terra_prov, dict):
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} resolved, but {terra_pid} "
+                        "is missing — required MCP work cannot continue to implement"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        terra_route_id = terra_prov.get("route")
+        terra_route = (registry.get("routes") or {}).get(terra_route_id) or {}
+        if not live_ok(terra_pid):
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} resolved, but {terra_pid} "
+                        f"has no valid live route ({terra_route_id!r}) — required MCP "
+                        "work cannot continue to implement"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        if terra_route.get("provider") not in (None, terra_pid):
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} resolved, but {terra_pid} "
+                        f"is bound to wrong-route {terra_route_id!r} "
+                        f"(provider {terra_route.get('provider')!r}) — required MCP "
+                        "work cannot continue to implement"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        terra = best_seat(terra_pid)
+        if not terra:
+            steps.append({
+                "seat": "(none)",
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} resolved, but {terra_pid} "
+                        "has no currently usable seat — required MCP work cannot "
+                        "continue to implement"),
+                "available": False, "tier": "spent",
+            })
+            return steps
+        steps.append({"seat": terra_pid,
                       "why": f"Google-MCP bulk ({needs_mcp}) → output_path snapshot",
-                      "available": bool(terra), "tier": terra["tier"] if terra else "spent"})
+                      "available": True, "tier": terra["tier"]})
 
     if workers:
         pid, s = workers[0]
@@ -341,7 +388,7 @@ def main(argv=None):
     ap.add_argument("--risk", default="")
     ap.add_argument("--implement", action="store_true")
     ap.add_argument("--needs-mcp", default="",
-                    help="connector id, alias, or class this brief needs (routes bulk to Terra; unknown/inert PARK)")
+                    help="connector id, alias, or class this brief needs (routes bulk to Terra; unknown/inert/unusable-Terra PARK)")
     ap.add_argument("--needs-connector", default="", help="capability/connector the implement seat must have (e.g. clarity-magnetbaron, browser)")
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--task-seconds", type=int, default=0, help="est. task length; flags seats that reset before it finishes (no mid-turn swaps)")

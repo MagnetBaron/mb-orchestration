@@ -100,9 +100,10 @@ def skill_md_path(skill_id: str) -> Path:
 def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) -> bool:
     """A seat satisfies `cap` only through `routing.capabilities_of`.
 
-    Connector-derived labels (IDs, aliases, classes) are granted only by an explicitly
-    active matching connector whose lifecycle predicate passes and whose `available_on`
-    includes the seat. Coarse provider capability labels never grant a derived label
+    Connector IDs and aliases are always derived (even if they equal a coarse word) and
+    are granted only by an explicitly active matching connector whose lifecycle predicate
+    passes and whose `available_on` includes the seat. A class label follows the catalog
+    coarse exception. Coarse provider capability labels never grant a derived label
     (primed/ready/missing/unknown stay inert even if the name was copied into capabilities).
     None = no capability gate.
     """
