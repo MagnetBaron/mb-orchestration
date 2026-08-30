@@ -18,7 +18,7 @@ place to edit when a binding moves.
 from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
@@ -81,6 +81,18 @@ def _validate_preview_url(c, store, url):
     host = (parsed.hostname or "").lower()
     if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
         sys.exit(f"connectors: store {store!r} preview URL must be credential-free HTTPS")
+    deny = c.get("grok_cli", {}).get("visual_qa", {}).get("deny_before_navigation", {})
+    decoded_url = unquote(url).lower()
+    decoded_path = unquote(parsed.path).lower()
+    if host in {str(value).lower() for value in deny.get("hosts") or []}:
+        sys.exit(f"connectors: store {store!r} preview URL uses a denied host")
+    if any(decoded_path == str(prefix).lower()
+           or decoded_path.startswith(str(prefix).lower() + "/")
+           for prefix in deny.get("path_prefixes") or []):
+        sys.exit(f"connectors: store {store!r} preview URL uses a denied path")
+    if any(str(marker).lower() in decoded_url
+           for marker in deny.get("case_insensitive_markers") or []):
+        sys.exit(f"connectors: store {store!r} preview URL contains a denied marker")
 
     pattern = preview.get("shared_preview_host") or s.get("preview_host", "")
     if pattern.startswith("*."):

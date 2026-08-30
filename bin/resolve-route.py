@@ -527,6 +527,36 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
 IMPLEMENT_FNS = frozenset({"implement", "ide"})
 
 
+def review_d_input_step(providers, registry):
+    """Return the mandatory Review D input gate for any pixel/storefront route.
+
+    This is independent of implementation selection: review-only routing must park
+    on the same missing browser/pixel evidence as an implementation run.
+    """
+    review_d_id = "grok-bot-review-d"
+    review_d = (providers.get("providers") or {}).get(review_d_id) or {}
+    route_live = modelreg.provider_route_is_live(registry, review_d)
+    runtime_caps = {
+        cap: integrations.effective("grok", "capability", cap, require_callable=True)
+        for cap in ("browser", "pixels")
+    }
+    available = (bool(review_d.get("wired")) and route_live
+                 and all(ok for ok, _reason in runtime_caps.values()))
+    if available:
+        why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
+    else:
+        missing = []
+        if not review_d.get("wired"):
+            missing.append("provider wired is not true")
+        if not route_live:
+            missing.append("CLI route is not live_verified")
+        for cap, (ok, reason) in runtime_caps.items():
+            if not ok:
+                missing.append(f"{cap} capability is not freshly callable ({reason})")
+        why = "PARK Review D: " + "; ".join(missing)
+    return {"seat": review_d_id, "why": why, "available": available, "input_seat": True}
+
+
 def provider_can_code(provider, registry):
     """True iff this provider may implement: implement/ide function, `code` on the provider
     AND on its bound live catalog route. Live-route predicate is shared (route_is_live)."""
@@ -756,30 +786,6 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                                  "(implement/ide + code on provider and bound live route) → PARK",
                           "available": False, "tier": "spent"})
 
-    if pixels or klass == "storefront-theme":
-        review_d_id = "grok-bot-review-d"
-        review_d = prov.get(review_d_id) or {}
-        route_live = modelreg.provider_route_is_live(registry, review_d)
-        runtime_caps = {
-            cap: integrations.effective("grok", "capability", cap, require_callable=True)
-            for cap in ("browser", "pixels")
-        }
-        has_runtime_pixels = all(ok for ok, _reason in runtime_caps.values())
-        available = bool(review_d.get("wired")) and route_live and has_runtime_pixels
-        if available:
-            why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
-        else:
-            missing = []
-            if not review_d.get("wired"):
-                missing.append("provider wired is not true")
-            if not route_live:
-                missing.append("CLI route is not live_verified")
-            for cap, (ok, reason) in runtime_caps.items():
-                if not ok:
-                    missing.append(f"{cap} capability is not freshly callable ({reason})")
-            why = "PARK Review D: " + "; ".join(missing)
-        steps.append({"seat": review_d_id, "why": why,
-                      "available": available, "input_seat": True})
     return steps
 
 
@@ -880,6 +886,10 @@ def main(argv=None):
             args.needs_mcp.strip(), args.pixels, args.task_seconds, registry,
             avoid_provider=effective_dispatcher,
         )
+    if args.pixels or args.klass == "storefront-theme":
+        if implement is None:
+            implement = []
+        implement.append(review_d_input_step(providers, registry))
     authors = [s.get("seat") for s in (implement or [])
                if s.get("available", True) and not s.get("input_seat") and s.get("seat") not in (None, "(none)")]
     reviewers = live_reviewers(providers, rows, ledger, registry,

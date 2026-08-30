@@ -79,6 +79,19 @@ class VisualQaConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "no safe configured CLI preview rule"):
                     connectors.render_ticket(config, "gadget-duke")
 
+    def test_preview_denies_sensitive_paths_encoded_paths_and_markers(self):
+        config = live_config()
+        cases = [
+            "https://gadgetduke.com/checkout?preview_theme_id=151997775942",
+            "https://gadgetduke.com/%63heckout?preview_theme_id=151997775942",
+            "https://gadgetduke.com/products/simgym-demo?preview_theme_id=151997775942",
+        ]
+        for url in cases:
+            with self.subTest(url=url):
+                config["stores"]["gadget-duke"]["review_d_preview_url"] = url
+                with self.assertRaisesRegex(SystemExit, "denied"):
+                    connectors.render_ticket(config, "gadget-duke")
+
     def test_configured_live_host_preview_fails_if_rule_is_removed(self):
         config = live_config()
         config["grok_cli"]["visual_qa"]["modes"]["preview-review"]["configured_host_rules"] = []

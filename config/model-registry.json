@@ -1284,7 +1284,7 @@
       "harness": "grok-bot-app",
       "invocation_id": "website-visual-qa",
       "route_state": "disabled",
-      "lifecycle": "retired",
+      "lifecycle_override": "retired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "owner_eval",
       "capabilities": [
@@ -1360,7 +1360,7 @@
       "harness": "grok-bot-app",
       "invocation_id": "heat-map",
       "route_state": "disabled",
-      "lifecycle": "retired",
+      "lifecycle_override": "retired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "owner_eval",
       "capabilities": [
@@ -1436,7 +1436,7 @@
       "harness": "grok-bot-app",
       "invocation_id": "marketplace-intelligence",
       "route_state": "disabled",
-      "lifecycle": "retired",
+      "lifecycle_override": "retired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "none",
       "capabilities": [

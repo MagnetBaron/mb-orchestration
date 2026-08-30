@@ -74,6 +74,26 @@ class GrokAgentTests(unittest.TestCase):
             evidence.write_text("price\n999.00\n")
             self.assertIn("digest", target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
 
+    def test_evidence_prompt_rejects_duplicate_or_unknown_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / "sold.csv"
+            evidence.write_text("price\n12.00\n")
+            digest = "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+            base = (
+                "role: marketplace-intelligence\nsource: owner-deposited\n"
+                f"evidence-path: {evidence}\nevidence-sha256: {digest}\n"
+            )
+            prompt = root / "market.md"
+            prompt.write_text(base + "evidence-path: /etc/hosts\n")
+            self.assertIn("duplicate", target._prompt_problem(
+                "grok-bot-marketplace-intelligence", prompt
+            ))
+            prompt.write_text(base + "extra-artifact: /etc/hosts\n")
+            self.assertIn("unknown", target._prompt_problem(
+                "grok-bot-marketplace-intelligence", prompt
+            ))
+
     def test_inspect_fails_closed_for_unwired_routes_and_missing_profile(self):
         with tempfile.TemporaryDirectory() as td:
             prompt = Path(td) / "brief.md"
@@ -203,6 +223,65 @@ class GrokAgentTests(unittest.TestCase):
         self.assertIn("PARK Review D", decision["park_reason"])
         review_d = next(s for s in decision["implement"] if s.get("input_seat"))
         self.assertFalse(review_d["available"])
+
+    def test_review_only_pixel_route_also_parks_on_review_d(self):
+        result = subprocess.run([
+            sys.executable, str(HERE / "resolve-route.py"),
+            "--class", "storefront-theme", "--scale", "elevated",
+            "--intake-provider", "codex-sol", "--pixels",
+            "--artifacts", "brief,diff", "--json", "--no-record",
+        ], cwd=HERE.parent, text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertFalse(decision["routing_satisfied"])
+        self.assertIn("PARK Review D", decision["park_reason"])
+        self.assertTrue(any(step.get("input_seat") for step in decision["implement"]))
+
+    def test_launcher_rejects_mutable_capability_weakening(self):
+        configs = {
+            name: json.loads((HERE.parent / "config" / name).read_text())
+            for name in (
+                "providers.json", "roles.json", "seat-exec.json",
+                "model-registry.json", "connectors.json",
+            )
+        }
+        configs["seat-exec.json"]["recipes"]["grok-bot-review-d"]["required_capabilities"] = []
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            prompt = root / "review.md"
+            prompt.write_text(target.connector_packets.render_live_ticket(
+                target.connector_packets.load(), "magnet-baron"
+            ))
+            agents = root / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
+                 mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.integrations, "effective", return_value=(True, "observed")) as effective:
+                result = target.inspect("grok-bot-review-d", root, prompt, agents)
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("required_capabilities must be exact" in x for x in result["problems"]))
+        self.assertEqual(effective.call_count, 2)
+
+    def test_launcher_rejects_invalid_registry_promotion(self):
+        configs = {
+            name: json.loads((HERE.parent / "config" / name).read_text())
+            for name in ("providers.json", "seat-exec.json", "model-registry.json")
+        }
+        configs["providers.json"]["providers"]["grok-bot-review-d"]["wired"] = True
+        configs["model-registry.json"]["routes"]["grok-cli-review-d"]["route_state"] = "live_verified"
+        with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
+             mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+             mock.patch.object(target, "_profile_problem", return_value=None), \
+             mock.patch.object(target, "_prompt_problem", return_value=None), \
+             mock.patch.object(target.integrations, "effective", return_value=(True, "observed")):
+            result = target.inspect(
+                "grok-bot-review-d", HERE.parent, HERE / "test_grok_agent.py",
+                HERE.parent / "generated",
+            )
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("model registry is invalid" in x for x in result["problems"]))
 
 
 if __name__ == "__main__":

@@ -71,7 +71,7 @@ class FailClosedTests(unittest.TestCase):
         registry = live()
         route = registry["routes"]["grok-bot-marketplace-intelligence"]
         self.assertEqual(route["route_state"], "disabled")
-        self.assertEqual(route["lifecycle"], "retired")
+        self.assertEqual(route["lifecycle_override"], "retired")
         self.assertEqual(route["provider"], "grok-bot-marketplace-intelligence")
         self.assertEqual(route["capabilities"], ["marketplace_intelligence"])
         self.assertFalse(
@@ -94,6 +94,21 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(provider["model"], "grok-4.6")
         self.assertFalse(provider["wired"])
         self.assertFalse(provider["review_eligible"])
+
+    def test_retired_legacy_app_route_cannot_be_reenabled_with_fresh_evidence(self):
+        registry = live()
+        route = registry["routes"]["grok-bot-visual-qa"]
+        route["route_state"] = "live_verified"
+        route["evidence_date"] = "2026-08-30"
+        route["evidence"].append({
+            "date": "2026-08-30", "route_state": "live_verified",
+            "kind": "owner_eval", "source": "mutation fixture", "signal": "standing_provider",
+        })
+        errors = mr.validate(registry, as_of=date(2026, 8, 30))
+        self.assertTrue(any("lifecycle 'retired' cannot be live_verified" in e for e in errors), errors)
+        self.assertFalse(mr.route_is_live(
+            registry, "grok-bot-visual-qa", as_of=date(2026, 8, 30)
+        ))
 
     def test_catalog_verified_never_resolves(self):
         decision = mr.resolve(live(), "implementation")

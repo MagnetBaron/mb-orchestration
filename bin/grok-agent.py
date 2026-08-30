@@ -30,12 +30,23 @@ _SYNC_SPEC = importlib.util.spec_from_file_location(
 sync_profiles = importlib.util.module_from_spec(_SYNC_SPEC)
 _SYNC_SPEC.loader.exec_module(sync_profiles)
 
-
-SEATS = (
-    "grok-bot-review-d",
-    "grok-bot-heat-map",
-    "grok-bot-marketplace-intelligence",
+_REGISTRY_SPEC = importlib.util.spec_from_file_location(
+    "grok_agent_model_registry", Path(__file__).resolve().parent / "model-registry.py"
 )
+model_registry = importlib.util.module_from_spec(_REGISTRY_SPEC)
+_REGISTRY_SPEC.loader.exec_module(model_registry)
+
+AGENTS = {
+    "grok-bot-review-d": "mb-review-d",
+    "grok-bot-heat-map": "mb-heat-map",
+    "grok-bot-marketplace-intelligence": "mb-marketplace-intelligence",
+}
+REQUIRED_CAPABILITIES = {
+    "grok-bot-review-d": ("browser", "pixels"),
+    "grok-bot-heat-map": ("browser", "clarity-auth"),
+    "grok-bot-marketplace-intelligence": ("deposited-evidence",),
+}
+SEATS = tuple(AGENTS)
 
 
 def _render(recipe: dict, *, cwd: Path, prompt_file: Path, agent_profile: Path) -> list[str]:
@@ -90,11 +101,21 @@ def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
         "grok-bot-heat-map": "heat-map",
         "grok-bot-marketplace-intelligence": "marketplace-intelligence",
     }.get(seat)
+    allowed_fields = {
+        "role", "source", "evidence-path", "evidence-sha256",
+        "site", "date-range", "question", "scope",
+    }
     fields = {}
     for line in text.splitlines():
+        if not line.strip():
+            continue
         key, sep, value = line.partition(":")
-        if sep and key.strip() and key.strip() not in fields:
-            fields[key.strip()] = value.strip()
+        key = key.strip()
+        if not sep or not key or key not in allowed_fields:
+            return "prompt contains an unknown or unstructured evidence field"
+        if key in fields:
+            return f"prompt contains duplicate field: {key}"
+        fields[key] = value.strip()
     if fields.get("role") != required_role:
         return f"prompt must declare exact role: {required_role}"
     allowed_sources = ({"approved-clarity-export"} if seat == "grok-bot-heat-map"
@@ -130,7 +151,8 @@ def _safe_review_d_packets(config: dict, store: str) -> list[str]:
 
 
 def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> dict:
-    providers = mborch.load_config("providers.json", required=True)["providers"]
+    providers_data = mborch.load_config("providers.json", required=True)
+    providers = providers_data["providers"]
     recipes = mborch.load_config("seat-exec.json", required=True)["recipes"]
     registry = mborch.load_config("model-registry.json", required=True)
     provider = providers.get(seat) or {}
@@ -142,12 +164,22 @@ def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> 
     binary = shutil.which(str(recipe.get("bin") or ""))
     problems: list[str] = []
 
+    registry_errors = model_registry.validate(registry, providers=providers_data)
+    if registry_errors:
+        problems.append("model registry is invalid: " + "; ".join(registry_errors))
+
     if provider.get("kind") != "cli":
         problems.append("provider is not a CLI seat")
     if provider.get("model") != "grok-4.6" or route.get("model") != "grok-4.6":
         problems.append("provider and route must pin exact model grok-4.6")
     if route.get("host") != "grok-cli" or route.get("harness") != "grok":
         problems.append("provider route is not the Grok CLI harness")
+    if agent != AGENTS[seat]:
+        problems.append(f"recipe required_agent must be exact {AGENTS[seat]!r}")
+    if recipe.get("required_capabilities") != list(REQUIRED_CAPABILITIES[seat]):
+        problems.append(
+            f"recipe required_capabilities must be exact {list(REQUIRED_CAPABILITIES[seat])!r}"
+        )
     if not provider.get("wired"):
         problems.append("provider wired is not true")
     if route.get("route_state") != "live_verified":
@@ -176,7 +208,7 @@ def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> 
     ]
     if argv[1:] != expected:
         problems.append("recipe argv differs from the approved Grok named-agent contract")
-    for capability in recipe.get("required_capabilities") or []:
+    for capability in REQUIRED_CAPABILITIES[seat]:
         ok, reason = integrations.effective(
             "grok", "capability", capability, require_callable=True
         )
@@ -188,7 +220,7 @@ def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> 
         "agent": agent,
         "route": route_id,
         "route_state": route.get("route_state"),
-        "required_capabilities": recipe.get("required_capabilities") or [],
+        "required_capabilities": list(REQUIRED_CAPABILITIES[seat]),
         "binary": binary,
         "profile": str(profile) if profile else None,
         "argv": argv,
