@@ -151,7 +151,7 @@
   },
   "review_order": ["opus-5", "codex-sol", "review-e"],
   "review_fallbacks": ["opus-4.8"],
-  "review_order_note": "GATING fallback order: Opus 5 first (Anthropic gate), then Codex Sol (OpenAI), then Review E (independent open-weight, if wired). Fable is OUT of the gating order — rare architecture/long-horizon escalation, same family as Opus. Opus 4.8 is a time-bounded compatibility fallback, not in this list. resolve-route computes the LIVE chain from this order + live_verified registry routes + usage-status tiers. Cross-family = one pass from two DIFFERENT families.",
+  "review_order_note": "GATING fallback order: Opus 5 first (Anthropic gate), then Codex Sol (OpenAI), then Review E (independent-family slot after Sol, only if wired/live/eligible; unwired parks). Fable is OUT of the gating order — rare architecture/long-horizon escalation, same family as Opus, never the post-Sol independent family. Opus 4.8 is a time-bounded Anthropic compatibility fallback, not in this list and not an independent post-Sol family. resolve-route computes the LIVE chain from this order + live_verified registry routes + usage-status tiers. Cross-family = one pass from two DIFFERENT families.",
   "model_slot_in": {
     "_note": "CLEAN SLOT-IN for a new/updated model (Opus 5.1, Fable 5.1, a successor to Fable/Sol, a new implementer). It is ONE edit here — no code or prose changes:",
     "steps": [

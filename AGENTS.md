@@ -13,7 +13,7 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 - `config/subscriptions.json` — the plans you pay for (the one file a new user edits)
 - `config/connectors.json` — live MCP/analytics/store/Slack bindings (no stale IDs in prose)
 - `config/entrypoints.json` — entry surfaces, user profiles, and per-run dispatcher fallback order
-- `config/handoff-policy.json` — preauthorized ordinary artifacts + fail-closed restricted classes
+- `config/handoff-policy.json` — preauthorized ordinary artifacts, standing review authorization, fail-closed restricted classes
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
 - `config/monitoring.json` — usage-history + observability retention/privacy (events never grant authority)
 - `bin/usage-status.py` · `bin/resolve-route.py` · `bin/model-registry.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/observe.py` · `bin/dashboard.py` · `bin/smoketest.py`
@@ -37,7 +37,7 @@ dispatcher exists **per run**, not globally for every user.
 - Prefer another implementer while one is usable; the dispatcher may implement only as a capability-checked fallback.
 - A dispatcher may review an artifact it did not author, but that pass is `artifact-only`; at least one other reviewer must independently validate dispatch intent/risk.
 - Implementers/authors never review their own artifact. Cross-family gates still need distinct independence groups and physical invocations.
-- `config/handoff-policy.json` preauthorizes minimum-necessary ordinary repo artifacts between configured providers. Authorship never creates a permission prompt. Credentials, tokens, restricted PII, customer data, production exports, and unknown classes park without a permission loop.
+- `config/handoff-policy.json` preauthorizes minimum-necessary ordinary repo artifacts between configured providers under `standing_review_authorization` (all configured review providers; no per-review approval). The intake family may review only as a separate physical invocation, `artifact-only`, and never as the sole reviewer of dispatch intent/risk. Authorship never creates a permission prompt. Credentials, tokens, restricted PII, customer data, production exports, and unknown classes park without a permission loop.
 
 ## Seats (roles are invariant; providers are config)
 
@@ -122,10 +122,10 @@ Raise if: auth/money/PII/prod/irreversible · multi-service · Grok conflict/fla
 
 **Order** (single-frontier = first live seat; cross-family = one pass from **each of two families**):
 **Opus 5 → Codex Sol → Review E (if wired) → stop** (`config/providers.json` `review_order`, filtered to
-`live_verified` routes in `config/model-registry.json`). Cross-family needs two *different* families (never two
+`live_verified` routes in `config/model-registry.json`). After Sol, the next independent-family slot is Review E only when that slot is wired, live, and eligible; unwired still parks. Cross-family needs two *different* families (never two
 Anthropic passes); **Fable is NOT in the gating order** (rare architecture/long-horizon escalation —
-Fable + Opus 5 are one family). Opus 4.8 remains the intended time-bounded compatibility fallback
-while the id is genuinely available; it is not the operational Anthropic gate and does not resolve
+Fable + Opus 5 are one family). Opus 4.8 remains the intended time-bounded Anthropic compatibility fallback
+while the id is genuinely available; it is not the operational Anthropic gate, not the independent post-Sol family fallback, and does not resolve
 until its route is `live_verified`. One frontier pass per change-set **except** the cross-family pair.
 
 **Exhaustion opens the next seat only on quota evidence** — `usage-status` shows the seat spent or

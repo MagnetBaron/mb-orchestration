@@ -415,6 +415,26 @@ def check_handoff_policy(policy):
     for key, value in expected.items():
         if rules.get(key) != value:
             err(f"handoff-policy rules.{key} must be {value!r}")
+    expected_auth = {
+        "provider_scope": "all-configured-review-providers",
+        "artifact_scope": "ordinary_artifacts",
+        "per_review_approval_required": False,
+        "intake_family_may_review": True,
+        "intake_family_review_scope": "artifact-only",
+        "intake_family_must_not_be_sole_reviewer": True,
+        "separate_physical_invocation_required": True,
+        "effective_date": "2026-08-30",
+    }
+    auth = policy.get("standing_review_authorization")
+    if not isinstance(auth, dict):
+        err("handoff-policy: standing_review_authorization object is required")
+    else:
+        extra = sorted(set(auth) - set(expected_auth))
+        if extra:
+            err(f"handoff-policy standing_review_authorization unexpected field(s): {extra}")
+        for key, value in expected_auth.items():
+            if auth.get(key) != value:
+                err(f"handoff-policy standing_review_authorization.{key} must be {value!r}")
 
 
 def check_windows(windows, subs_ids, fable_from_subs, provs=None):

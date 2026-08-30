@@ -1,7 +1,7 @@
 {
-  "_note": "Agent-to-agent handoff policy. Ordinary development artifacts are preauthorized between configured live providers; no repeated permission prompt is generated and authorship never changes authority. Restricted artifacts never transfer automatically and park fail-closed instead of pressuring a user to approve disclosure.",
+  "_note": "Agent-to-agent handoff policy. Ordinary development artifacts are preauthorized between configured live providers; no repeated permission prompt is generated and authorship never changes authority. Restricted artifacts never transfer automatically and park fail-closed instead of pressuring a user to approve disclosure. Standing review authorization covers all configured review providers for ordinary artifacts only.",
   "schema_version": 1,
-  "updated": "2026-08-29",
+  "updated": "2026-08-30",
   "ordinary_artifacts": ["brief", "repo-source", "diff", "test-output", "public-docs", "synthetic-eval"],
   "restricted_artifacts": ["credentials", "tokens", "restricted-pii", "customer-data", "production-export"],
   "rules": {
@@ -12,5 +12,15 @@
     "unknown_artifact_action": "park",
     "no_permission_escalation_loop": true,
     "minimum_necessary_only": true
+  },
+  "standing_review_authorization": {
+    "provider_scope": "all-configured-review-providers",
+    "artifact_scope": "ordinary_artifacts",
+    "per_review_approval_required": false,
+    "intake_family_may_review": true,
+    "intake_family_review_scope": "artifact-only",
+    "intake_family_must_not_be_sole_reviewer": true,
+    "separate_physical_invocation_required": true,
+    "effective_date": "2026-08-30"
   }
 }

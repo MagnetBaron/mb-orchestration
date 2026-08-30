@@ -56,7 +56,8 @@ OpenAI gate (no Sol); your only gating family is Anthropic (Opus). A cross-famil
 
 - *Have Codex?* You already have two gating families (Anthropic Opus + OpenAI Sol). Fable is optional.
 - *No Codex?* Wire **Review E** for the second family, or money/auth/PII work parks. Fable does **not**
-  fill that gap — it is the same family as Opus.
+  fill that gap — it is the same family as Opus. Opus 4.8 is also Anthropic and is not the independent
+  family after Sol. Review E is that next independent-family slot, and until it is wired the router parks.
 
 ---
 

@@ -80,7 +80,8 @@
         "allowed": { "type": "boolean" },
         "action": { "type": "string" },
         "artifact_classes": { "type": "array", "items": { "type": "string" } },
-        "requires_user_permission": { "const": false }
+        "requires_user_permission": { "const": false },
+        "authorization_basis": { "type": ["string", "null"] }
       }
     },
     "usage": {

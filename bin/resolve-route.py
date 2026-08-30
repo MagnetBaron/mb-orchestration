@@ -109,24 +109,67 @@ def provider_seats(pid, providers, rows):
     return sorted(seats, key=routing.route_key)
 
 
+STANDING_REVIEW_AUTHORIZATION_REQUIRED = {
+    "provider_scope": "all-configured-review-providers",
+    "artifact_scope": "ordinary_artifacts",
+    "per_review_approval_required": False,
+    "intake_family_may_review": True,
+    "intake_family_review_scope": "artifact-only",
+    "intake_family_must_not_be_sole_reviewer": True,
+    "separate_physical_invocation_required": True,
+    "effective_date": "2026-08-30",
+}
+
+
+def standing_review_authorization(policy):
+    """Return the exact standing authorization object, or None if missing/weakened."""
+    auth = policy.get("standing_review_authorization")
+    if not isinstance(auth, dict):
+        return None
+    if set(auth) != set(STANDING_REVIEW_AUTHORIZATION_REQUIRED):
+        return None
+    if any(auth.get(key) != value for key, value in STANDING_REVIEW_AUTHORIZATION_REQUIRED.items()):
+        return None
+    return dict(STANDING_REVIEW_AUTHORIZATION_REQUIRED)
+
+
 def evaluate_handoff(policy, artifacts):
     """Classify the run's artifacts before any provider is selected.
 
-    Ordinary configured-provider handoffs are preauthorized. Restricted or unknown
-    classes park without producing a permission request.
+    Ordinary configured-provider handoffs are preauthorized only when the exact
+    standing review authorization object is present. Missing or weakened
+    authorization parks ordinary artifacts without a permission request.
+    Restricted or unknown classes park for their own reasons, also without a
+    permission request.
     """
     ordinary = set(policy.get("ordinary_artifacts") or [])
     restricted = set(policy.get("restricted_artifacts") or [])
     requested = list(dict.fromkeys(a for a in artifacts if a))
     bad = [a for a in requested if a in restricted]
     unknown = [a for a in requested if a not in ordinary and a not in restricted]
-    allowed = not bad and not unknown
+    auth = standing_review_authorization(policy)
     if bad:
+        allowed = False
         reason = f"PARK: restricted artifact(s) cannot transfer automatically: {', '.join(bad)}"
+        basis = "fail-closed-restricted"
     elif unknown:
+        allowed = False
         reason = f"PARK: unknown artifact class(es) fail closed: {', '.join(unknown)}"
+        basis = "fail-closed-unknown"
+    elif auth is None:
+        allowed = False
+        reason = (
+            "PARK: standing_review_authorization missing or weakened; "
+            "ordinary handoff is not preauthorized"
+        )
+        basis = "fail-closed-standing-review-authorization"
     else:
-        reason = "ordinary configured-provider handoff is preauthorized"
+        allowed = True
+        reason = (
+            "ordinary configured-provider handoff is preauthorized by "
+            "standing_review_authorization"
+        )
+        basis = "standing_review_authorization"
     return {
         "allowed": allowed,
         "artifacts": requested,
@@ -136,6 +179,8 @@ def evaluate_handoff(policy, artifacts):
         "authorship_changes_authority": False,
         "action": "transfer-minimum-necessary" if allowed else "park",
         "reason": reason,
+        "authorization_basis": basis,
+        "standing_review_authorization": auth,
     }
 
 
@@ -772,7 +817,7 @@ def main(argv=None):
     for r in reasons:
         print(f"  · {r}")
     print(f"dispatcher: {'SATISFIED' if dispatcher['satisfied'] else 'NOT SATISFIED'} — {dispatcher['explanation']}")
-    print(f"handoff: {'ALLOWED' if handoff['allowed'] else 'PARK'} — {handoff['reason']} (permission prompt: no)")
+    print(f"handoff: {'ALLOWED' if handoff['allowed'] else 'PARK'} — {handoff['reason']} (permission prompt: no; basis={handoff.get('authorization_basis')})")
     print(f"review: {'SATISFIED' if review['satisfied'] else 'NOT SATISFIED'}")
     print(f"  {review['explanation']}")
     for i, c in enumerate(review["chain"], 1):

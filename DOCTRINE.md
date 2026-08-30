@@ -68,9 +68,11 @@ scope is artifact-only; at least one different provider independently checks dis
 Cross-family gates still require distinct independence groups and physical invocations.
 
 **Data authority is stable.** Ordinary minimum-necessary briefs, repo source, diffs, tests, public docs,
-and synthetic evals are preauthorized between configured providers. Authorship never forces a new
-permission prompt. Restricted or unknown artifact classes park; the system never pressures an operator
-to approve credentials, tokens, restricted PII, customer data, or production exports.
+and synthetic evals are preauthorized between configured providers by `standing_review_authorization`.
+The intake family may review only as a separate invocation, artifact-only, and never as the sole
+reviewer of dispatch intent/risk. Authorship never forces a new permission prompt. Restricted or
+unknown artifact classes park; the system never pressures an operator to approve credentials, tokens,
+restricted PII, customer data, or production exports.
 
 **Authority:** Owner → brief → `AGENTS.md` → specialty file → this doctrine → `EDGE-CASES.md`. Account facts (who/what/when) come from `config/`, read by `bin/` — never re-typed into prose.
 

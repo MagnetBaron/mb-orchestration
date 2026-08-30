@@ -49,6 +49,7 @@ def _decision(**overrides):
             "artifacts": ["brief", "repo-source", "diff", "test-output"],
             "restricted": [], "unknown": [], "missing_required": [],
             "requires_user_permission": False, "authorship_changes_authority": False,
+            "authorization_basis": "standing_review_authorization",
         },
         "review": {
             "satisfied": True,
@@ -350,6 +351,7 @@ class MissingAndFallbackTests(unittest.TestCase):
         )
         self.assertFalse(ev["handoff"]["requires_user_permission"])
         self.assertFalse(ev["handoff"]["authorship_changes_authority"])
+        self.assertEqual(ev["handoff"]["authorization_basis"], "fail-closed-restricted")
         self.assertEqual(observe.validate_event(ev), [])
 
     def test_reviewer_disagreement_and_fix_loop_retraction(self):

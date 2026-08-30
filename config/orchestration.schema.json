@@ -161,7 +161,7 @@
     },
     "handoff_policy": {
       "type": "object",
-      "required": ["schema_version", "ordinary_artifacts", "restricted_artifacts", "rules"],
+      "required": ["schema_version", "ordinary_artifacts", "restricted_artifacts", "rules", "standing_review_authorization"],
       "properties": {
         "schema_version": { "const": 1 },
         "ordinary_artifacts": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
@@ -177,6 +177,30 @@
             "unknown_artifact_action": { "const": "park" },
             "no_permission_escalation_loop": { "const": true },
             "minimum_necessary_only": { "const": true }
+          }
+        },
+        "standing_review_authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider_scope",
+            "artifact_scope",
+            "per_review_approval_required",
+            "intake_family_may_review",
+            "intake_family_review_scope",
+            "intake_family_must_not_be_sole_reviewer",
+            "separate_physical_invocation_required",
+            "effective_date"
+          ],
+          "properties": {
+            "provider_scope": { "const": "all-configured-review-providers" },
+            "artifact_scope": { "const": "ordinary_artifacts" },
+            "per_review_approval_required": { "const": false },
+            "intake_family_may_review": { "const": true },
+            "intake_family_review_scope": { "const": "artifact-only" },
+            "intake_family_must_not_be_sole_reviewer": { "const": true },
+            "separate_physical_invocation_required": { "const": true },
+            "effective_date": { "const": "2026-08-30" }
           }
         }
       }

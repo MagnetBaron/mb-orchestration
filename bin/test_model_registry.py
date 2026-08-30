@@ -1836,14 +1836,31 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertTrue(got["allowed"])
         self.assertFalse(got["requires_user_permission"])
         self.assertFalse(got["authorship_changes_authority"])
+        self.assertEqual(got["authorization_basis"], "standing_review_authorization")
+        self.assertEqual(got["standing_review_authorization"]["provider_scope"],
+                         "all-configured-review-providers")
+        self.assertEqual(got["standing_review_authorization"]["artifact_scope"],
+                         "ordinary_artifacts")
+        self.assertFalse(got["standing_review_authorization"]["per_review_approval_required"])
+        self.assertTrue(got["standing_review_authorization"]["intake_family_may_review"])
+        self.assertEqual(got["standing_review_authorization"]["intake_family_review_scope"],
+                         "artifact-only")
+        self.assertTrue(got["standing_review_authorization"]["intake_family_must_not_be_sole_reviewer"])
+        self.assertTrue(got["standing_review_authorization"]["separate_physical_invocation_required"])
+        self.assertEqual(got["standing_review_authorization"]["effective_date"], "2026-08-30")
 
     def test_restricted_and_unknown_handoffs_park_without_permission_loop(self):
         policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
-        for artifact in ("credentials", "future-unclassified-artifact"):
+        for artifact, basis in (("credentials", "fail-closed-restricted"),
+                                ("future-unclassified-artifact", "fail-closed-unknown")):
             got = rr.evaluate_handoff(policy, ["brief", artifact])
             self.assertFalse(got["allowed"], got)
             self.assertEqual(got["action"], "park")
             self.assertFalse(got["requires_user_permission"])
+            self.assertEqual(got["authorization_basis"], basis)
+            self.assertIsNotNone(got["standing_review_authorization"])
+            self.assertEqual(got["standing_review_authorization"]["artifact_scope"],
+                             "ordinary_artifacts")
 
     def test_unknown_intake_parks_handoff_and_is_not_a_participant(self):
         buf = io.StringIO()
@@ -1879,6 +1896,83 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         implement = next(s for s in steps if not s.get("input_seat"))
         self.assertEqual(implement["seat"], "cursor-grok", steps)
         self.assertEqual(implement["billing"], "included")
+
+    def test_intake_family_pairing_is_artifact_only_and_not_sole_reviewer(self):
+        reviewers = rr.live_reviewers(
+            providers(), self._rows(), {}, live(), dispatcher="opus-5",
+        )
+        by_id = {r["provider"]: r for r in reviewers}
+        self.assertEqual(by_id["opus-5"]["review_scope"], "artifact-only")
+        self.assertFalse(by_id["opus-5"]["dispatch_independent"])
+        self.assertTrue(by_id["codex-sol"]["dispatch_independent"])
+        review = rr.pick_review("cross-family", reviewers, False, 0)
+        self.assertTrue(review["satisfied"], review)
+        chain_ids = [c["provider"] for c in review["chain"]]
+        self.assertIn("codex-sol", chain_ids)
+        self.assertNotEqual(chain_ids, ["opus-5"])
+
+    def test_single_frontier_refuses_dispatcher_as_sole_reviewer(self):
+        only = [{"provider": "opus-5", "seat": "opus-5", "family": "anthropic",
+                 "tier": "available", "row": self._rows()[0], "dispatch_independent": False,
+                 "review_scope": "artifact-only"}]
+        got = rr.pick_review("single-frontier", only, False, 0)
+        self.assertFalse(got["satisfied"], got)
+
+    def test_missing_standing_review_authorization_parks_ordinary_handoff(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        del policy["standing_review_authorization"]
+        got = rr.evaluate_handoff(policy, ["brief", "repo-source", "diff", "test-output"])
+        self.assertFalse(got["allowed"], got)
+        self.assertEqual(got["action"], "park")
+        self.assertFalse(got["requires_user_permission"])
+        self.assertEqual(got["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+        self.assertIsNone(got["standing_review_authorization"])
+
+    def test_weakened_standing_review_authorization_parks_ordinary_handoff(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        policy["standing_review_authorization"]["per_review_approval_required"] = True
+        got = rr.evaluate_handoff(policy, ["brief", "repo-source"])
+        self.assertFalse(got["allowed"], got)
+        self.assertEqual(got["action"], "park")
+        self.assertFalse(got["requires_user_permission"])
+        self.assertEqual(got["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+        self.assertIsNone(got["standing_review_authorization"])
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        policy["standing_review_authorization"]["artifact_scope"] = "any"
+        got = rr.evaluate_handoff(policy, ["brief"])
+        self.assertFalse(got["allowed"], got)
+        self.assertFalse(got["requires_user_permission"])
+
+    def test_restricted_park_reason_wins_when_authorization_is_missing(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        del policy["standing_review_authorization"]
+        got = rr.evaluate_handoff(policy, ["brief", "credentials"])
+        self.assertFalse(got["allowed"], got)
+        self.assertEqual(got["action"], "park")
+        self.assertFalse(got["requires_user_permission"])
+        self.assertEqual(got["authorization_basis"], "fail-closed-restricted")
+
+    def test_standing_review_authorization_weakening_fails_doctor(self):
+        doc = load_mod("doctor_handoff", HERE / "doctor.py")
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        saved = list(doc.ERRORS)
+        doc.ERRORS.clear()
+        try:
+            doc.check_handoff_policy(policy)
+            self.assertEqual(doc.ERRORS, [])
+            weak = copy.deepcopy(policy)
+            weak["standing_review_authorization"]["per_review_approval_required"] = True
+            doc.check_handoff_policy(weak)
+            self.assertTrue(any("per_review_approval_required" in e for e in doc.ERRORS), doc.ERRORS)
+            doc.ERRORS.clear()
+            missing = copy.deepcopy(policy)
+            del missing["standing_review_authorization"]
+            doc.check_handoff_policy(missing)
+            self.assertTrue(any("standing_review_authorization" in e for e in doc.ERRORS), doc.ERRORS)
+        finally:
+            doc.ERRORS[:] = saved
 
 
 if __name__ == "__main__":

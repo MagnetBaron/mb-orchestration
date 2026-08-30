@@ -1,11 +1,13 @@
 # Review E — independent-family review fallback (Fireworks today)
 
 Review E is the **frontier independent-family review slot** (`config/providers.json` provider
-`review-e`). It is a **replaceable backing**: Fireworks open-weight API today, a local open-weight
+`review-e`) and the **next independent family after Codex Sol** in `review_order`. It is a
+**replaceable backing**: Fireworks open-weight API today, a local open-weight
 LLM (or another off-family CLI) later — the slot and its rules don't change when the backing does.
 It is **metered, review-only**, and **not wired** (no key on the Mini). Until the owner wires it,
-any brief that would route here **parks** with `blocked: Review E unwired`. Never an implementer,
-dispatcher, MCP seat, or architecture reviewer.
+any brief that would route here **parks** with `blocked: Review E unwired`. Opus 4.8 is an Anthropic
+compatibility fallback, not this independent post-Sol family. Fable is same-family architecture input
+and never fills this slot. Never an implementer, dispatcher, MCP seat, or architecture reviewer.
 
 Its value is **independence**, not capacity: Fable + Opus 5 are one family (Anthropic), Sol is OpenAI. A Fireworks open-weight model (DeepSeek / Moonshot / Alibaba / Zhipu labs) is the first review family that is none of Anthropic / OpenAI / xAI. See `DOCTRINE.md` §Correlated failure.
 
