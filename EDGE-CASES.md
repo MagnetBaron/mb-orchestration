@@ -33,6 +33,7 @@ When two specialty files conflict, the one named in the brief `must_read` wins f
 | Claude pipe down (Opus 5 + Opus 4.8 + Fable) | ONE Anthropic outage. Claude dispatch candidates and Anthropic review disappear together; choose a live non-Claude dispatcher. Cross-family gate may still park if only one review family remains. |
 | Restricted or unknown artifact class | PARK with `requires_user_permission:false`. Never repeatedly ask the operator to authorize transfer. Ordinary configured repo artifacts remain preauthorized regardless of which agent authored them. |
 | Slack / Visual QA routine dead | Ticket stays in `#visual-qa`. Fallback: owner or iPhone Grok Bot runs the thread. Do not open Bot.app on the Mini. Do not block Grok implement on Visual QA being offline — park only the Review D step. |
+| Live-audit wakes but storefront returns Access Denied or no valid screenshots | Return `blocked` with the observed reason. This proves wake/gating only, not visual coverage or a working store audit. Do not guess a verdict or retry into Admin/auth paths. |
 | Cursor Models drained | IDE: stop or Tab-only. Orchestration implement stays Grok Build (Heavy), not Cursor Other Models. |
 | Cursor $400 Other Models gone | Last $ closed unless owner enables on-demand. Fall back to Cursor Grok / Grok Build / teamclaude. |
 
@@ -71,7 +72,8 @@ Not a meta-agent, no polling for makework. The gates in this file plus the refil
 | Input | Action |
 |-------|--------|
 | Expired `shopifypreview.com` | Review D returns `blocked: need new Share Preview`. No Admin. |
-| Preview host not on allowlist | `blocked`. Owner edits `visual-qa.md` allowlist if intentional. |
+| Preview/live-audit host not on allowlist | `blocked`. Owner edits `config/connectors.json` if intentional, then runs doctor/tests and re-renders the instructions. |
+| Live-audit host is configured but has no Slack ticket/response evidence | Mark it `unverified`, not tested/working. Run one config-rendered safe ticket; preserve screenshots/verdict evidence before upgrading the claim. |
 | Brief missing required field | No dispatch. Ask for the field only — do not invent `done_when`. |
 | `must_read` path missing | Stop. Report missing path. Do not hallucinate file contents. |
 | Snapshot for GSC/keywords older than brief allows | MCP seat re-fetches only if the brief says refresh; else flag stale. |

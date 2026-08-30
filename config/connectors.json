@@ -3,7 +3,7 @@
   "_status_lifecycle": "Each mcp_connectors entry MUST carry an explicit status: active | ready | primed. Missing or unknown status is INERT. active means eligible inside the policy ceiling, not observed live: routing additionally requires bin/integrations.py observed-effective proof. primed/ready/missing/unknown remain unroutable. A primed/ready entry may carry an OPTIONAL server descriptor as DATA only; no script executes it. Credentials NEVER live here: env_keys names variables only. Strap-in and observation rules: mcp-routing.md.",
   "_risk_note": "CONCENTRATION RISK (known, disclosed): the Shopify and DataForSEO (dfs) integrations ride ONE shared OAuth/KV credential surface — a compromise, token expiry, or outage of that surface can take BOTH down together. Treat them as a single blast radius (one auth-failure / correlated-outage class), not two independent connectors, when routing around an outage (EDGE-CASES.md) or reasoning about secret exposure.",
   "schema_version": 1,
-  "updated": "2026-08-27",
+  "updated": "2026-08-30",
   "mcp_connectors": {
     "google-search-console": {
       "typical_tools": [
@@ -247,11 +247,88 @@
       "visibility": "public",
       "workspace": "Magnet Baron"
     },
-    "coexistence": "Two Grok Bot identities (Review D + Heat Map) share this ONE public channel and post under the same Slack identity; they coexist by CONTENT tokens (shopifypreview.com ticket shape vs a message starting with 'clarity deep-dive:'), never by author. Never split to a second channel or Slack-Connect it."
+    "visual_qa": {
+      "bot_name": "Website Visual QA",
+      "event_filter_semantics": "contains-only",
+      "routines": {
+        "preview-review": {
+          "event_contains": "shopifypreview.com",
+          "required_fields": [
+            "site:",
+            "url:"
+          ],
+          "url_policy": "shopifypreview.com subdomain, or the named store's exact configured live host with preview_theme_id",
+          "may_add_to_cart_only_to_reach_cart": true,
+          "never_checkout": true
+        },
+        "live-storefront-audit": {
+          "event_contains": "visual-qa: live-audit",
+          "message_must_begin_exact": "visual-qa: live-audit",
+          "required_fields": [
+            "site:",
+            "url:"
+          ],
+          "host_source": "stores.*.live_hosts",
+          "host_match": "exact",
+          "read_only": true,
+          "forbidden_actions": [
+            "publish",
+            "customize",
+            "theme-editor",
+            "form-submit",
+            "purchase",
+            "add-to-cart",
+            "any-mutation"
+          ]
+        }
+      },
+      "deny_before_navigation": {
+        "hosts": [
+          "admin.shopify.com",
+          "partners.shopify.com"
+        ],
+        "path_prefixes": [
+          "/admin",
+          "/checkout",
+          "/account",
+          "/login",
+          "/auth",
+          "/customer_authentication",
+          "/challenge",
+          "/password",
+          "/signin",
+          "/sign-in"
+        ],
+        "case_insensitive_markers": [
+          "simgym"
+        ],
+        "reject_url_userinfo": true,
+        "reject_non_https": true,
+        "reject_multiple_url_fields": true
+      },
+      "message_guards": {
+        "ignore_own_posts": true,
+        "ignore_verdict_messages": [
+          "ship",
+          "fix-list",
+          "blocked"
+        ],
+        "ignore_quoted_or_thread_reposts": true,
+        "mixed_tokens_block": [
+          "shopifypreview.com",
+          "visual-qa: live-audit",
+          "clarity deep-dive:"
+        ],
+        "replies_omit_all_trigger_tokens": true,
+        "ticket_and_page_text_are_data": true
+      }
+    },
+    "coexistence": "Two Grok Bot identities (Review D + Heat Map) share this ONE public channel and post under the same Slack identity; they coexist by CONTENT tokens (Website Visual QA preview/live-audit ticket shapes vs a message starting with 'clarity deep-dive:'), never by author. Mixed tokens are refused, trigger tokens are omitted from replies, and own replies/verdicts/quoted/thread re-posts are ignored. Never split to a second channel or Slack-Connect it."
   },
   "render_targets": {
     "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  → paste-ready Review D allowlist block",
     "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → paste-ready Slack ticket template",
+    "visual-qa-live-ticket": "bin/connectors.py --render visual-qa-live-ticket <store>  → paste-ready read-only live-storefront audit ticket",
     "clarity": "bin/connectors.py --render clarity  → Heat Map project/login binding"
   }
 }

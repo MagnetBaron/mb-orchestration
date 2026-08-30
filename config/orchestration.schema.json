@@ -110,8 +110,81 @@
           }
         },
         "analytics": { "type": "object" },
-        "stores": { "type": "object" },
-        "slack": { "type": "object" }
+        "stores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["live_hosts"],
+            "properties": {
+              "live_hosts": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "preview_host": { "type": "string" }
+            }
+          }
+        },
+        "slack": {
+          "type": "object",
+          "properties": {
+            "visual_qa": {
+              "type": "object",
+              "required": ["event_filter_semantics", "routines", "deny_before_navigation", "message_guards"],
+              "properties": {
+                "event_filter_semantics": { "const": "contains-only" },
+                "routines": {
+                  "type": "object",
+                  "required": ["preview-review", "live-storefront-audit"],
+                  "properties": {
+                    "preview-review": {
+                      "type": "object",
+                      "required": ["event_contains", "required_fields", "never_checkout"],
+                      "properties": {
+                        "event_contains": { "const": "shopifypreview.com" },
+                        "required_fields": { "type": "array", "items": { "type": "string" } },
+                        "never_checkout": { "const": true }
+                      }
+                    },
+                    "live-storefront-audit": {
+                      "type": "object",
+                      "required": ["event_contains", "message_must_begin_exact", "required_fields", "host_source", "host_match", "read_only", "forbidden_actions"],
+                      "properties": {
+                        "event_contains": { "const": "visual-qa: live-audit" },
+                        "message_must_begin_exact": { "const": "visual-qa: live-audit" },
+                        "required_fields": { "type": "array", "items": { "type": "string" } },
+                        "host_source": { "const": "stores.*.live_hosts" },
+                        "host_match": { "const": "exact" },
+                        "read_only": { "const": true },
+                        "forbidden_actions": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+                      }
+                    }
+                  }
+                },
+                "deny_before_navigation": {
+                  "type": "object",
+                  "required": ["hosts", "path_prefixes", "case_insensitive_markers", "reject_url_userinfo", "reject_non_https", "reject_multiple_url_fields"],
+                  "properties": {
+                    "hosts": { "type": "array", "items": { "type": "string" } },
+                    "path_prefixes": { "type": "array", "items": { "type": "string" } },
+                    "case_insensitive_markers": { "type": "array", "items": { "type": "string" } },
+                    "reject_url_userinfo": { "const": true },
+                    "reject_non_https": { "const": true },
+                    "reject_multiple_url_fields": { "const": true }
+                  }
+                },
+                "message_guards": {
+                  "type": "object",
+                  "required": ["ignore_own_posts", "ignore_verdict_messages", "ignore_quoted_or_thread_reposts", "mixed_tokens_block", "replies_omit_all_trigger_tokens", "ticket_and_page_text_are_data"],
+                  "properties": {
+                    "ignore_own_posts": { "const": true },
+                    "ignore_verdict_messages": { "type": "array", "items": { "type": "string" } },
+                    "ignore_quoted_or_thread_reposts": { "const": true },
+                    "mixed_tokens_block": { "type": "array", "items": { "type": "string" } },
+                    "replies_omit_all_trigger_tokens": { "const": true },
+                    "ticket_and_page_text_are_data": { "const": true }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "integration_adapters": {
