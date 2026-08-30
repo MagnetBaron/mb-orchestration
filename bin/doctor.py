@@ -462,11 +462,54 @@ def check_review_depth(depth):
                 err(f"review-depth class {cid}: {col}={spec.get(col)!r} not a valid level")
 
 
-def check_seat_exec(seat_exec, provs, provider_ids):
+def rendered_recipe_argv(recipe):
+    """Planner-facing argv for a seat-exec recipe: `bin` plus string args_template tokens."""
+    out = []
+    bin_ = recipe.get("bin") if isinstance(recipe, dict) else None
+    if bin_:
+        out.append(bin_)
+    args = recipe.get("args_template") if isinstance(recipe, dict) else None
+    if isinstance(args, list):
+        out.extend(a for a in args if isinstance(a, str))
+    return out
+
+
+def teamclaude_recipe_error(pid, recipe, route):
+    """Fail closed: a TeamClaude-hosted registry route must not render the auth-blocked
+    direct Claude CLI. Returns an error string, or None when the recipe is not this check
+    (non-TeamClaude host) or when it is `teamclaude run --` plus the exact invocation_id."""
+    if not isinstance(route, dict) or route.get("host") != "teamclaude":
+        return None
+    argv = rendered_recipe_argv(recipe)
+    inv = route.get("invocation_id")
+    if argv[:3] != ["teamclaude", "run", "--"]:
+        shown = argv[:3] if argv else ["<empty>"]
+        want = f"--model {inv}" if inv else "--model <invocation_id>"
+        return (
+            f"seat-exec recipe {pid!r}: registry route host is teamclaude but the recipe "
+            f"renders a direct command starting {shown!r} — must be `teamclaude run --` "
+            f"with `{want}`; direct Claude is auth_blocked"
+        )
+    if inv:
+        try:
+            i = argv.index("--model")
+        except ValueError:
+            i = -1
+        if i < 0 or i + 1 >= len(argv) or argv[i + 1] != inv:
+            return (
+                f"seat-exec recipe {pid!r}: TeamClaude route requires `--model {inv}` "
+                "(exact registry invocation_id); omitting it can silently select another model"
+            )
+    return None
+
+
+def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
     """seat-exec.json recipes must not drift from the registry: every recipe keys a known
     provider; the never_metered_host marker matches providers.json `billing` (the secrets/PII
-    executor guard, as data); and `bin` matches `kind` (CLI seats have a bin, app/api/local
-    seats do not). Consumed by bin/run-brief.py."""
+    executor guard, as data); `bin` matches `kind` (CLI seats have a bin, app/api/local
+    seats do not); and a TeamClaude-hosted live route must render `teamclaude run --` with
+    that route's invocation_id, never the auth-blocked direct Claude CLI. Consumed by
+    bin/run-brief.py."""
     if not seat_exec:
         return
     recipes = seat_exec.get("recipes", {})
@@ -474,6 +517,7 @@ def check_seat_exec(seat_exec, provs, provider_ids):
         err("seat-exec.json: no recipes defined")
         return
     valid_reads = {"brief", "git-diff", "preview-url", "analytics", "none"}
+    routes = (registry or {}).get("routes") or {}
     for pid, r in recipes.items():
         if pid not in provider_ids:
             err(f"seat-exec recipe {pid!r}: not a known provider (config/providers.json)")
@@ -499,6 +543,11 @@ def check_seat_exec(seat_exec, provs, provider_ids):
             err(f"seat-exec recipe {pid!r}: args_template must be a list")
         if not isinstance(r.get("worktree"), bool):
             err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
+        route_id = p.get("route")
+        route = routes.get(route_id) if route_id else None
+        mismatch = teamclaude_recipe_error(pid, r, route)
+        if mismatch:
+            err(mismatch)
 
 
 def check_observability(monitoring):
@@ -819,7 +868,7 @@ def main(argv=None):
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")
     check_forbidden_matcher()
     check_model_registry(providers, conns)
-    check_seat_exec(seat_exec, provs, provider_ids)
+    check_seat_exec(seat_exec, provs, provider_ids, model_reg)
     check_runledger()
     prose_hygiene()
     check_bin_references()
