@@ -267,8 +267,33 @@
       "required": ["schema_version", "ordinary_artifacts", "restricted_artifacts", "rules", "standing_review_authorization"],
       "properties": {
         "schema_version": { "const": 1 },
-        "ordinary_artifacts": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
-        "restricted_artifacts": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+        "ordinary_artifacts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "not": {
+            "contains": {
+              "enum": ["credentials", "customer-data", "production-data", "production-export", "restricted-data", "restricted-pii", "secrets", "tokens"]
+            }
+          }
+        },
+        "restricted_artifacts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "allOf": [
+            { "contains": { "const": "credentials" } },
+            { "contains": { "const": "customer-data" } },
+            { "contains": { "const": "production-data" } },
+            { "contains": { "const": "production-export" } },
+            { "contains": { "const": "restricted-data" } },
+            { "contains": { "const": "restricted-pii" } },
+            { "contains": { "const": "secrets" } },
+            { "contains": { "const": "tokens" } }
+          ]
+        },
         "rules": {
           "type": "object",
           "required": ["configured_provider_handoffs", "authorship_never_requires_permission", "ordinary_requires_user_permission", "restricted_action", "unknown_artifact_action", "no_permission_escalation_loop", "minimum_necessary_only"],

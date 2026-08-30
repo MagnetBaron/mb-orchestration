@@ -1925,6 +1925,23 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             self.assertEqual(got["standing_review_authorization"]["artifact_scope"],
                              "ordinary_artifacts")
 
+    def test_immutable_restricted_minimum_wins_runtime_config_mutation(self):
+        base = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        minimum = rr.handoff_policy.IMMUTABLE_MINIMUM_RESTRICTED_ARTIFACTS
+        self.assertTrue(minimum.issubset(set(base["restricted_artifacts"])))
+        for artifact in sorted(minimum):
+            with self.subTest(artifact=artifact):
+                mutated = copy.deepcopy(base)
+                mutated["restricted_artifacts"] = [
+                    value for value in mutated["restricted_artifacts"] if value != artifact
+                ]
+                mutated["ordinary_artifacts"].append(artifact)
+                got = rr.evaluate_handoff(mutated, ["brief", artifact])
+                self.assertFalse(got["allowed"], got)
+                self.assertEqual(got["authorization_basis"], "fail-closed-restricted")
+                self.assertIn(artifact, got["restricted"])
+                self.assertFalse(got["requires_user_permission"])
+
     def test_unknown_intake_parks_handoff_and_is_not_a_participant(self):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -2053,6 +2070,39 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             self.assertTrue(any("effective_date" in e for e in doc.ERRORS), doc.ERRORS)
         finally:
             doc.ERRORS[:] = saved
+
+    def test_immutable_restricted_minimum_mutation_fails_doctor_and_schema(self):
+        doc = load_mod("doctor_restricted_minimum", HERE / "doctor.py")
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        saved = list(doc.ERRORS)
+        doc.ERRORS.clear()
+        try:
+            removed = copy.deepcopy(policy)
+            removed["restricted_artifacts"].remove("secrets")
+            doc.check_handoff_policy(removed)
+            self.assertTrue(any("immutable minimum" in e and "secrets" in e for e in doc.ERRORS), doc.ERRORS)
+
+            moved = copy.deepcopy(policy)
+            moved["restricted_artifacts"].remove("credentials")
+            moved["ordinary_artifacts"].append("credentials")
+            doc.ERRORS.clear()
+            doc.check_handoff_policy(moved)
+            self.assertTrue(any("cannot be ordinary" in e and "credentials" in e for e in doc.ERRORS), doc.ERRORS)
+        finally:
+            doc.ERRORS[:] = saved
+
+        try:
+            import jsonschema
+        except ImportError:  # pragma: no cover - doctor has an authoritative built-in check
+            return
+        schema = json.loads((REPO / "config" / "orchestration.schema.json").read_text())
+        handoff_schema = dict(schema)
+        handoff_schema["$ref"] = "#/$defs/handoff_policy"
+        jsonschema.validate(policy, handoff_schema)
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.validate(removed, handoff_schema)
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.validate(moved, handoff_schema)
 
     def test_malformed_future_or_extra_authorization_parks_ordinary_handoff(self):
         policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
@@ -2260,19 +2310,36 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             doc.check_seat_exec(seat, provs["providers"], set(provs["providers"]))
             self.assertEqual(doc.ERRORS, [])
 
-            unsupported = copy.deepcopy(seat)
-            unsupported["recipes"]["grok-build"]["args_template"][:4] = [
-                "--workdir", "{worktree}", "--brief", "{brief_path}",
-            ]
-            doc.ERRORS.clear()
-            doc.check_seat_exec(unsupported, provs["providers"], set(provs["providers"]))
-            self.assertTrue(any("unsupported Grok flag" in e for e in doc.ERRORS), doc.ERRORS)
+            rejected_vectors = {
+                "unknown": expected + ["--future-flag"],
+                "duplicate": expected + ["--no-subagents"],
+                "positional": expected + ["implement-now"],
+                "permission-bypass": expected + ["--always-approve"],
+                "wrong-aliases": [
+                    "--workdir", "{worktree}", "--brief", "{brief_path}",
+                    "--model", "grok-4.6", "--reasoning-effort", "xhigh",
+                    "--no-subagents",
+                ],
+            }
+            for case, vector in rejected_vectors.items():
+                with self.subTest(case=case):
+                    invalid = copy.deepcopy(seat)
+                    invalid["recipes"]["grok-build"]["args_template"] = vector
+                    doc.ERRORS.clear()
+                    doc.check_seat_exec(invalid, provs["providers"], set(provs["providers"]))
+                    self.assertTrue(
+                        any("exact approved argv" in e for e in doc.ERRORS),
+                        doc.ERRORS,
+                    )
 
             shortened = copy.deepcopy(seat)
             shortened["recipes"]["grok-build"]["args_template"][5] = "grok-4"
             doc.ERRORS.clear()
             doc.check_seat_exec(shortened, provs["providers"], set(provs["providers"]))
-            self.assertTrue(any("--model must use 'grok-4.6'" in e for e in doc.ERRORS), doc.ERRORS)
+            self.assertTrue(
+                any("exact approved argv" in e and "grok-4.6" in e for e in doc.ERRORS),
+                doc.ERRORS,
+            )
 
             wrong_provider_model = copy.deepcopy(provs)
             wrong_provider_model["providers"]["grok-build"]["model"] = "grok-4.6-build"

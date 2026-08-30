@@ -47,6 +47,7 @@ import mborch  # noqa: E402
 import routing  # noqa: E402
 import integrations  # noqa: E402
 import dispatch_evidence  # noqa: E402
+import handoff_policy  # noqa: E402
 try:
     import observe  # noqa: E402
 except Exception as _OBS_IMPORT_ERROR:  # observability must not take routing down
@@ -168,8 +169,8 @@ def evaluate_handoff(policy, artifacts):
     Restricted or unknown classes park for their own reasons, also without a
     permission request.
     """
-    ordinary = set(policy.get("ordinary_artifacts") or [])
-    restricted = set(policy.get("restricted_artifacts") or [])
+    ordinary = handoff_policy.configured_classes(policy, "ordinary_artifacts")
+    restricted = handoff_policy.effective_restricted_artifacts(policy)
     requested = list(dict.fromkeys(a for a in artifacts if a))
     bad = [a for a in requested if a in restricted]
     unknown = [a for a in requested if a not in ordinary and a not in restricted]

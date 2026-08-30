@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import dispatch_evidence  # noqa: E402
+import handoff_policy  # noqa: E402
 
 ROOT = HERE.parent
 CONFIG = ROOT / "config"
@@ -477,7 +478,26 @@ def check_handoff_policy(policy):
     restricted = policy.get("restricted_artifacts") or []
     if not ordinary or not restricted:
         err("handoff-policy: ordinary_artifacts and restricted_artifacts must be non-empty")
-    overlap = sorted(set(ordinary) & set(restricted))
+    configured_restricted = {
+        value for value in restricted if isinstance(value, str)
+    } if isinstance(restricted, list) else set()
+    minimum_restricted = set(handoff_policy.IMMUTABLE_MINIMUM_RESTRICTED_ARTIFACTS)
+    missing_minimum = sorted(minimum_restricted - configured_restricted)
+    if missing_minimum:
+        err(
+            "handoff-policy: restricted_artifacts cannot remove immutable minimum "
+            f"class(es): {missing_minimum}"
+        )
+    ordinary_classes = {
+        value for value in ordinary if isinstance(value, str)
+    } if isinstance(ordinary, list) else set()
+    immutable_in_ordinary = sorted(ordinary_classes & minimum_restricted)
+    if immutable_in_ordinary:
+        err(
+            "handoff-policy: immutable restricted class(es) cannot be ordinary: "
+            f"{immutable_in_ordinary}"
+        )
+    overlap = sorted(ordinary_classes & configured_restricted)
     if overlap:
         err(f"handoff-policy: artifact classes overlap: {overlap}")
     rules = policy.get("rules") or {}
@@ -588,7 +608,6 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
         err("seat-exec.json: no recipes defined")
         return
     valid_reads = {"brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"}
-    grok_unsupported_flags = {"--workdir", "--brief"}
     for pid, r in recipes.items():
         if pid not in provider_ids:
             err(f"seat-exec recipe {pid!r}: not a known provider (config/providers.json)")
@@ -625,40 +644,23 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                     f"provider 'grok-build': model {expected_model!r} must match "
                     f"model-registry route {route_id!r}"
                 )
-            grok_required_flags = {
-                "--cwd": "{worktree}",
-                "--prompt-file": "{brief_path}",
-                "--model": expected_model,
-                "--reasoning-effort": None,
-            }
             raw_args = r.get("args_template")
             args = raw_args if isinstance(raw_args, list) else []
             if bin_ != "grok":
                 err("seat-exec recipe 'grok-build': bin must be exact installed CLI 'grok'")
-            bad = sorted(grok_unsupported_flags & set(args))
-            if bad:
-                err(f"seat-exec recipe 'grok-build': unsupported Grok flag(s) {bad}")
-            for flag_name, expected_value in grok_required_flags.items():
-                if args.count(flag_name) != 1:
-                    err(f"seat-exec recipe 'grok-build': requires exactly one {flag_name}")
-                    continue
-                pos = args.index(flag_name)
-                actual = args[pos + 1] if pos + 1 < len(args) else None
-                if expected_value is not None and actual != expected_value:
-                    err(
-                        f"seat-exec recipe 'grok-build': {flag_name} must use "
-                        f"{expected_value!r}, got {actual!r}"
-                    )
-            if "--reasoning-effort" in args:
-                pos = args.index("--reasoning-effort")
-                effort = args[pos + 1] if pos + 1 < len(args) else None
-                if effort not in ("high", "xhigh"):
-                    err(
-                        "seat-exec recipe 'grok-build': --reasoning-effort must be "
-                        f"high or xhigh, got {effort!r}"
-                    )
-            if args.count("--no-subagents") != 1:
-                err("seat-exec recipe 'grok-build': requires exactly one --no-subagents")
+            approved_args = [
+                "--cwd", "{worktree}",
+                "--prompt-file", "{brief_path}",
+                "--model", expected_model,
+                "--reasoning-effort", "xhigh",
+                "--no-subagents",
+            ]
+            if args != approved_args:
+                err(
+                    "seat-exec recipe 'grok-build': args_template must match the exact "
+                    f"approved argv {approved_args!r}; got {args!r}. Unknown, duplicate, "
+                    "positional, reordered, and permission-bypassing flags are forbidden"
+                )
         flag = r.get("separate_invocation_when_dispatcher")
         if flag is not None and flag is not True and flag is not False:
             err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")

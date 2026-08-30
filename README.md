@@ -49,7 +49,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `connectors.json` | Vetted MCP/analytics/store/Slack authorization ceiling and public bindings; live proof comes from the runtime inventory |
 | `integration-adapters.json` | Safe runtime-manifest adapters, aliases, session-only Grok Bot/Cursor capability map, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
 | `entrypoints.json` | Entry surfaces, user profiles, per-run dispatcher fallback order |
-| `handoff-policy.json` | Ordinary preauthorization and restricted-data fail-closed classes |
+| `handoff-policy.json` | Ordinary preauthorization and extensible restricted classes; `bin/handoff_policy.py` enforces the non-removable minimum and restricted-wins runtime behavior |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
 | `review-depth.json` | Review floor by task class (machine source; DOCTRINE explains) |
 | `monitoring.json` | Retention (default 1yr), cost policy, reserve defaults, data sources, observability |

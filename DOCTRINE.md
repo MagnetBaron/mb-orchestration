@@ -70,9 +70,11 @@ Cross-family gates still require distinct independence groups and physical invoc
 **Data authority is stable.** Ordinary minimum-necessary briefs, repo source, diffs, tests, public docs,
 and synthetic evals are preauthorized between configured providers by `standing_review_authorization`.
 The intake family may review only as a separate invocation, artifact-only, and never as the sole
-reviewer of dispatch intent/risk. Authorship never forces a new permission prompt. Restricted or
-unknown artifact classes park; the system never pressures an operator to approve credentials, tokens,
-restricted PII, customer data, or production exports.
+reviewer of dispatch intent/risk. Authorship never forces a new permission prompt. The restricted
+taxonomy has an immutable code-level minimum: credentials, secrets/tokens, restricted PII/data,
+customer data, and production data/exports cannot be removed or reclassified as ordinary, and
+restricted wins a conflict at runtime. Restricted or unknown artifact classes park; the system never
+pressures an operator to approve their transfer.
 
 **Authority:** Owner → brief → `AGENTS.md` → specialty file → this doctrine → `EDGE-CASES.md`. Account facts (who/what/when) come from `config/`, read by `bin/` — never re-typed into prose.
 
