@@ -79,7 +79,7 @@
     },
     "connectors": {
       "type": "object",
-      "required": ["schema_version", "mcp_connectors", "analytics", "stores", "grok_cli"],
+      "required": ["schema_version", "mcp_connectors"],
       "properties": {
         "schema_version": { "const": 1 },
         "mcp_connectors": {
@@ -133,11 +133,10 @@
               "required": ["review-d", "heat-map", "marketplace-intelligence"],
               "additionalProperties": {
                 "type": "object",
-                "required": ["seat", "agent", "status", "requires"],
+                "required": ["seat", "agent", "requires"],
                 "properties": {
                   "seat": { "type": "string", "minLength": 1 },
                   "agent": { "type": "string", "pattern": "^mb-[a-z0-9-]+$" },
-                  "status": { "enum": ["parked", "live_verified"] },
                   "requires": { "type": "array", "items": { "type": "string" } }
                 }
               }
@@ -542,7 +541,13 @@
               "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"] },
               "worktree": { "type": "boolean" },
               "never_metered_host": { "type": "boolean" },
-              "separate_invocation_when_dispatcher": { "type": "boolean" }
+              "separate_invocation_when_dispatcher": { "type": "boolean" },
+              "required_agent": { "type": "string", "pattern": "^mb-[a-z0-9-]+$" },
+              "required_capabilities": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "enum": ["browser", "pixels", "clarity-auth"] }
+              }
             }
           }
         }

@@ -760,10 +760,12 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         review_d_id = "grok-bot-review-d"
         review_d = prov.get(review_d_id) or {}
         route_live = modelreg.provider_route_is_live(registry, review_d)
-        has_browser = "browser" in routing.capabilities_of(
-            review_d_id, review_d, connectors, require_callable=False
-        )
-        available = bool(review_d.get("wired")) and route_live and has_browser
+        runtime_caps = {
+            cap: integrations.effective("grok", "capability", cap, require_callable=True)
+            for cap in ("browser", "pixels")
+        }
+        has_runtime_pixels = all(ok for ok, _reason in runtime_caps.values())
+        available = bool(review_d.get("wired")) and route_live and has_runtime_pixels
         if available:
             why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
         else:
@@ -772,8 +774,9 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                 missing.append("provider wired is not true")
             if not route_live:
                 missing.append("CLI route is not live_verified")
-            if not has_browser:
-                missing.append("browser/pixel capability is not observed")
+            for cap, (ok, reason) in runtime_caps.items():
+                if not ok:
+                    missing.append(f"{cap} capability is not freshly callable ({reason})")
             why = "PARK Review D: " + "; ".join(missing)
         steps.append({"seat": review_d_id, "why": why,
                       "available": available, "input_seat": True})

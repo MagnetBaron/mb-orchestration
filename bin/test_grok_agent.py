@@ -31,7 +31,7 @@ class GrokAgentTests(unittest.TestCase):
                 self.assertEqual(recipe["bin"], "grok")
                 self.assertEqual(recipe["required_agent"], agent)
                 self.assertEqual(recipe["args_template"], [
-                    "--cwd", "{repo}", "--agent", agent, "--prompt-file", "{brief_path}",
+                    "--cwd", "{repo}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}",
                     "--model", "grok-4.6", "--reasoning-effort", "high",
                     "--no-subagents", "--output-format", "plain",
                 ])
@@ -55,9 +55,67 @@ class GrokAgentTests(unittest.TestCase):
             "args_template": ["--cwd", "{repo}", "--prompt-file", "{brief_path}"],
         }
         argv = target._render(
-            recipe, cwd=Path("/tmp/a repo"), prompt_file=Path("/tmp/a brief.md")
+            recipe, cwd=Path("/tmp/a repo"), prompt_file=Path("/tmp/a brief.md"),
+            agent_profile=Path("/tmp/agents/mb-review-d.md"),
         )
         self.assertEqual(argv, ["grok", "--cwd", "/tmp/a repo", "--prompt-file", "/tmp/a brief.md"])
+
+    def test_inspect_rejects_tampered_template_and_unobserved_capabilities(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            prompt = root / "brief.md"
+            prompt.write_text("safe fixture")
+            agents = root / "agents"
+            agents.mkdir()
+            (agents / "mb-review-d.md").write_text("---\nname: mb-review-d\n---\n")
+            configs = {
+                "providers.json": {"providers": {"grok-bot-review-d": {
+                    "kind": "cli", "model": "grok-4.6", "wired": True,
+                    "route": "grok-cli-review-d",
+                }}},
+                "seat-exec.json": {"recipes": {"grok-bot-review-d": {
+                    "bin": "grok", "required_agent": "mb-review-d",
+                    "required_capabilities": ["browser", "pixels"],
+                    "args_template": ["--future-flag"],
+                }}},
+                "model-registry.json": {"routes": {"grok-cli-review-d": {
+                    "model": "grok-4.6", "host": "grok-cli", "harness": "grok",
+                    "route_state": "live_verified",
+                }}},
+            }
+            with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
+                 mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.integrations, "effective", return_value=(False, "not fresh")):
+                result = target.inspect("grok-bot-review-d", root, prompt, agents)
+        self.assertFalse(result["ready"])
+        self.assertTrue(any("approved" in x for x in result["problems"]))
+        self.assertEqual(sum("required runtime capability" in x for x in result["problems"]), 2)
+
+    def test_wrong_profile_name_blocks_smoke_before_subprocess(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            agents = root / ".grok" / "agents"
+            agents.mkdir(parents=True)
+            (agents / "mb-review-d.md").write_text("---\nname: wrong-agent\n---\n")
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.subprocess, "run") as run:
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents), "--cwd", str(HERE.parent),
+                ])
+        self.assertEqual(rc, 2)
+        run.assert_not_called()
+
+    def test_main_never_executes_when_normal_preflight_is_not_ready(self):
+        with mock.patch.object(target, "inspect", return_value={
+            "ready": False, "problems": ["parked"], "argv": ["grok"]
+        }), mock.patch.object(target.subprocess, "run") as run:
+            rc = target.main([
+                "--seat", "grok-bot-review-d", "--execute",
+                "--prompt-file", str(HERE / "test_grok_agent.py"),
+            ])
+        self.assertEqual(rc, 2)
+        run.assert_not_called()
 
     def test_pixel_route_parks_when_cli_browser_capability_is_unwired(self):
         result = subprocess.run([

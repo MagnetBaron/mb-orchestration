@@ -168,6 +168,7 @@ def build_plan(args) -> dict:
         "repo": ".",
         "output_path": "<output_path>",
         "preview_url": "<preview-url>",
+        "agent_profile": "<validated-agent-profile>",
     }
 
     impl_plans = []

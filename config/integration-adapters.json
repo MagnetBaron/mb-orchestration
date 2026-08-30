@@ -67,6 +67,13 @@
     }
   },
   "session_only_aliases": {
+    "grok": {
+      "capability": {
+        "browser": "browser",
+        "pixels": "pixels",
+        "clarity-auth": "clarity-auth"
+      }
+    },
     "grokbot-cursor": {
       "app": {
         "heat-map": "heat-map",

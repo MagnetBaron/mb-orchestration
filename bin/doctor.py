@@ -207,6 +207,7 @@ def check_integration_adapters(adapters, providers_data):
                 elif kind in {"mcp", "plugin"} and canonical not in allowed:
                     err(f"integration-adapters: alias {runtime}:{kind}:{observed} maps to unregistered {canonical!r}")
     session_aliases = adapters.get("session_only_aliases") or {}
+    grok_runtime_capabilities = {"browser", "pixels", "clarity-auth"}
     capability_catalog = set((providers_data.get("capability_catalog") or {})) - {"_note"}
     for runtime, kinds in session_aliases.items():
         if not isinstance(kinds, dict):
@@ -222,8 +223,16 @@ def check_integration_adapters(adapters, providers_data):
             for observed, canonical in aliases.items():
                 if not isinstance(observed, str) or not observed or not isinstance(canonical, str) or not canonical:
                     err(f"integration-adapters: session_only_aliases.{runtime}.{kind} needs non-empty string names")
-                elif kind == "capability" and canonical not in capability_catalog:
+                elif (kind == "capability" and canonical not in capability_catalog
+                      and not (runtime == "grok" and canonical in grok_runtime_capabilities)):
                     err(f"integration-adapters: session-only capability maps to unknown {canonical!r}")
+    expected_grok_capabilities = {name: name for name in sorted(grok_runtime_capabilities)}
+    actual_grok_capabilities = ((session_aliases.get("grok") or {}).get("capability") or {})
+    if actual_grok_capabilities != expected_grok_capabilities:
+        err(
+            "integration-adapters: grok capability aliases must exactly define the "
+            f"launcher preflight vocabulary {expected_grok_capabilities!r}"
+        )
     grokbot_caps = set((((session_aliases.get("grokbot-cursor") or {}).get("capability")) or {}).values())
     grokbot_providers = {
         pid: p for pid, p in provs.items()
@@ -773,6 +782,11 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 "grok-bot-heat-map": "mb-heat-map",
                 "grok-bot-marketplace-intelligence": "mb-marketplace-intelligence",
             }
+            approved_capabilities = {
+                "grok-bot-review-d": ["browser", "pixels"],
+                "grok-bot-heat-map": ["browser", "clarity-auth"],
+                "grok-bot-marketplace-intelligence": [],
+            }
             if bin_ != "grok":
                 err(f"seat-exec recipe {pid!r}: bin must be exact installed CLI 'grok'")
             if agent != approved_agents[pid]:
@@ -782,7 +796,7 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
             if isinstance(route, dict) and (route.get("host"), route.get("harness")) != ("grok-cli", "grok"):
                 err(f"seat-exec recipe {pid!r}: bound route must use host='grok-cli' and harness='grok'")
             approved_args = [
-                "--cwd", "{repo}", "--agent", approved_agents[pid],
+                "--cwd", "{repo}", "--agent", "{agent_profile}",
                 "--prompt-file", "{brief_path}", "--model", "grok-4.6",
                 "--reasoning-effort", "high", "--no-subagents",
                 "--output-format", "plain",
@@ -792,6 +806,11 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
             caps = r.get("required_capabilities")
             if not isinstance(caps, list) or any(not isinstance(x, str) or not x for x in caps):
                 err(f"seat-exec recipe {pid!r}: required_capabilities must be a string list")
+            elif caps != approved_capabilities[pid]:
+                err(
+                    f"seat-exec recipe {pid!r}: required_capabilities must be exact "
+                    f"runtime-attested list {approved_capabilities[pid]!r}"
+                )
         route_id = p.get("route")
         route = routes.get(route_id) if route_id else None
         mismatch = wrapped_recipe_error(pid, r, route, wrappers)

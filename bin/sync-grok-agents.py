@@ -46,8 +46,15 @@ def write_atomic(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w") as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.chmod(tmp, 0o644)
         os.replace(tmp, path)
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -59,8 +66,13 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
     target = args.target_home / ".grok" / "agents"
+    try:
+        profiles = expected()
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"ERROR   cannot generate Grok profiles: {exc}")
+        return 2
     rc = 0
-    for filename, body in expected().items():
+    for filename, body in profiles.items():
         path = target / filename
         if args.check:
             if path.is_file() and not path.is_symlink() and path.read_text() == body:

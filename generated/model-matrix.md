@@ -85,9 +85,9 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `grok-4.5-cli` | `grok-4.5` | catalog_verified | superseded | grok-cli | grok | `grok-4.5` | 2026-08-28 cli_listing | standing_provider | — |
 | `grok-4.6-build` | `grok-4.6` | live_verified | stable | grok-cli | grok | `grok-4.6` | 2026-08-28 cli_listing | standing_provider | grok-build |
 | `grok-4.6-cursor` | `grok-4.6` | live_verified | stable | cursor | cursor-agent | `grok-4.6` | 2026-08-28 owner_eval | standing_provider | cursor-grok |
-| `grok-bot-heat-map` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
+| `grok-bot-heat-map` | `grok-4.6` | disabled | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
 | `grok-bot-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
-| `grok-bot-visual-qa` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
+| `grok-bot-visual-qa` | `grok-4.6` | disabled | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
 | `grok-cli-heat-map` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-heat-map` | 2026-08-30 none | — | grok-bot-heat-map |
 | `grok-cli-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-marketplace-intelligence` | 2026-08-30 none | — | grok-bot-marketplace-intelligence |
 | `grok-cli-review-d` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-review-d` | 2026-08-30 local_smoke | direct_invocation | grok-bot-review-d |
@@ -116,8 +116,6 @@ Evaluation: `direct` = `local_access_smoke` attested with `direct_invocation`; `
 | `gpt-5.6-terra-codex` | standing+grandfathered | attested/official_vendor_release | attested/standing_provider | waived | waived | waived | waived | 2026-11-26 |
 | `grok-4.6-build` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | waived | attested/independent_benchmark | attested/independent_pricing | waived | 2026-11-26 |
 | `grok-4.6-cursor` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | waived | attested/independent_benchmark | attested/independent_pricing | waived | 2026-11-26 |
-| `grok-bot-heat-map` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | not_applicable/app_only_analytics_input_not_text_suite | attested/independent_benchmark | waived | waived | 2026-11-26 |
-| `grok-bot-visual-qa` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | not_applicable/app_only_pixel_walk_not_text_suite | attested/independent_benchmark | waived | waived | 2026-11-26 |
 | `opus-4.8-teamclaude` | direct+grandfathered | attested/official_vendor_catalog | attested/direct_invocation | not_applicable/compatibility_fallback_not_ranked | not_applicable/compatibility_fallback_not_ranked | waived | waived | 2026-11-26 |
 | `opus-5-teamclaude` | direct+grandfathered | attested/official_vendor_release | attested/direct_invocation | attested/normalized_receipt | attested/independent_benchmark | attested/official_pricing | waived | 2026-11-26 |
 

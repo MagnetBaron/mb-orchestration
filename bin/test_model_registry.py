@@ -1218,7 +1218,9 @@ class TypedAttestationTests(unittest.TestCase):
             rid for rid, route in registry["routes"].items()
             if route.get("route_state") == "live_verified"
         ]
-        self.assertGreaterEqual(len(live_ids), 10)
+        self.assertGreaterEqual(len(live_ids), 8)
+        self.assertNotIn("grok-bot-visual-qa", live_ids)
+        self.assertNotIn("grok-bot-heat-map", live_ids)
         for rid in live_ids:
             atts = registry["routes"][rid]["attestations"]
             for key in required:

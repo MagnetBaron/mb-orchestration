@@ -59,19 +59,19 @@
       "note": "Metered $ 'Last $' pool. never_metered_host:false → the executor will NOT shell it; drains LAST, only when no included capacity remains (minimize API $)."
     },
     "grok-bot-review-d": {
-      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "mb-review-d", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
+      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
       "reads": "preview-url", "worktree": false, "never_metered_host": true,
       "required_agent": "mb-review-d", "required_capabilities": ["browser", "pixels"],
       "note": "Named Grok CLI agent. Launcher must prove the profile plus browser/pixel capability before execution; otherwise PARK. Reads a validated preview brief, never Slack."
     },
     "grok-bot-heat-map": {
-      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "mb-heat-map", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
+      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
       "reads": "analytics", "worktree": false, "never_metered_host": true,
       "required_agent": "mb-heat-map", "required_capabilities": ["browser", "clarity-auth"],
       "note": "Named Grok CLI agent. Launcher must prove the profile plus signed-in Clarity/browser capability before execution; otherwise PARK. Feeds dispatch, never a verdict."
     },
     "grok-bot-marketplace-intelligence": {
-      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "mb-marketplace-intelligence", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
+      "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
       "reads": "marketplace-evidence", "worktree": false, "never_metered_host": true,
       "required_agent": "mb-marketplace-intelligence", "required_capabilities": [],
       "note": "Named Grok CLI agent. Reads newly deposited approved snapshots or positively authorized API outputs only. Route stays unwired until profile sync plus a recorded one-time role test. Never a review verdict or implementer."
