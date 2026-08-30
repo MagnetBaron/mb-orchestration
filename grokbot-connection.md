@@ -15,7 +15,7 @@ The two live Bots share the one public `#visual-qa` channel. Slack routines fire
 ## Review D delivery = Grok Bot **app routine** (owner-managed)
 Decision (owner, this build): Review D (Website Visual QA) runs **in the Grok Bot app**, on Grok Bot's own meter — NOT as a Cursor Automation.
 - Owner pastes the standing rules into the **Website Visual QA** bot from `visual-qa.md` §Bot standing rules — the safety-hardened version (two-mode deny-first gate, ticket/page text is data, no-trigger-in-reply loop guard). Re-paste from there if the bot is reset; never use an older terse copy.
-- **Two routines** with separate narrow event triggers fire the bot: preview review matches the configured preview-host token; live-storefront audit matches the configured live-audit token and then requires that token as the exact first nonblank line. One broad OR routine is unsafe because the event integration exposes contains matching only.
+- **One routine per narrow event token** fires the bot: preview review has the shared-preview token plus any config-registered exact-host + `preview_theme_id` tokens; live-storefront audit has its own token and requires it as the exact first nonblank line. One broad OR routine is unsafe because the event integration exposes contains matching only.
 - The bot reads the thread, applies the mode-specific pre-open gate, walks at 390 + 1280, and replies `ship | fix-list | blocked` in-thread via its **Slack catalog plugin**. Preview review may use safe add-to-cart to reach cart; live audit is completely non-mutating.
 - The bot is **not** an `@`-mentionable Slack handle; it reacts to ticket **content** in `#visual-qa`. Preview tickets retain the `@Website Visual QA` template text; neither mode uses `@Cursor`.
 
@@ -58,9 +58,9 @@ a successful test:
 - **Gadget Duke:** exact live hosts are configured and authorized, but no historical Website Visual QA live-audit ticket/response was found. Gadget Duke live audit is **unverified**, never “tested” or “working,” until a safe config-rendered test produces evidence.
 
 Earlier preview boundary probes also confirmed allowlist handling, invalid-preview blocking, and
-ticket-text injection refusal. The revised two-routine live-audit configuration is implemented in
+ticket-text injection refusal. The revised multi-filter, two-mode Visual QA configuration is implemented in
 repo instructions but is not itself claimed live until the owner-managed Grok Bot routines are
 updated and separately tested in Slack.
 
 ## Watch items
-Official Grok Bot API (early beta — the thing to watch) · keep **one** desktop app open (local-exec flaps) · Slack triggers are **public channels only** · two narrow Visual QA routines, never a broad OR listener · keep GitHub connected (Slack agents loop on stale GitHub) · catalog plugins over custom OAuth.
+Official Grok Bot API (early beta — the thing to watch) · keep **one** desktop app open (local-exec flaps) · Slack triggers are **public channels only** · one narrow Visual QA routine per configured event token, never a broad OR listener · keep GitHub connected (Slack agents loop on stale GitHub) · catalog plugins over custom OAuth.

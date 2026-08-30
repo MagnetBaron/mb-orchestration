@@ -110,9 +110,9 @@ callable tools passes a one-runtime overlay with `resolve-route.py --integration
 installed, enabled, configured, blocked/auth-health, and current-session callable states stay
 distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.
 
-Website Visual QA has two config-derived Slack routines: visitor-preview review and exact-trigger,
-read-only live-storefront audit. Render them with `bin/connectors.py --render visual-qa-ticket
+Website Visual QA has two config-derived modes with one narrow Slack routine per event token:
+visitor-preview review and exact-trigger, read-only live-storefront audit. Render tickets with `bin/connectors.py --render visual-qa-ticket
 <store>` and `bin/connectors.py --render visual-qa-live-ticket <store>`. The live mode observes only
 an exact configured public host and cannot log in, add to cart, submit, purchase, publish, or mutate.
-See `visual-qa.md` and `visual-qa-slack.md`; do not replace the two narrow event filters with a broad
+See `visual-qa.md` and `visual-qa-slack.md`; do not replace the narrow per-token event filters with a broad
 listener.

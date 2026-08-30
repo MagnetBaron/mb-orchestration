@@ -138,8 +138,9 @@ sole-gates a risk class â€” its `ship` there is advisory, owner lands; unwired â
 
 When Sol is needed for **both** code review and MCP judgment the same week: code-review risk gate wins the Sol slot; MCP judgment goes to Opus if Sol is spent or already used on that change-set.
 
-**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel and two narrow routine
-bindings in `config/connectors.json`). Unpublished changes use visitor-preview review. A separate
+**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel and narrow per-token event
+bindings in `config/connectors.json`). Unpublished changes use visitor-preview review; a configured
+live-host theme preview must have an exact-host + `preview_theme_id` event filter. A separate
 exact-trigger live-audit mode may inspect an allowlisted public storefront read-only, but never
 substitutes for the preview gate and never adds to cart, submits, logs in, purchases, or mutates.
 

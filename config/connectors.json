@@ -253,6 +253,14 @@
       "routines": {
         "preview-review": {
           "event_contains": "shopifypreview.com",
+          "configured_host_filters": [
+            {
+              "store": "gadget-duke",
+              "event_contains": "https://gadgetduke.com/?preview_theme_id=",
+              "exact_host": "gadgetduke.com",
+              "required_query_parameter": "preview_theme_id"
+            }
+          ],
           "required_fields": [
             "site:",
             "url:"
@@ -316,6 +324,7 @@
         "ignore_quoted_or_thread_reposts": true,
         "mixed_tokens_block": [
           "shopifypreview.com",
+          "https://gadgetduke.com/?preview_theme_id=",
           "visual-qa: live-audit",
           "clarity deep-dive:"
         ],

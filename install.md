@@ -55,7 +55,7 @@ Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) b
 Policy: `visual-qa.md` / `analytics-clarity.md`. Owner creates the named bots and the one public
 `#visual-qa` channel once (binding in `config/connectors.json`). Daily handoff is Slack. Render the
 paste-ready allowlist/preview/live-audit tickets with `bin/connectors.py --render …`. Website Visual
-QA uses two narrow routines; its live-storefront mode is exact-trigger and read-only. Delivery
+QA uses two modes with one narrow routine per configured event token; its live-storefront mode is exact-trigger and read-only. Delivery
 details: `visual-qa-slack.md`.
 
 ## 5. Google MCP

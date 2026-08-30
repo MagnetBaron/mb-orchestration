@@ -135,9 +135,22 @@
                   "properties": {
                     "preview-review": {
                       "type": "object",
-                      "required": ["event_contains", "required_fields", "never_checkout"],
+                      "required": ["event_contains", "configured_host_filters", "required_fields", "never_checkout"],
                       "properties": {
                         "event_contains": { "const": "shopifypreview.com" },
+                        "configured_host_filters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["store", "event_contains", "exact_host", "required_query_parameter"],
+                            "properties": {
+                              "store": { "type": "string", "minLength": 1 },
+                              "event_contains": { "type": "string", "minLength": 1 },
+                              "exact_host": { "type": "string", "minLength": 1 },
+                              "required_query_parameter": { "const": "preview_theme_id" }
+                            }
+                          }
+                        },
                         "required_fields": { "type": "array", "items": { "type": "string" } },
                         "never_checkout": { "const": true }
                       }

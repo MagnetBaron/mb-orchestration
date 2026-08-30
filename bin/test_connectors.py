@@ -26,6 +26,13 @@ class VisualQaConfigTests(unittest.TestCase):
         routines = policy["routines"]
         self.assertEqual(set(routines), {"preview-review", "live-storefront-audit"})
         self.assertEqual(routines["preview-review"]["event_contains"], "shopifypreview.com")
+        host_filters = routines["preview-review"]["configured_host_filters"]
+        self.assertEqual(host_filters, [{
+            "store": "gadget-duke",
+            "event_contains": "https://gadgetduke.com/?preview_theme_id=",
+            "exact_host": "gadgetduke.com",
+            "required_query_parameter": "preview_theme_id",
+        }])
         live = routines["live-storefront-audit"]
         self.assertEqual(live["event_contains"], "visual-qa: live-audit")
         self.assertEqual(live["message_must_begin_exact"], "visual-qa: live-audit")
@@ -55,7 +62,8 @@ class VisualQaConfigTests(unittest.TestCase):
         self.assertTrue(guards["ignore_quoted_or_thread_reposts"])
         self.assertTrue(guards["replies_omit_all_trigger_tokens"])
         self.assertEqual(set(guards["mixed_tokens_block"]), {
-            "shopifypreview.com", "visual-qa: live-audit", "clarity deep-dive:",
+            "shopifypreview.com", "https://gadgetduke.com/?preview_theme_id=",
+            "visual-qa: live-audit", "clarity deep-dive:",
         })
 
     def test_live_tickets_are_derived_for_each_configured_store(self):
@@ -83,6 +91,39 @@ class VisualQaConfigTests(unittest.TestCase):
         rendered = connectors.render_ticket(config, "magnet-baron")
         self.assertIn("shopifypreview.com", rendered)
         self.assertNotIn("visual-qa: live-audit", rendered)
+
+    def test_every_store_preview_ticket_contains_a_recognized_narrow_trigger(self):
+        config = live_config()
+        preview = config["slack"]["visual_qa"]["routines"]["preview-review"]
+        for store in config["stores"]:
+            with self.subTest(store=store):
+                rendered = connectors.render_ticket(config, store)
+                tokens = [preview["event_contains"]] + [
+                    item["event_contains"] for item in preview["configured_host_filters"]
+                    if item["store"] == store
+                ]
+                self.assertTrue(any(token in rendered for token in tokens))
+
+    def test_live_host_preview_filter_fails_closed_without_exact_host_and_query(self):
+        config = live_config()
+        cases = [
+            "https://gadgetduke.com/",
+            "https://www.gadgetduke.com/?preview_theme_id=151997775942",
+            "https://evil.example/?next=https://gadgetduke.com/?preview_theme_id=151997775942",
+        ]
+        for url in cases:
+            with self.subTest(url=url):
+                config["stores"]["gadget-duke"]["review_d_preview_url"] = url
+                with self.assertRaisesRegex(SystemExit, "no safe configured event trigger"):
+                    connectors.render_ticket(config, "gadget-duke")
+
+    def test_configured_live_host_preview_fails_if_its_event_filter_is_removed(self):
+        config = live_config()
+        config["slack"]["visual_qa"]["routines"]["preview-review"][
+            "configured_host_filters"
+        ] = []
+        with self.assertRaisesRegex(SystemExit, "no safe configured event trigger"):
+            connectors.render_ticket(config, "gadget-duke")
 
     def test_allowlist_renders_live_mode_and_deny_gate_from_config(self):
         config = live_config()

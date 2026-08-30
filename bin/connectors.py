@@ -18,6 +18,7 @@ place to edit when a binding moves.
 from __future__ import annotations
 import argparse, json, sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
@@ -42,8 +43,16 @@ def render_allowlist(c):
             out.append(f"- Review D preview URL: {s['review_d_preview_url']}")
     policy = c.get("slack", {}).get("visual_qa", {})
     live = policy.get("routines", {}).get("live-storefront-audit", {})
+    preview = policy.get("routines", {}).get("preview-review", {})
     deny = policy.get("deny_before_navigation", {})
     out.append("\n### Mode and deny gate")
+    out.append(f"- Shared-preview event token: `{preview.get('event_contains')}`")
+    for item in preview.get("configured_host_filters") or []:
+        out.append(
+            f"- Exact-host preview event token ({item.get('store')}): "
+            f"`{item.get('event_contains')}`; host={item.get('exact_host')}; "
+            f"requires {item.get('required_query_parameter')}"
+        )
     out.append(f"- Live-audit exact first line: `{live.get('message_must_begin_exact')}`")
     out.append(f"- Live-audit host match: {live.get('host_source')} ({live.get('host_match')})")
     out.append(f"- Denied hosts: {', '.join(deny.get('hosts', []))}")
@@ -59,11 +68,47 @@ def _store(c, store):
     return stores[store]
 
 
+def _recognized_preview_trigger(c, store, url):
+    """Return the narrow event token that can wake this rendered preview ticket.
+
+    Shared-domain previews must really be HTTPS subdomains of the configured wildcard.
+    Live-host theme previews need an explicit per-store filter, exact configured host,
+    and preview_theme_id. Anything else fails closed instead of rendering a silent or
+    overly broad Slack ticket.
+    """
+    s = _store(c, store)
+    preview = c.get("slack", {}).get("visual_qa", {}).get("routines", {}).get("preview-review", {})
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
+        sys.exit(f"connectors: store {store!r} preview URL must be credential-free HTTPS")
+
+    shared_token = preview.get("event_contains")
+    pattern = s.get("preview_host", "")
+    if shared_token and pattern.startswith("*."):
+        suffix = pattern[1:].lower()
+        if shared_token in url and host.endswith(suffix) and host != suffix.lstrip("."):
+            return shared_token
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    configured_hosts = {str(h).lower() for h in s.get("live_hosts", [])}
+    for item in preview.get("configured_host_filters") or []:
+        required = item.get("required_query_parameter")
+        exact_host = str(item.get("exact_host") or "").lower()
+        token = item.get("event_contains")
+        if (item.get("store") == store and token and token in url
+                and exact_host in configured_hosts and host == exact_host and required in query):
+            return token
+
+    sys.exit(f"connectors: store {store!r} preview URL has no safe configured event trigger")
+
+
 def render_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
     chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     url = s.get("review_d_preview_url", f"https://<token>-<shop_id>.{s.get('preview_host','shopifypreview.com').lstrip('*.')}")
+    _recognized_preview_trigger(c, store, url)
     return (
         f"Channel: {chan}\n\n"
         "@Website Visual QA\n"

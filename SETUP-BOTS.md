@@ -41,7 +41,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-sla
 
 Once per account.
 
-1. **Website Visual QA + Slack** — full two-routine setup (visitor-preview review plus exact-trigger, read-only live-storefront audit) in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
+1. **Website Visual QA + Slack** — full two-mode, per-event-token routine setup (visitor-preview review plus exact-trigger, read-only live-storefront audit) in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
 2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
 3. **Dispatcher close-loop** — paste standing add-on from [close-the-loop](./luna-close-loop.md) if you want finish reports forwarded.
 4. **Usage metering** — set the `config/usage-windows.json` anchors you know (Grok weekly weekday/time, Cursor billing day) so `bin/usage-status.py` computes resets; wrappers/owner write `config/usage-ledger.json`. See `usage-metering.md`.
