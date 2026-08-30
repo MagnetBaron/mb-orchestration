@@ -18,6 +18,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 PY = sys.executable
 RESULTS = []
+INTEGRATION_FIXTURE = ROOT / "model-evals/fixtures/integrations/all-observed.json"
+os.environ["MB_INTEGRATION_FIXTURE"] = str(INTEGRATION_FIXTURE)
 
 _spec = importlib.util.spec_from_file_location("dash", HERE / "dashboard.py")
 dash = importlib.util.module_from_spec(_spec)
@@ -26,6 +28,7 @@ _spec.loader.exec_module(dash)
 
 def run(cmd, env=None, **kw):
     e = dict(os.environ)
+    e["MB_INTEGRATION_FIXTURE"] = str(INTEGRATION_FIXTURE)
     if env:
         e.update(env)
     return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, env=e, **kw)
@@ -442,6 +445,7 @@ def c_primed_connector_inert():
     DEFINITION, yet the router grants it to NO seat (not live), while an active connector still
     routes (existing live behaviour unchanged). Pure config + pure-function checks — nothing
     here connects, launches, or probes."""
+    os.environ["MB_INTEGRATION_FIXTURE"] = str(INTEGRATION_FIXTURE)
     spec = importlib.util.spec_from_file_location("routing_smoke", HERE / "routing.py")
     routing = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(routing)
@@ -490,6 +494,9 @@ def main(argv=None):
     check("detect-agents", c_detect_agents)
     check("rotation status (graceful degradation: teamclaude absent)", c_rotation_status)
     check("detect-capability", c_detect_capability)
+    check("integration inventory (dynamic fail-closed grants)",
+          lambda: (run([PY, "bin/test_integrations.py"]).returncode == 0,
+                   "add/remove/disable/recovery/concurrency/session/bypass suite"))
     check("generate-roles (idempotent + toml)", c_generate_roles)
     check("skills wiring (resolve + fail-closed negatives)", c_skills)
     check("primed MCP connector validates + inert (nothing wired)", c_primed_connector_inert)

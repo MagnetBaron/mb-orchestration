@@ -1,0 +1,25 @@
+{
+  "_note": "Synthetic portable fixture for structural/unit validation only. Runtime commands never load it unless MB_INTEGRATION_FIXTURE explicitly points here.",
+  "records": [
+    {"runtime":"claude","kind":"mcp","id":"google-search-console","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"gsc-indexing","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"google-drive","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"dataforseo","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"github","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"clarity-magnetbaron","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"mcp","id":"clarity-gadgetduke","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"claude","kind":"plugin","id":"magnet-baron-skills@magnet-baron","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+
+    {"runtime":"codex","kind":"mcp","id":"google-search-console","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"mcp","id":"google-drive","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"mcp","id":"dfs-mcp","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"mcp","id":"github","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"mcp","id":"clarity-magnetbaron","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"mcp","id":"clarity-gadgetduke","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"codex","kind":"plugin","id":"magnet-baron-skills@magnet-baron","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+
+    {"runtime":"grok","kind":"mcp","id":"shopify-mb-internal","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"grok","kind":"mcp","id":"github","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true},
+    {"runtime":"grok","kind":"plugin","id":"magnet-baron-skills","installed":true,"enabled":true,"configured":true,"health":"verified","callable":true}
+  ]
+}

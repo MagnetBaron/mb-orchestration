@@ -11,8 +11,9 @@ Encodes the economics the owner asked for, as legible deterministic rules:
                        dispatch keeps headroom — until nothing else is left, then it codes.
   * no mid-turn swap — a seat whose window resets before the task finishes is flagged.
 
-`capabilities_of(provider, connectors)` unions the provider's coarse capabilities with the
-connectors it appears in (`available_on`), so "who has Clarity/Chrome/GSC" is data-derived.
+`capabilities_of(provider, connectors)` unions coarse capabilities with only connectors inside
+the `available_on` ceiling that also have fresh runtime/session callable proof, so "who has
+Clarity/Chrome/GSC" is observed rather than assumed.
 Connector IDs and aliases are always connector-derived — even when they equal a coarse
 word such as `browser` — and are granted only through an explicitly active connector
 whose `available_on` includes the provider. A coarse exception applies only to connector
@@ -20,6 +21,8 @@ whose `available_on` includes the provider. A coarse exception applies only to c
 (`COARSE_CAPABILITIES`). Doctor rejects ID/alias collisions with that vocabulary.
 """
 from __future__ import annotations
+
+import integrations
 
 
 # Enumerated non-connector capability vocabulary. Must match providers.json
@@ -58,10 +61,22 @@ def connector_is_active(meta):
     Missing or unknown status is inert — never active. primed (bundled/declared, not wired)
     and ready (validated, awaiting owner activation) are also inert scaffolding and are never
     granted to a seat. Only an owner/admin setting status to 'active' makes a connector
-    routable. This is the single lifecycle predicate used by routing, role/MCP generation,
-    doctor, and skill gates.
+    eligible within the policy ceiling. ``connector_is_effective`` adds the mandatory
+    observed runtime/session proof used by routing, role/MCP generation, and skill gates.
     """
     return (meta or {}).get("status") == "active"
+
+
+def connector_is_effective(provider_id, connector_id, meta, inventory=None, session=None):
+    """Central observed-effective predicate for a provider connector grant.
+
+    ``available_on`` and ``status=active`` are only the vetted ceiling. Fresh
+    runtime/session evidence must additionally prove that the connector is
+    enabled, configured, healthy, and callable in this process.
+    """
+    return integrations.connector_effective(
+        provider_id, connector_id, meta, inv=inventory, overlay=session
+    )
 
 
 def route_key(row):
@@ -156,11 +171,11 @@ def connectors_for_label(name, connectors):
     return out
 
 
-def mcp_volume_matches(name, connectors, provider_id=None):
+def mcp_volume_matches(name, connectors, provider_id=None, inventory=None, session=None):
     """Active connectors matching `name` that list the MCP volume provider in available_on.
 
     Returns (matches, reason). Empty matches = fail closed (unknown/missing/primed/
-    inactive/wrong-seat). `connector_is_active` is the lifecycle predicate.
+    inactive/wrong-seat/unobserved/not-callable). ``connector_is_effective`` is the grant predicate.
     """
     provider_id = provider_id or MCP_VOLUME_PROVIDER
     if not name:
@@ -171,11 +186,9 @@ def mcp_volume_matches(name, connectors, provider_id=None):
     live = []
     reasons = []
     for cid, meta in matches:
-        if not connector_is_active(meta):
-            reasons.append(f"{cid} status={meta.get('status')!r} is inert")
-            continue
-        if provider_id not in (meta.get("available_on") or []):
-            reasons.append(f"{cid} does not list {provider_id} in available_on")
+        ok, reason = connector_is_effective(provider_id, cid, meta, inventory, session)
+        if not ok:
+            reasons.append(f"{cid}: {reason}")
             continue
         live.append((cid, meta))
     if live:
@@ -183,20 +196,20 @@ def mcp_volume_matches(name, connectors, provider_id=None):
     return [], "; ".join(reasons) or "no active matching connector on the MCP volume seat"
 
 
-def capabilities_of(provider_id, provider, connectors):
+def capabilities_of(provider_id, provider, connectors, inventory=None, session=None):
     """Union of coarse capabilities (providers.json) and connector access (connectors.json).
 
     Connector IDs and aliases are stripped from the raw capability list even when they
     equal a coarse word. A class is stripped only when it is not in the capability
     catalog. A derived label is granted only when at least one matching connector is
-    active, its lifecycle predicate passes, and `available_on` includes this provider.
+    active, its lifecycle predicate passes, `available_on` includes this provider, and fresh
+    runtime/session evidence proves it callable.
     """
     derived = connector_derived_labels(connectors)
     caps = {c for c in (provider.get("capabilities") or []) if c not in derived}
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
-        if not connector_is_active(meta):
-            continue  # primed/ready/missing/unknown are inert scaffolding — never routed/granted
-        if provider_id not in (meta.get("available_on") or []):
+        ok, _reason = connector_is_effective(provider_id, cname, meta, inventory, session)
+        if not ok:
             continue
         caps.add(cname)
         alias = (meta or {}).get("alias")

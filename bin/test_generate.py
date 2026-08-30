@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Deterministic validation for the capability-level role registry (providers + roles split)."""
 from __future__ import annotations
-import importlib.util, json, sys, tempfile, tomllib, unittest
+import importlib.util, json, os, sys, tempfile, tomllib, unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CONFIG = HERE.parent / "config"
+os.environ.setdefault(
+    "MB_INTEGRATION_FIXTURE",
+    str(HERE.parent / "model-evals/fixtures/integrations/all-observed.json"),
+)
 
 
 def _load_module(name, path):
@@ -587,7 +591,7 @@ class ConnectorCoarseCollisionTests(unittest.TestCase):
         self.assertTrue(gen.seat_has_capability("grok-build", "browser", provs, conns))
         self._assert_doctor_collision(conns, provs, "browser")
 
-    def test_active_id_browser_does_not_grant_coarse_to_unassigned_seats(self):
+    def test_active_unobserved_id_browser_grants_no_seat(self):
         conns = self._conns()
         provs = self._provs()
         conns["mcp_connectors"]["browser"] = {
@@ -600,8 +604,8 @@ class ConnectorCoarseCollisionTests(unittest.TestCase):
         self.assertIn("browser", derived)
         self._assert_no_coarse_browser(conns, provs)
         grok = provs["providers"]["grok-build"]
-        self.assertIn("browser", routing.capabilities_of("grok-build", grok, conns))
-        self.assertTrue(gen.seat_has_capability("grok-build", "browser", provs, conns))
+        self.assertNotIn("browser", routing.capabilities_of("grok-build", grok, conns))
+        self.assertFalse(gen.seat_has_capability("grok-build", "browser", provs, conns))
         self._assert_doctor_collision(conns, provs, "browser")
 
     def test_class_browser_stays_coarse_id_alias_do_not(self):

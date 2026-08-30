@@ -7,19 +7,52 @@ The **effective per-run dispatcher** dispatches. It may be Claude, Codex, or Gro
 ## Connector map — lives in `config/connectors.json`
 
 **Which seat has which connector is dynamic and must not be hardcoded here** (it goes stale the
-moment a connector moves). The single source is `config/connectors.json` `mcp_connectors.*.available_on`;
-print the current map with `bin/connectors.py`. Today that is roughly: Google Search Console / Drive /
+moment a connector moves). The policy ceiling is `config/connectors.json`
+`mcp_connectors.*.available_on`; print that maximum map with `bin/connectors.py`. Effective access is
+the intersection of that ceiling with fresh per-runtime observation from
+`bin/detect-integrations.py` and an ephemeral runtime-bound session overlay when a dispatcher can
+enumerate callable tools. Today the ceiling is roughly: Google Search Console / Drive /
 DataForSEO on Opus + GPT (Codex); Shopify (MB Internal) preferred on Grok for volume catalog; GitHub
 on all coding seats — but **read the config, do not trust this sentence** when routing.
 
-If a connector is missing on the assigned seat (per `available_on`), park and report — do not invent data.
+If a connector is missing, stale, disabled, unregistered, unhealthy, or not callable on the assigned
+seat, park and report — do not invent data. `available_on` alone never proves access.
+
+## Self-healing runtime inventory
+
+`config/integration-adapters.json` allowlists canonical Claude, Codex, Grok, and Grok Bot/Cursor-
+shared manifests and maps only safe observed names to registered IDs. The detector never searches
+arbitrary files and never retains command arguments, values, URLs, environment values, headers,
+tokens, stdout/stderr, backups, logs, or marketplace/cache catalogs. Its schema-versioned cache lives
+outside git under `$MB_DATA_DIR`, refreshes when an allowlisted source fingerprint changes or its
+bounded TTL expires, and uses a bounded lock plus atomic mode-0600 replace. Missing, truncated,
+corrupt, and old-schema caches rebuild automatically.
+
+User install/remove/enable/disable actions are noticed at the next process boundary. Removal revokes;
+a vetted addition becomes usable only with observed proof. Unknown discoveries are reported as
+`unregistered` and stay unroutable. The detector never installs, enables, authenticates, launches,
+or mutates an integration and runs no daemon. Commands:
+
+```
+python3 bin/detect-integrations.py
+python3 bin/detect-integrations.py --json
+python3 bin/detect-integrations.py --refresh
+python3 bin/detect-integrations.py --check
+python3 bin/detect-integrations.py --session FILE   # use - for stdin
+```
+
+The single observed-effective predicate in `bin/integrations.py` is consumed by
+`routing.capabilities_of`, `routing.mcp_volume_matches`, skill capability gates, and the generated-
+role MCP mutation map. There is no static-active bypass. Portable synthetic fixtures are explicit
+test inputs only; production routing never loads them unless an operator explicitly sets the fixture
+override.
 
 ## MCP strap-in (distribution): primed → ready → active
 
 A distributed clone carries its own MCP servers plug-and-play, admin-managed, via a required
 `status` on each `config/connectors.json` `mcp_connectors` entry:
 
-- **active** — live-eligible. Existing live connectors are backfilled with `status: active`.
+- **active** — eligible inside the vetted policy ceiling; fresh runtime/session observation is still required.
 - **primed** — bundled/declared for distribution but NOT wired (some MCPs aren't ready yet).
 - **ready** — validated + wireable, awaiting owner activation.
 - **missing or unknown** — inert, never active. The schema requires `status`; doctor errors if it is absent.
@@ -33,13 +66,15 @@ then is it routable.
 **Hard inert guarantee.** Priming NEVER connects, launches, probes, or activates anything:
 
 - The router refuses to grant a non-active connector to any seat — `bin/routing.py`'s
-  `connector_is_active` is the single lifecycle predicate (routing, role/MCP generation, doctor,
-  and skill gates). Connector IDs and aliases are always connector-derived, even if they equal a
+  `connector_is_active` is the lifecycle-ceiling predicate; `bin/integrations.py` is the centralized
+  observed-effective predicate used by routing, role/MCP generation, doctor, and skill gates.
+  Connector IDs and aliases are always connector-derived, even if they equal a
   coarse word such as `browser`; a class label stays coarse only when it is declared in the
   capability catalog. A primed name, alias, or class copied into `providers.json` `capabilities`
   does not grant access. Missing/unknown/primed/ready never route and `available_on` is only a
-  *declaration* of the seat it would ride on once active. A primed Shopify connector does not
-  satisfy a write-capable Shopify skill gate. Existing `status: active` connectors still route.
+  *declaration* of the seat it would ride on once active and freshly observed. A primed Shopify connector does not
+  satisfy a write-capable Shopify skill gate. Existing `status: active` connectors route only with
+  fresh observed-effective proof.
   `--needs-mcp` resolves through id, alias, or class and PARKS unless a matching connector is
   `status=active` and lists the MCP volume seat (Terra) in `available_on` **and** Terra has a
   valid live route plus a currently usable seat. If Terra is missing, spent, unavailable, or
@@ -50,7 +85,7 @@ then is it routable.
   and classes, and rejects connector ID/alias names that collide with the coarse vocabulary.
   It reads
   strings; it never runs `command`, opens `url`, spawns a process, or hits the network.
-- `bin/smoketest.py` asserts a primed connector validates and is inert while active connectors still route.
+- `bin/smoketest.py` asserts a primed connector validates and is inert while active, freshly observed connectors route.
 - **No credentials in-repo.** A `server` block holds NO secrets: `env_keys` names the env vars the
   admin sets out of band; values never appear in the repo.
 

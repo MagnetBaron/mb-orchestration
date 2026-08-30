@@ -19,8 +19,8 @@ It enforces the owner's economics (bin/routing.py):
     and its bound live route. Sharing a plan with Luna/Terra/Sol is not enough.
     No such provider → PARK.
   * capability-aware — an implement seat must actually have the needed capability
-    (browser/connector/etc., derived from providers.json + connectors.json).
-  * MCP volume — --needs-mcp requires an active connector on the MCP volume seat
+    (browser/connector/etc., derived from policy plus fresh runtime/session evidence).
+  * MCP volume — --needs-mcp requires an active, observed-callable connector on the MCP volume seat
     AND mcp_bulk on that provider's functions, capabilities, and bound live route.
     Any missing layer PARKS immediately and does not continue to implement.
   * no mid-turn swaps — --task-seconds flags a seat that would reset mid-task.
@@ -45,6 +45,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import routing  # noqa: E402
+import integrations  # noqa: E402
 import dispatch_evidence  # noqa: E402
 try:
     import observe  # noqa: E402
@@ -598,6 +599,24 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     # candidate implement providers: live catalog route + implement/ide + code + needed capability
     impl_ids = [pid for pid, p in prov.items()
                 if provider_can_code(p, registry) and cap_ok(pid)]
+    if needs_connector and not impl_ids:
+        matches = routing.connectors_for_label(needs_connector, connectors)
+        details = []
+        for pid, p in prov.items():
+            if not provider_can_code(p, registry):
+                continue
+            for cid, meta in matches:
+                ok, reason = routing.connector_is_effective(pid, cid, meta)
+                if not ok:
+                    details.append(f"{pid}/{cid}: {reason}")
+        explanation = "; ".join(details) if details else "no live coding provider exposes that capability"
+        steps.append({
+            "seat": "(none)",
+            "why": f"PARK: required capability/connector {needs_connector!r} is not observed effective ({explanation})",
+            "available": False,
+            "tier": "spent",
+        })
+        return steps
 
     def best_seat(pid):
         seats = [s for s in provider_seats(pid, providers, rows) if routing.usable(s)]
@@ -629,7 +648,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         if not matches:
             steps.append({
                 "seat": "(none)",
-                "why": (f"PARK: --needs-mcp {needs_mcp!r} is not an active connector "
+                "why": (f"PARK: --needs-mcp {needs_mcp!r} is not an observed-effective connector "
                         f"(id/alias/class) on {routing.MCP_VOLUME_PROVIDER} ({why})"),
                 "available": False, "tier": "spent",
             })
@@ -751,6 +770,8 @@ def main(argv=None):
     ap.add_argument("--needs-mcp", default="",
                     help="connector id, alias, or class this brief needs (routes bulk to Terra; unknown/inert/unusable-Terra PARK)")
     ap.add_argument("--needs-connector", default="", help="capability/connector the implement seat must have (e.g. clarity-magnetbaron, browser)")
+    ap.add_argument("--integration-session", metavar="FILE|-",
+                    help="ephemeral one-runtime callable integration evidence; process-scoped and never cached")
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--task-seconds", type=int, default=0, help="est. task length; flags seats that reset before it finishes (no mid-turn swaps)")
     ap.add_argument("--user-said-ship", action="store_true")
@@ -773,6 +794,13 @@ def main(argv=None):
                      help="suppress observability emit (routing is unchanged either way)")
     args = ap.parse_args(argv)
     started = time.perf_counter()
+
+    if args.integration_session:
+        try:
+            integrations.load_session(args.integration_session)
+        except (integrations.InventoryError, OSError) as exc:
+            _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
+            sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")

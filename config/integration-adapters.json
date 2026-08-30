@@ -1,0 +1,133 @@
+{
+  "_note": "Safe integration discovery adapters. These paths are an allowlist, not a filesystem search. Parsers extract names and enabled/configured state only; values, arguments, URLs, environment values, logs, backups, and marketplace/cache catalogs are never retained. connectors.json remains the authorization ceiling. This file only maps observed runtime names to registered canonical IDs.",
+  "schema_version": 1,
+  "inventory_schema_version": 1,
+  "ttl_seconds": 300,
+  "lock_timeout_seconds": 3,
+  "provider_runtimes": {
+    "codex-luna": "codex",
+    "codex-terra": "codex",
+    "codex-sol": "codex",
+    "grok-build": "grok",
+    "grok-bot-review-d": "grokbot-cursor",
+    "grok-bot-heat-map": "grokbot-cursor",
+    "fable-5": "claude",
+    "opus-5": "claude",
+    "opus-4.8": "claude",
+    "cursor-grok": "grokbot-cursor",
+    "cursor-other-400": "grokbot-cursor"
+  },
+  "aliases": {
+    "claude": {
+      "mcp": {
+        "clarity-magnetbaron": "clarity-magnetbaron",
+        "clarity-gadgetduke": "clarity-gadgetduke",
+        "dataforseo": "dataforseo",
+        "github": "github",
+        "google-drive": "google-drive",
+        "google-search-console": "google-search-console",
+        "gsc-indexing": "gsc-indexing",
+        "shopify-magnetbaron": "shopify-mb-internal"
+      },
+      "plugin": {
+        "magnet-baron-skills@magnet-baron": "magnet-baron-skills"
+      }
+    },
+    "codex": {
+      "mcp": {
+        "clarity-gadgetduke": "clarity-gadgetduke",
+        "clarity-magnetbaron": "clarity-magnetbaron",
+        "dfs-mcp": "dataforseo",
+        "github": "github",
+        "google-drive": "google-drive",
+        "google-search-console": "google-search-console",
+        "gsc-indexing": "gsc-indexing",
+        "shopify": "shopify-mb-internal"
+      },
+      "plugin": {
+        "magnet-baron-skills@magnet-baron": "magnet-baron-skills"
+      }
+    },
+    "grok": {
+      "mcp": {
+        "github": "github",
+        "shopify-mb-internal": "shopify-mb-internal"
+      },
+      "plugin": {
+        "magnet-baron-skills": "magnet-baron-skills"
+      }
+    },
+    "grokbot-cursor": {
+      "mcp": {},
+      "plugin": {}
+    }
+  },
+  "sources": [
+    {
+      "id": "claude-mcp",
+      "runtime": "claude",
+      "kind": "mcp",
+      "path": "~/.claude.json",
+      "format": "json-object-keys",
+      "key": "mcpServers",
+      "disabled_key": "_mcpServersDisabled"
+    },
+    {
+      "id": "claude-plugins",
+      "runtime": "claude",
+      "kind": "plugin",
+      "path": "~/.claude/plugins/installed_plugins.json",
+      "format": "json-object-keys",
+      "key": "plugins"
+    },
+    {
+      "id": "codex-mcp",
+      "runtime": "codex",
+      "kind": "mcp",
+      "path": "~/.codex/config.toml",
+      "format": "toml-object-keys",
+      "key": "mcp_servers"
+    },
+    {
+      "id": "codex-plugins",
+      "runtime": "codex",
+      "kind": "plugin",
+      "path": "~/.codex/config.toml",
+      "format": "toml-object-keys",
+      "key": "plugins"
+    },
+    {
+      "id": "codex-apps",
+      "runtime": "codex",
+      "kind": "app",
+      "path": "~/.codex/config.toml",
+      "format": "toml-object-keys",
+      "key": "apps"
+    },
+    {
+      "id": "grok-plugins-enabled",
+      "runtime": "grok",
+      "kind": "plugin",
+      "path": "~/.grok/config.toml",
+      "format": "toml-list",
+      "key": "plugins.enabled"
+    },
+    {
+      "id": "grok-plugins-disabled",
+      "runtime": "grok",
+      "kind": "plugin",
+      "path": "~/.grok/config.toml",
+      "format": "toml-list",
+      "key": "plugins.disabled",
+      "disabled": true
+    },
+    {
+      "id": "cursor-mcp",
+      "runtime": "grokbot-cursor",
+      "kind": "mcp",
+      "path": "~/.cursor/mcp.json",
+      "format": "json-object-keys",
+      "key": "mcpServers"
+    }
+  ]
+}

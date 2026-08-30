@@ -66,7 +66,8 @@ is live and not downgraded** (`bin/detect-capability.py`), so the review order n
 plan change. (No teamclaude on the box → no rotation; degraded to one account — `EDGE-CASES.md`.)
 Direct `claude` without teamclaude is `auth_blocked` and is not a working route.
 
-**Google MCP** rides only the providers `config/connectors.json` `available_on` lists (today Opus +
+**Google MCP** rides only the intersection of `config/connectors.json` `available_on` and fresh
+observed runtime/session state from `bin/detect-integrations.py` (today Opus +
 appropriate GPT), never assumed on Grok — route per `mcp-routing.md`. **Legwork-or-stop:** volume runs
 on Grok or a GPT-Terra MCP lane, else parks — never dumped on Sol/Opus/Cursor $ on a probe fail
 (outages: `EDGE-CASES.md`). **No desktop apps** after device-auth; one implementer process on the 16 GB Mini; Grok Bot.app stays quit on the worker.
@@ -81,7 +82,7 @@ Per-seat policy lives in `config/usage-windows.json` (`drain`, `reserve_pct`, `i
 - **Minimize API $.** `included` (subscription) seats before `metered` ($). Metered pools (Cursor Other Models, Review E) drain LAST — only when no included capacity remains.
 - **Use before lost.** Drain soon-to-reset weekly/monthly quota before it resets to waste; rolling windows refill, so they wait.
 - **No mid-turn swaps.** Pick a seat with enough runway to finish the task (`resolve-route --task-seconds N`); bring a just-reset account in at the NEXT task boundary.
-- **Capability-aware.** An implement/review seat must actually have the needed capability (browser/connector/family) — derived from `config/providers.json` + `config/connectors.json` + `config/model-registry.json`, not assumed.
+- **Capability-aware.** An implement/review seat must actually have the needed capability (browser/connector/family) — derived from `config/providers.json` + the `config/connectors.json` ceiling + fresh `bin/detect-integrations.py` runtime/session evidence + `config/model-registry.json`, not assumed. Missing/stale/disabled/unregistered connector evidence parks.
 - **Quality rank is not selection priority.** A scarce top model can rank first on quality while a cheaper, already-paid, or independence-preserving model remains the operational default.
 
 ## Brief (required)

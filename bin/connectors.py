@@ -96,7 +96,7 @@ def main(argv=None):
     # summary
     print("connectors  (config/connectors.json)")
     print("-" * 72)
-    print("MCP connectors → available_on:")
+    print("MCP connectors → available_on policy ceiling (not proof of live/callable access):")
     for name, m in c.get("mcp_connectors", {}).items():
         print(f"  {name:<24} {', '.join(m.get('available_on', []))}")
     print("stores:", ", ".join(c.get("stores", {})))
@@ -104,6 +104,7 @@ def main(argv=None):
     print("clarity login:", cl.get("login_identity"), "projects:", ", ".join(cl.get("projects", {})))
     print("slack:", c.get("slack", {}).get("visual_qa_channel", {}).get("name"))
     print("-" * 72)
+    print("effective runtime state: bin/detect-integrations.py [--json|--refresh|--check]")
     print("render blocks: --render visual-qa-allowlist | visual-qa-ticket <store> | clarity")
     return 0
 

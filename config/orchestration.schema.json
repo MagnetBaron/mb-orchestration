@@ -114,6 +114,35 @@
         "slack": { "type": "object" }
       }
     },
+    "integration_adapters": {
+      "type": "object",
+      "required": ["schema_version", "inventory_schema_version", "ttl_seconds", "lock_timeout_seconds", "provider_runtimes", "aliases", "sources"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "inventory_schema_version": { "const": 1 },
+        "ttl_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "lock_timeout_seconds": { "type": "number", "minimum": 0.1, "maximum": 30 },
+        "provider_runtimes": { "type": "object", "additionalProperties": { "enum": ["claude", "codex", "grok", "grokbot-cursor"] } },
+        "aliases": { "type": "object" },
+        "sources": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "runtime", "kind", "path", "format", "key"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "runtime": { "enum": ["claude", "codex", "grok", "grokbot-cursor"] },
+              "kind": { "enum": ["mcp", "plugin", "app", "connector", "capability"] },
+              "path": { "type": "string", "minLength": 1 },
+              "format": { "enum": ["json-object-keys", "json-list", "toml-object-keys", "toml-list"] },
+              "key": { "type": "string", "minLength": 1 },
+              "disabled": { "type": "boolean" },
+              "disabled_key": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "entrypoints": {
       "type": "object",
       "required": ["schema_version", "dispatcher", "profiles", "entry_surfaces", "rules"],

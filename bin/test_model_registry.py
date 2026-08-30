@@ -7,6 +7,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,10 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
+os.environ.setdefault(
+    "MB_INTEGRATION_FIXTURE",
+    str(REPO / "model-evals/fixtures/integrations/all-observed.json"),
+)
 
 
 def load_mod(name, path):

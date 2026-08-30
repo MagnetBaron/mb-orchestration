@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
 import routing  # noqa: E402
+import integrations  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 DEFAULTS = {
@@ -37,16 +38,27 @@ READ_ONLY_TOOLS = {
 MCP_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def mcp_mutation_map():
-    """Known MCP connectors → their mutating tools, sourced from connectors.json (single source).
+def mcp_mutation_map(runtime: str, inventory=None):
+    """Observed-effective MCP connectors → mutating tools from the vetted connector ceiling.
     A connector ABSENT from this map is UNVETTED: a read_only role may not declare it (fail-closed,
     H1). A connector present with an empty set is explicitly known read-safe. Both the connector name
-    and its declared `alias` (e.g. dataforseo / dfs-mcp) are registered."""
+    and its declared `alias` (e.g. dataforseo / dfs-mcp) are registered. Static active state
+    alone never enters this map."""
     c = mborch.load_config("connectors.json", required=False)
     out = {}
+    adapters = integrations.load_adapters()
     for name, meta in (c.get("mcp_connectors") or {}).items():
         if not routing.connector_is_active(meta):
             continue  # primed/ready/missing/unknown are inert — not a vetted live MCP
+        authorized = any(
+            integrations.provider_runtime(pid, adapters) == runtime
+            for pid in (meta.get("available_on") or [])
+        )
+        observed, _reason = integrations.effective(
+            runtime, "mcp", name, require_callable=True, inv=inventory
+        )
+        if not authorized or not observed:
+            continue
         muts = set(meta.get("mutating_tools", []))
         out[name] = muts
         alias = meta.get("alias")
@@ -97,7 +109,7 @@ def skill_md_path(skill_id: str) -> Path:
     return plugin_source_dir(plugin) / "skills" / name / "SKILL.md"
 
 
-def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) -> bool:
+def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict, inventory=None) -> bool:
     """A seat satisfies `cap` only through `routing.capabilities_of`.
 
     Connector IDs and aliases are always derived (even if they equal a coarse word) and
@@ -110,7 +122,7 @@ def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict) 
     if cap is None:
         return True
     prov = (providers_data.get("providers") or {}).get(seat, {})
-    return cap in routing.capabilities_of(seat, prov, connectors)
+    return cap in routing.capabilities_of(seat, prov, connectors, inventory=inventory)
 
 
 def provider_levels(providers_data: dict) -> dict[str, str]:
@@ -149,13 +161,12 @@ def host_config(role: dict, host: str) -> dict:
     return {"tools": role.get("tools", {}).get(host)}
 
 
-def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: dict) -> None:
+def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: dict, inventory=None) -> None:
     if roles_data.get("schema_version") != 3:
         raise ValueError("roles.json must use schema_version 3")
     roles = roles_data.get("roles")
     if not isinstance(roles, dict) or not REQUIRED_ROLES.issubset(roles):
         raise ValueError("roles.json must contain the seed roles")
-    mut = mcp_mutation_map()
     skills_reg = skills_registry()
     connectors = mborch.load_config("connectors.json", required=False) or {}
     for name, role in roles.items():
@@ -182,6 +193,7 @@ def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: di
         if not isinstance(hosts, list) or not hosts or len(hosts) != len(set(hosts)) or not set(hosts).issubset(HOSTS):
             raise ValueError(f"{name}: hosts must be a unique subset of claude, grok, codex")
         for host in hosts:
+            mut = mcp_mutation_map(host, inventory=inventory)
             config = host_config(role, host)
             tools = config.get("tools")
             if not isinstance(tools, list) or not tools or len(tools) != len(set(tools)):
@@ -244,12 +256,18 @@ def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: di
                 if host not in (meta.get("hosts") or []):
                     raise ValueError(
                         f"{name}: {host} binds skill {sid!r}, which the registry does not offer on host {host}")
+                plugin = sid.partition(":")[0]
+                plugin_ok, plugin_reason = integrations.plugin_effective(host, plugin, inv=inventory)
+                if not plugin_ok:
+                    raise ValueError(
+                        f"{name}: {host} plugin {plugin!r} is not observed effective ({plugin_reason}) — "
+                        "installed/enabled proof is required before binding (fail-closed)")
                 if meta.get("kind") == "write" and role["read_only"]:
                     raise ValueError(
                         f"{name}: read_only role may not bind write-skill {sid!r} "
                         "(a write skill reaching a read-only seat — fail-closed)")
                 cap = meta.get("required_capability")
-                if not seat_has_capability(role["seat"], cap, providers_data, connectors):
+                if not seat_has_capability(role["seat"], cap, providers_data, connectors, inventory=inventory):
                     raise ValueError(
                         f"{name}: seat {role['seat']!r} lacks capability {cap!r} required by skill {sid!r} "
                         "(active connector available_on, or a non-connector coarse capability) — fail-closed")
@@ -258,11 +276,11 @@ def validate_roles(roles_data: dict, mapping: dict[str, str], providers_data: di
                 raise ValueError(f"{name}: config supplied for host {host}, but host is not enabled")
 
 
-def load(roles_path: Path, providers_path: Path) -> dict:
+def load(roles_path: Path, providers_path: Path, inventory=None) -> dict:
     providers_data = json.loads(Path(providers_path).read_text())
     roles_data = json.loads(Path(roles_path).read_text())
     mapping = provider_levels(providers_data)
-    validate_roles(roles_data, mapping, providers_data)
+    validate_roles(roles_data, mapping, providers_data, inventory=inventory)
     return {"providers": providers_data, "roles": roles_data["roles"], "mapping": mapping}
 
 

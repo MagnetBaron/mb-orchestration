@@ -46,7 +46,8 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `providers.json` | Agents/providers, capability levels, families, detection, model pins |
 | `model-registry.json` | Canonical model/route/ranking catalog (identity, lifecycle, route state, evidence, per-role quality vs selection) |
 | `subscriptions.json` | The plans you pay for — **the one file a new user edits** |
-| `connectors.json` | Live MCP/analytics/store/Slack bindings (no stale IDs in prose) |
+| `connectors.json` | Vetted MCP/analytics/store/Slack authorization ceiling and public bindings; live proof comes from the runtime inventory |
+| `integration-adapters.json` | Safe runtime-manifest adapters, aliases, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
 | `entrypoints.json` | Entry surfaces, user profiles, per-run dispatcher fallback order |
 | `handoff-policy.json` | Ordinary preauthorization and restricted-data fail-closed classes |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
@@ -75,6 +76,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `subscription-calculator.py` | Recommend a plan from habits or `--from-history` utilization |
 | `generate-roles.py` | Render host-native Claude/Grok agent files + Codex TOML from the registry |
 | `connectors.py` | Render paste-ready bot allowlists/tickets from `connectors.json` |
+| `detect-integrations.py` | Refresh/check the per-runtime plugin/MCP/app inventory; atomic cache under `$MB_DATA_DIR`, with process-only session overlays |
 | `record-429.sh` | Record a real 429 into the ledger (never a timeout) |
 | `mborch.py` · `routing.py` | Shared: layered config resolution (`MB_CONFIG_DIR`) · drain/allocation scoring |
 | `test_generate.py` | Unit tests for the role registry |
@@ -100,3 +102,10 @@ Port to a different user: edit `config/subscriptions.json` (your plans), `config
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
 Daily: invoke `/orca` (or the identical `/orchestrate` compatibility alias), then pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.
+
+Before capability-sensitive routing, refresh safe local state with
+`python3 bin/detect-integrations.py --refresh`. A dispatcher that can enumerate its current
+callable tools passes a one-runtime overlay with `resolve-route.py --integration-session <file>`
+(or `-` for stdin). The overlay is process-scoped and never cached. Suggested/installable,
+installed, enabled, configured, blocked/auth-health, and current-session callable states stay
+distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.

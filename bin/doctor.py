@@ -166,6 +166,50 @@ def check_connectors(conns, provider_ids):
                 err(f"connector {name}: available_on unknown provider {pid!r}")
 
 
+def check_integration_adapters(adapters, provider_ids):
+    if not adapters:
+        return
+    try:
+        integ = load_module("integrations_doctor", HERE / "integrations.py")
+        integ.load_adapters()
+    except Exception as exc:
+        err(f"integration-adapters.json invalid: {exc}")
+        return
+    mapped = set((adapters.get("provider_runtimes") or {}))
+    connectors = (load_json("connectors.json") or {}).get("mcp_connectors", {})
+    connector_providers = {
+        pid for meta in connectors.values()
+        for pid in (meta.get("available_on") or [])
+    }
+    for pid in sorted(connector_providers - mapped):
+        err(f"integration-adapters: connector provider {pid!r} lacks an explicit runtime mapping")
+    for pid in sorted(mapped - provider_ids):
+        err(f"integration-adapters: runtime mapping references unknown provider {pid!r}")
+    skills = (load_json("skills.json", required=False) or {}).get("skills", {})
+    registered_plugins = {sid.partition(":")[0] for sid in skills}
+    for runtime, kinds in (adapters.get("aliases") or {}).items():
+        if not isinstance(kinds, dict):
+            err(f"integration-adapters: aliases.{runtime} must be an object")
+            continue
+        for kind, aliases in kinds.items():
+            if not isinstance(aliases, dict):
+                err(f"integration-adapters: aliases.{runtime}.{kind} must be an object")
+                continue
+            allowed = set(connectors) if kind == "mcp" else registered_plugins if kind == "plugin" else set()
+            for observed, canonical in aliases.items():
+                if not isinstance(observed, str) or not observed or not isinstance(canonical, str) or not canonical:
+                    err(f"integration-adapters: aliases.{runtime}.{kind} needs non-empty string names")
+                elif kind in {"mcp", "plugin"} and canonical not in allowed:
+                    err(f"integration-adapters: alias {runtime}:{kind}:{observed} maps to unregistered {canonical!r}")
+    try:
+        inv = integ.refresh()
+        unregistered = sum(1 for r in inv.get("records", []) if not r.get("registered"))
+        info(f"integration inventory: {len(inv.get('records', []))} observed, {unregistered} unregistered; "
+             "runtime grants still require session-callable proof")
+    except Exception as exc:
+        err(f"integration inventory refresh/recovery failed closed: {exc}")
+
+
 VALID_CONNECTOR_STATUS = ("active", "ready", "primed")
 _SERVER_TRANSPORTS = ("stdio", "http", "sse")
 # Keys that would smuggle a credential VALUE into the repo — the sanctioned channel is
@@ -697,7 +741,9 @@ def check_runledger():
 def check_roles_and_windows_run(providers_path, roles_path):
     try:
         gen = load_module("gen_roles", HERE / "generate-roles.py")
-        gen.load(roles_path, providers_path)
+        integ = load_module("integrations_roles_fixture", HERE / "integrations.py")
+        fixture = ROOT / "model-evals/fixtures/integrations/all-observed.json"
+        gen.load(roles_path, providers_path, inventory=integ.fixture_inventory(fixture))
     except Exception as exc:
         err(f"roles registry invalid (generate-roles.load): {exc}")
     try:
@@ -870,6 +916,7 @@ def main(argv=None):
     providers = load_json("providers.json")
     subs = load_json("subscriptions.json")
     conns = load_json("connectors.json")
+    integration_adapters = load_json("integration-adapters.json")
     entry = load_json("entrypoints.json")
     windows = load_json("usage-windows.json")
     roles = load_json("roles.json")
@@ -881,6 +928,7 @@ def main(argv=None):
     handoff = load_json("handoff-policy.json")
 
     schema_validate({"providers": providers, "subscriptions": subs, "connectors": conns,
+                     "integration_adapters": integration_adapters,
                      "entrypoints": entry, "usage_windows": windows, "roles": roles,
                      "review_depth": depth, "monitoring": monitoring, "seat_exec": seat_exec,
                      "skills": skills, "model_registry": model_reg, "handoff_policy": handoff})
@@ -894,6 +942,7 @@ def main(argv=None):
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)
     check_connectors(conns, provider_ids)
+    check_integration_adapters(integration_adapters, provider_ids)
     check_connector_lifecycle(conns, providers)
     check_skills(skills, providers, conns)
     check_entrypoints(entry, provs, provider_ids)
