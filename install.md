@@ -53,10 +53,11 @@ Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) b
 ## 4. Review D + Heat Map (Grok CLI agents)
 
 Policy: `visual-qa.md` / `analytics-clarity.md`. Generate and install the named Grok profiles.
-Daily handoff is a config-rendered prompt file through `bin/grok-agent.py`; render allowlist,
-preview, and live-audit packets with `bin/connectors.py --render …`. Review D and Heat Map remain
-parked until their browser/Clarity prerequisites are observed and role-tested. Delivery details:
-`visual-qa-cli.md`.
+Packet rendering is preparation only: render allowlist, preview, and live-audit packets with
+`bin/connectors.py --render …`, but normal handoff through `bin/grok-agent.py` is unsupported today.
+Review D and Heat Map hard-park before prompt/evidence reads until their respective code-owned input
+bindings exist; browser/Clarity observation, profile sync, and role tests are additional promotion
+gates. Delivery details: `visual-qa-cli.md`.
 
 ## 5. Google MCP
 

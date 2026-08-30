@@ -8,13 +8,19 @@
 
 This document is evidence, not an operational contract. Routing is `config/model-registry.json` + `config/providers.json` + `bin/resolve-route.py`. Rank never grants tools, credentials, write access, publish authority, or data access. Unknown, catalog-only, auth-blocked, incubation, and unwired routes fail closed.
 
+**Current-state correction (2026-08-30):** the legacy Grok Bot Review D and Heat Map app routes are
+retired. Their replacement named CLI routes are `unwired` and normal execution hard-parks before
+prompt/evidence reads until the corresponding code-owned pixel or Clarity input binding exists;
+browser/Clarity observation, profile sync, and role tests are additional gates. Historical snapshot
+language below does not authorize promotion.
+
 ## Limitations
 
 - Local access was sampled on 2026-08-28.
   - **Direct invocation in this audit:** `teamclaude` smokes of `claude-opus-5`, `claude-opus-4-8`, and `claude-fable-5` (restricted mode, strict MCP config, no session persistence, synthetic prompts). Each returned the requested canonical id, first-party, 1M context. See **Local evidence (round 2)** below.
   - **CLI listings, not invocations:** `gpt --models` listed `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`. `grok models` listed `grok-4.6` and `grok-4.5` (cached authenticated registry readable; settings refresh produced network warnings). `teamclaude status` listed usable Opus and Fable on at least one account.
   - Direct `claude` without teamclaude was auth-blocked.
-- Pre-existing operational provider routes (Codex Sol/Terra/Luna, Grok Build, Cursor Grok, Grok Bot Review D / Heat Map, Fable architecture seat) stay `live_verified` on the independent standing-provider signal in `providers.json`, with evidence wording that distinguishes a listing from an invocation.
+- At the 2026-08-28 audit snapshot, pre-existing operational provider routes (Codex Sol/Terra/Luna, Grok Build, Cursor Grok, legacy Grok Bot Review D / Heat Map, Fable architecture seat) were treated as `live_verified` on the independent standing-provider signal in `providers.json`, with evidence wording that distinguished a listing from an invocation. The legacy Grok Bot routes are now retired; use the current-state correction above.
 - Independent anchors are Artificial Analysis pages dated in the 2026-08-28 evidence packet. They are not this repo's eval harness. Effort (max / high / xhigh) is not comparable across labs. Descending ranks below are evidence-bounded and role/harness-specific, not a universal ordering.
 - Fable's public Intelligence Index 62 includes a documented Opus fallback, so it is not independent family evidence.
 - GLM 5.3 Flash (released 2026-08-26) is vendor-heavy; it is cataloged in incubation and is not routable. Cost/task is an efficiency claim, not a quality rank.
@@ -176,7 +182,7 @@ Quality rank and selection priority are separate. A scarce top model can rank fi
 | **code_review** | Opus 5 then Sol (families must differ) | Opus 5 > Sol > Fable (non-gate) | Operational review pair is Opus 5 + GPT-5.6 Sol. |
 | **mcp_volume** | Terra | Terra is the only live connector-bearing route. Gemini Flash variants are unwired candidates. GLM Flash is efficiency, not quality. | Connector presence required. |
 | **mcp_judgment** | Sol, else Opus 5 | Same two live judgment seats | Code-review risk gate wins Sol the same week. |
-| **visual_qa** | Grok Bot Review D | Only live preview walker | Never Admin/SimGym. |
+| **visual_qa** | Parked pending the `mb-review-d` code-owned pixel binding | Historical Grok Bot route is retired; the named CLI route is unwired and packet rendering is not execution | Never Admin/SimGym. |
 | **evidence_audit** | Opus 5 / Sol | Catches invented metrics (`operational_prior`) | **Added** because it catches defects before they propagate. Token-use reduction is a hypothesis to measure. |
 | **model_evaluation_admin** | Opus 5 (owner-gated) | Does not auto-promote (`operational_prior`) | Scores never wire routes. Token-use reduction is a hypothesis to measure. |
 

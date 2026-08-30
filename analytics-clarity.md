@@ -54,4 +54,5 @@ full form contents.
 
 Never change Clarity settings/members/data, open Shopify Admin, publish, authenticate from a prompt,
 export data to third parties, mint storefront URLs, issue `ship`, or treat bulk row dumps as
-judgment. Review D remains a separate `mb-review-d` invocation with a separate prompt file.
+judgment. Review D remains a separate `mb-review-d` role with its own code-owned pixel-input binding;
+neither role may launch normal execution from a prompt-declared source.

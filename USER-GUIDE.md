@@ -26,8 +26,8 @@ OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok Build + named CLI roles), open-w
 | **Architecture / long-horizon (rare)** | **Anthropic — Fable 5** | Same family as Opus; out of the gating order. Opus 5 is stronger/more efficient for normal judgment |
 | **Google-MCP volume** (Search Console, Drive, DataForSEO) | **OpenAI — GPT Terra** | Has the Google connectors; cheap tool loops |
 | **Interpreting MCP/analytics numbers** | **Anthropic Opus / OpenAI Sol** | Scarce judgment on already-fetched data (never bulk-fetch here) |
-| **Storefront pixel QA** | **xAI — Grok CLI `mb-review-d`** | Parked until credential-free browser/pixels are observed |
-| **Analytics heatmaps/replays** | **xAI — Grok CLI `mb-heat-map`** | Parked until signed-in Clarity/browser is observed |
+| **Storefront pixel QA** | **xAI — Grok CLI `mb-review-d`** | Normal execution parks before prompt reads until a code-owned pixel-input binding exists; credential-free browser/pixels and a role test are additional gates |
+| **Analytics heatmaps/replays** | **xAI — Grok CLI `mb-heat-map`** | Normal execution parks before evidence reads until a code-owned Clarity-input binding exists; signed-in Clarity/browser observation and a role test are additional gates |
 | **Independent third-family review** | **open-weight — Review E** | The only review family that is *not* Anthropic/OpenAI/xAI (see §3) |
 | **IDE / inline edits** | **Cursor (Grok pool)** | First-party pool; drain before paid buckets |
 | **Dispatch** | Requested/profile intake provider, with recorded-availability fallback | Exactly one effective coordinator per run; reviewer chain flexes around dispatcher and authors. Rankings never grant authority |

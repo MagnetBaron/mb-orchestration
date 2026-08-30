@@ -1962,7 +1962,7 @@
       ]
     },
     "marketplace_intelligence": {
-      "description": "Read-only analysis of digest-bound approved marketplace evidence. Unwired until the generated CLI profile and role are test-run.",
+      "description": "Read-only analysis of approved marketplace evidence. Normal execution hard-parks before prompt/evidence reads until a code-owned authorized-deposit manifest binding exists; profile sync, a role test, and a live route are additional gates.",
       "required_capabilities": [
         "marketplace_intelligence"
       ]

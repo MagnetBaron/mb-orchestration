@@ -51,7 +51,7 @@ OWNER — spend, credentials, destructive ops, authority expansion
   └─ DISPATCH (requested intake/provider profile, resolved once per run) — classify, risk gate, assign, report
        ├─ IMPLEMENT (Grok Build) — code/listings in worktrees; never lands alone on high risk
        ├─ MCP VOLUME (GPT Terra) — Google connector fetches → output_path snapshots
-       ├─ REVIEW D (Grok CLI mb-review-d) — validated prompt file + preview/live-audit URL
+       ├─ REVIEW D (Grok CLI mb-review-d) — render-only packet; normal route parked until code-owned pixel binding
        ├─ REVIEW (Opus 5 → Sol → Review E) — git diff or MCP judgment; ship | fix-list | blocked; Fable = optional architecture only
        └─ REVIEW E (independent family, if wired) — last-resort / cross-family 2nd family; off-box
 ```
@@ -106,7 +106,7 @@ Same entry scales to more **basic product edits** without extra Visual QA:
 
 - Title / body / metafield / price / SKU / tags → dispatch → Grok Build (after MCP research packet if needed) → done. No Review D.
 - Many SKUs, same template → one catalog lane, not N preview walks.
-- Theme, section, PDP chrome, CSS → render and launch the Review D CLI packet after a visitor preview URL exists. The distinct live-audit mode observes already-public pixels only and cannot replace this gate; absent browser/pixels parks.
+- Theme, section, PDP chrome, CSS → render the Review D CLI packet after a visitor preview URL exists, but do not launch normal execution until the code-owned pixel-input binding supplies it. The distinct live-audit mode observes already-public pixels only and cannot replace this gate; absent binding or browser/pixels parks before prompt reads.
 - Publish and SimGym stay owner/human. Review D never auto-scales into Admin.
 
 ## Review depth (floor, not ceiling)

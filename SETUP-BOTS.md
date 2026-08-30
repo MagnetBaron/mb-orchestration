@@ -41,7 +41,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli
 
 Once per account.
 
-1. **Website Visual QA CLI** — config-rendered visitor-preview and read-only live-storefront packets through `mb-review-d`; see [visual-qa-cli.md](./visual-qa-cli.md). Park until browser/pixels are observed.
+1. **Website Visual QA CLI** — render config-derived visitor-preview and read-only live-storefront packets for `mb-review-d`; see [visual-qa-cli.md](./visual-qa-cli.md). Rendering is preparation only: normal execution parks before prompt reads until the code-owned pixel-input binding exists, then browser/pixels must also be observed and role-tested.
 2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
 3. **Dispatcher close-loop** — paste standing add-on from [close-the-loop](./luna-close-loop.md) if you want finish reports forwarded.
 4. **Usage metering** — set the `config/usage-windows.json` anchors you know (Grok weekly weekday/time, Cursor billing day) so `bin/usage-status.py` computes resets; wrappers/owner write `config/usage-ledger.json`. See `usage-metering.md`.

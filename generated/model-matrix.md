@@ -261,7 +261,7 @@ Storefront pixel review of a visitor preview URL.
 
 ### `marketplace_intelligence`
 
-Read-only analysis of digest-bound approved marketplace evidence. Unwired until the generated CLI profile and role are test-run.
+Read-only analysis of approved marketplace evidence. Normal execution hard-parks before prompt/evidence reads until a code-owned authorized-deposit manifest binding exists; profile sync, a role test, and a live route are additional gates.
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|

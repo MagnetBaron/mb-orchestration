@@ -331,8 +331,8 @@
   },
   "render_targets": {
     "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  → paste-ready Review D allowlist block",
-    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → Grok CLI prompt-file packet",
-    "visual-qa-live-ticket": "bin/connectors.py --render visual-qa-live-ticket <store>  → Grok CLI read-only live-storefront prompt-file packet",
-    "clarity": "bin/connectors.py --render clarity  → Heat Map project/login binding"
+    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → render-only future Review D prompt packet; normal launch remains parked until the code-owned pixel binding exists",
+    "visual-qa-live-ticket": "bin/connectors.py --render visual-qa-live-ticket <store>  → render-only future Review D live-storefront packet; normal launch remains parked until the code-owned pixel binding exists",
+    "clarity": "bin/connectors.py --render clarity  → render-only Heat Map project/login metadata; normal launch remains parked until the code-owned Clarity binding exists"
   }
 }

@@ -12,7 +12,7 @@
   "families": {
     "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
     "openai": { "label": "OpenAI (GPT / Codex)", "note": "Sol, Terra, Luna share the Codex pipe." },
-    "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI plus the live Visual QA and Heat Map Bots and the unwired Marketplace Intelligence Bot definition." },
+    "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI plus three named standing-role CLI definitions whose normal routes remain unwired until their code-owned input bindings exist; transport-only smokes do not promote them." },
     "open-weight": { "label": "Open-weight (independent lab)", "note": "The first review family that is none of Anthropic/OpenAI/xAI." },
     "cursor-pool": { "label": "Cursor harness (mixed underlying models)", "note": "A harness, not a model family; never a cross-family reviewer." }
   },
