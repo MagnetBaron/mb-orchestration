@@ -10,15 +10,25 @@ browser, Clarity, marketplace access, or a role result.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
 import integrations  # noqa: E402
+import connectors as connector_packets  # noqa: E402
+
+_SYNC_SPEC = importlib.util.spec_from_file_location(
+    "grok_agent_sync_profiles", Path(__file__).resolve().parent / "sync-grok-agents.py"
+)
+sync_profiles = importlib.util.module_from_spec(_SYNC_SPEC)
+_SYNC_SPEC.loader.exec_module(sync_profiles)
 
 
 SEATS = (
@@ -46,8 +56,69 @@ def _render(recipe: dict, *, cwd: Path, prompt_file: Path, agent_profile: Path) 
 def _profile_problem(profile: Path | None, agent: str | None) -> str | None:
     if not agent or profile is None or not profile.is_file() or profile.is_symlink():
         return f"required Grok agent profile {agent!r} is not installed as a regular file"
-    if f"name: {agent}" not in profile.read_text(errors="replace"):
-        return f"installed profile {profile} has the wrong agent name"
+    try:
+        expected = sync_profiles.expected().get(profile.name)
+        actual = profile.read_text()
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        return f"cannot validate installed profile {profile}: {exc}"
+    if expected is None or actual != expected:
+        return f"installed profile {profile} does not byte-match generated read-only policy"
+    return None
+
+
+def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
+    if prompt_file is None or not prompt_file.is_file() or prompt_file.is_symlink():
+        return "prompt file must be a regular non-symlink file"
+    try:
+        raw = prompt_file.read_bytes()
+        text = raw.decode("utf-8")
+    except (OSError, UnicodeError) as exc:
+        return f"prompt file is not readable UTF-8: {exc}"
+    if not raw or len(raw) > 65_536 or "\x00" in text:
+        return "prompt file must be non-empty UTF-8 and at most 65536 bytes"
+    if seat == "grok-bot-review-d":
+        config = connector_packets.load()
+        allowed = {
+            body.rstrip("\n")
+            for store in (config.get("stores") or {})
+            for body in (
+                connector_packets.render_ticket(config, store),
+                connector_packets.render_live_ticket(config, store),
+            )
+        }
+        if text.rstrip("\n") not in allowed:
+            return "Review D prompt must byte-match a validated bin/connectors.py packet"
+        return None
+    required_role = {
+        "grok-bot-heat-map": "heat-map",
+        "grok-bot-marketplace-intelligence": "marketplace-intelligence",
+    }.get(seat)
+    fields = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() and key.strip() not in fields:
+            fields[key.strip()] = value.strip()
+    if fields.get("role") != required_role:
+        return f"prompt must declare exact role: {required_role}"
+    allowed_sources = ({"approved-clarity-export"} if seat == "grok-bot-heat-map"
+                       else {"owner-deposited", "authorized-api-output"})
+    if fields.get("source") not in allowed_sources:
+        return "prompt must declare an approved evidence source"
+    evidence_raw = fields.get("evidence-path")
+    digest = fields.get("evidence-sha256")
+    if not evidence_raw or not digest or not digest.startswith("sha256:"):
+        return "prompt must bind evidence-path and evidence-sha256"
+    evidence = Path(evidence_raw).expanduser()
+    if not evidence.is_absolute():
+        evidence = (prompt_file.parent / evidence).resolve()
+    if not evidence.is_file() or evidence.is_symlink():
+        return "bound evidence must be a regular non-symlink file"
+    try:
+        actual_digest = "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+    except OSError as exc:
+        return f"bound evidence is unreadable: {exc}"
+    if actual_digest != digest:
+        return "bound evidence digest does not match evidence-sha256"
     return None
 
 
@@ -79,8 +150,9 @@ def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> 
     profile_problem = _profile_problem(profile, agent)
     if profile_problem:
         problems.append(profile_problem)
-    if prompt_file is None or not prompt_file.is_file():
-        problems.append("prompt file does not exist")
+    prompt_problem = _prompt_problem(seat, prompt_file)
+    if prompt_problem:
+        problems.append(prompt_problem)
 
     argv = _render(
         recipe,
@@ -140,8 +212,13 @@ def main(argv=None) -> int:
             return 2
 
     if args.smoke:
-        recipes = mborch.load_config("seat-exec.json", required=True)["recipes"]
-        agent = recipes[args.seat].get("required_agent")
+        recipes = mborch.load_config("seat-exec.json", required=True).get("recipes") or {}
+        recipe = recipes.get(args.seat)
+        if not isinstance(recipe, dict):
+            print(json.dumps({"seat": args.seat, "smoke": True, "ready": False,
+                              "problems": ["seat recipe is missing"]}))
+            return 2
+        agent = recipe.get("required_agent")
         profile = args.agent_dir / f"{agent}.md"
         binary = shutil.which("grok")
         problems = []
@@ -155,17 +232,18 @@ def main(argv=None) -> int:
             "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents",
             "--output-format", "plain",
         ]
-        if recipes[args.seat].get("args_template") != expected_template:
+        if recipe.get("args_template") != expected_template:
             problems.append("recipe argv differs from the approved Grok named-agent contract")
         result = {"seat": args.seat, "agent": agent, "smoke": True,
                   "ready": not problems, "problems": problems}
         if problems or not args.execute:
             print(json.dumps(result, indent=2 if args.json else None))
             return 0 if not problems else 2
-        cmd = ["grok", "--cwd", str(cwd), "--agent", str(profile), "--model", "grok-4.6",
-               "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain",
-               "-p", "CLI transport smoke only. Use no tools and return exactly: cli-agent-ok"]
-        return subprocess.run(cmd, cwd=cwd, check=False).returncode
+        with tempfile.TemporaryDirectory(prefix="grok-agent-smoke-") as smoke_dir:
+            cmd = ["grok", "--cwd", smoke_dir, "--agent", str(profile), "--model", "grok-4.6",
+                   "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain",
+                   "-p", "CLI transport smoke only. Use no tools and return exactly: cli-agent-ok"]
+            return subprocess.run(cmd, cwd=smoke_dir, check=False).returncode
 
     result = inspect(args.seat, cwd, args.prompt_file, args.agent_dir)
     if args.json or not args.execute:

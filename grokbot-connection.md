@@ -16,14 +16,15 @@ app and its historical Slack routines are a different product and are not contro
 
 ## Exact command contract
 
-`config/seat-exec.json` is authoritative. Every standing role pins `grok-4.6`, a full `mb-*` agent
-name, a prompt file, no subagents, and plain output. `bin/doctor.py` rejects shortened model ids,
+`config/seat-exec.json` is authoritative. Every standing role pins `grok-4.6`, the validated full
+path to a generated `mb-*.md` agent definition, a prompt file, no subagents, and plain output. `bin/doctor.py` rejects shortened model ids,
 wrong agents, reordered/extra flags, permission bypasses, or a non-CLI route. `bin/grok-agent.py`
 checks the executable, installed profile, provider/route state, and exact argv before execution.
 
 ## Evidence boundary
 
-The command smoke for `mb-review-d` passed on 2026-08-30. This proves named-agent and exact-model
+The definition-file-path command smoke for `mb-review-d` passed on 2026-08-30 and returned
+`cli-agent-path-ok`. This proves agent-definition and exact-model
 selection only. It does not prove screenshot capture, 390/1280 rendering, authenticated Clarity,
 marketplace permission, or a completed role outcome. Slack-era live evidence remains historical and
 must never be reused to promote a new CLI route.

@@ -49,7 +49,10 @@ defined and comparable.
 
 ## Launch contract
 
-Place approved evidence paths in a six-field brief and inspect before launch:
+Place approved evidence in a regular non-symlink file. The prompt must declare `role:
+marketplace-intelligence`, `source: owner-deposited` or `authorized-api-output`, `evidence-path`,
+and its exact `evidence-sha256`. The launcher recomputes that digest and also requires a fresh
+`deposited-evidence` runtime attestation before launch. Then inspect:
 
 ```sh
 python3 bin/grok-agent.py --seat grok-bot-marketplace-intelligence \

@@ -247,7 +247,7 @@
     "roles": {
       "review-d": {"seat": "grok-bot-review-d", "agent": "mb-review-d", "requires": ["browser", "pixels"]},
       "heat-map": {"seat": "grok-bot-heat-map", "agent": "mb-heat-map", "requires": ["browser", "clarity-auth"]},
-      "marketplace-intelligence": {"seat": "grok-bot-marketplace-intelligence", "agent": "mb-marketplace-intelligence", "requires": ["installed-profile", "role-smoke"]}
+      "marketplace-intelligence": {"seat": "grok-bot-marketplace-intelligence", "agent": "mb-marketplace-intelligence", "requires": ["deposited-evidence"]}
     },
     "visual_qa": {
       "agent": "mb-review-d",

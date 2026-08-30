@@ -86,7 +86,7 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `grok-4.6-build` | `grok-4.6` | live_verified | stable | grok-cli | grok | `grok-4.6` | 2026-08-28 cli_listing | standing_provider | grok-build |
 | `grok-4.6-cursor` | `grok-4.6` | live_verified | stable | cursor | cursor-agent | `grok-4.6` | 2026-08-28 owner_eval | standing_provider | cursor-grok |
 | `grok-bot-heat-map` | `grok-4.6` | disabled | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
-| `grok-bot-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
+| `grok-bot-marketplace-intelligence` | `grok-4.6` | disabled | stable | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
 | `grok-bot-visual-qa` | `grok-4.6` | disabled | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
 | `grok-cli-heat-map` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-heat-map` | 2026-08-30 none | — | grok-bot-heat-map |
 | `grok-cli-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-marketplace-intelligence` | 2026-08-30 none | — | grok-bot-marketplace-intelligence |
@@ -261,7 +261,7 @@ Storefront pixel review of a visitor preview URL.
 
 ### `marketplace_intelligence`
 
-Read-only analysis of approved marketplace snapshots and positively authorized API outputs. Unwired until the app Bot is created and test-run.
+Read-only analysis of digest-bound approved marketplace evidence. Unwired until the generated CLI profile and role are test-run.
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|

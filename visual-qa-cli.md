@@ -25,12 +25,13 @@ model is `grok-4.6`. There is no `grok bot`, `grokbot`, or routine-management CL
 The runner creates an argv list and never uses shell interpolation. The approved command shape is:
 
 ```text
-grok --cwd <repo> --agent mb-review-d --prompt-file <packet> --model grok-4.6 --reasoning-effort high --no-subagents --output-format plain
+grok --cwd <repo> --agent ~/.grok/agents/mb-review-d.md --prompt-file <packet> --model grok-4.6 --reasoning-effort high --no-subagents --output-format plain
 ```
 
 ## Three different proofs
 
-- CLI smoke: the binary accepted `--agent mb-review-d` and exact model `grok-4.6`.
+- CLI smoke: the binary accepted the exact generated `mb-review-d.md` definition-file path and
+  exact model `grok-4.6`, returning `cli-agent-path-ok`.
 - Transport ready: binary, generated profile, wired provider, and `live_verified` route all match.
 - Visual QA complete: an observed browser/pixel source captured the requested widths and the role
   returned evidence. A CLI smoke is never a pixel verdict.
@@ -61,4 +62,5 @@ transport-only smoke is:
 python3 bin/grok-agent.py --seat grok-bot-review-d --smoke --execute
 ```
 
-That smoke uses a fixed no-tool prompt and proves only profile/model selection.
+That smoke runs in an empty temporary directory with a fixed no-tool prompt and proves only
+profile/model selection. It does not grant access to the target repository.

@@ -21,8 +21,9 @@ cookies never enter the repo or a prompt file.
 
 ## Launch contract
 
-Create a six-field brief or narrow prompt file naming the approved deposited Clarity evidence and
-run the fail-closed inspection:
+Create a prompt naming a regular non-symlink export with `role: heat-map`, `source:
+approved-clarity-export`, `evidence-path`, and its exact `evidence-sha256`. The launcher recomputes
+the digest before it runs. Then use the fail-closed inspection:
 
 ```sh
 python3 bin/grok-agent.py --seat grok-bot-heat-map \
@@ -31,7 +32,8 @@ python3 bin/grok-agent.py --seat grok-bot-heat-map \
 
 Execution is allowed only after the provider is wired, its `grok-cli-heat-map` route is
 `live_verified`, `mb-heat-map` is installed, and signed-in Clarity/browser capability has been
-observed and role-tested. The resulting command uses `grok --agent mb-heat-map`, never Slack.
+observed and role-tested. The resulting command uses the byte-validated
+`grok --agent ~/.grok/agents/mb-heat-map.md` definition file, never Slack.
 
 ## Standing rules
 

@@ -47,6 +47,7 @@
       "opus-4.8-teamclaude",
       "opus-5-teamclaude"
     ],
+    "legacy_waiver_policy": "Frozen migration-audit identities only. Membership never makes a route live or routable; disabled route_state and retired lifecycle always win.",
     "attestation_fields": {
       "state": "attested | missing | not_applicable | waived. Boolean attested is rejected.",
       "evidence_kind": "required for attested. Field-specific closed enum: official_id official_vendor_catalog|official_vendor_release; local_access_smoke direct_invocation|standing_provider (must match signal and live route evidence); role_evals normalized_receipt; independent_evidence independent_benchmark|independent_source; cost_context provider_receipt|official_pricing|standing_contract|independent_pricing; owner_approval committed_owner_record. committed_owner_record is rejected until a code-approved structured owner-record manifest binds route, model, authority, and date; an existing Markdown file is not approval.",
@@ -1434,7 +1435,8 @@
       "host": "grok-bot",
       "harness": "grok-bot-app",
       "invocation_id": "marketplace-intelligence",
-      "route_state": "unwired",
+      "route_state": "disabled",
+      "lifecycle": "retired",
       "evidence_date": "2026-08-28",
       "evidence_strength": "none",
       "capabilities": [
@@ -1448,9 +1450,15 @@
           "route_state": "unwired",
           "kind": "none",
           "source": "wired:false in providers.json; Bot creation and one-time routine test remain unperformed"
+        },
+        {
+          "date": "2026-08-30",
+          "route_state": "disabled",
+          "kind": "none",
+          "source": "retired historical app transport after migration to grok-cli-marketplace-intelligence"
         }
       ],
-      "notes": "Cataloged app Bot identity only. Grok Bot exposes no model picker; providers.json therefore keeps model:null. This catalog route does not assert that grok-4.6 is user-selectable in the Bot. Only live_verified routes resolve."
+      "notes": "Retired historical Grok Bot app identity. It is not a fallback and cannot be promoted; the active candidate transport is grok-cli-marketplace-intelligence."
     },
     "grok-cli-review-d": {
       "model": "grok-4.6",
@@ -1468,7 +1476,7 @@
         "date": "2026-08-30",
         "route_state": "unwired",
         "kind": "direct_invocation",
-        "source": "grok 1.0.13 accepted --agent mb-review-d with exact model grok-4.6; no browser or pixel integration was observed",
+        "source": "grok 1.0.13 accepted --agent /Users/constantinegreanias/.grok/agents/mb-review-d.md with exact model grok-4.6 and returned cli-agent-path-ok; no browser or pixel integration was observed",
         "signal": "direct_invocation"
       }],
       "notes": "CLI transport smoke passed, but visual QA remains unwired until browser and pixel capture are observed and role-tested. Slack evidence does not promote this route."
@@ -1954,7 +1962,7 @@
       ]
     },
     "marketplace_intelligence": {
-      "description": "Read-only analysis of approved marketplace snapshots and positively authorized API outputs. Unwired until the app Bot is created and test-run.",
+      "description": "Read-only analysis of digest-bound approved marketplace evidence. Unwired until the generated CLI profile and role are test-run.",
       "required_capabilities": [
         "marketplace_intelligence"
       ]

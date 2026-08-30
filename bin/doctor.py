@@ -207,7 +207,7 @@ def check_integration_adapters(adapters, providers_data):
                 elif kind in {"mcp", "plugin"} and canonical not in allowed:
                     err(f"integration-adapters: alias {runtime}:{kind}:{observed} maps to unregistered {canonical!r}")
     session_aliases = adapters.get("session_only_aliases") or {}
-    grok_runtime_capabilities = {"browser", "pixels", "clarity-auth"}
+    grok_runtime_capabilities = {"browser", "pixels", "clarity-auth", "deposited-evidence"}
     capability_catalog = set((providers_data.get("capability_catalog") or {})) - {"_note"}
     for runtime, kinds in session_aliases.items():
         if not isinstance(kinds, dict):
@@ -785,7 +785,7 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
             approved_capabilities = {
                 "grok-bot-review-d": ["browser", "pixels"],
                 "grok-bot-heat-map": ["browser", "clarity-auth"],
-                "grok-bot-marketplace-intelligence": [],
+                "grok-bot-marketplace-intelligence": ["deposited-evidence"],
             }
             if bin_ != "grok":
                 err(f"seat-exec recipe {pid!r}: bin must be exact installed CLI 'grok'")
@@ -810,6 +810,18 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 err(
                     f"seat-exec recipe {pid!r}: required_capabilities must be exact "
                     f"runtime-attested list {approved_capabilities[pid]!r}"
+                )
+            connector_role_names = {
+                "grok-bot-review-d": "review-d",
+                "grok-bot-heat-map": "heat-map",
+                "grok-bot-marketplace-intelligence": "marketplace-intelligence",
+            }
+            connector_roles = (((load_json("connectors.json") or {}).get("grok_cli") or {}).get("roles") or {})
+            connector_requires = (connector_roles.get(connector_role_names[pid]) or {}).get("requires")
+            if connector_requires != approved_capabilities[pid]:
+                err(
+                    f"connectors.grok_cli.roles.{connector_role_names[pid]}.requires must match "
+                    f"seat-exec runtime capabilities {approved_capabilities[pid]!r}"
                 )
         route_id = p.get("route")
         route = routes.get(route_id) if route_id else None

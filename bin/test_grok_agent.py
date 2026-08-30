@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -35,6 +36,43 @@ class GrokAgentTests(unittest.TestCase):
                     "--model", "grok-4.6", "--reasoning-effort", "high",
                     "--no-subagents", "--output-format", "plain",
                 ])
+        self.assertEqual(
+            seats["grok-bot-marketplace-intelligence"]["required_capabilities"],
+            ["deposited-evidence"],
+        )
+
+    def test_profile_must_byte_match_generated_policy(self):
+        with tempfile.TemporaryDirectory() as td:
+            profile = Path(td) / "mb-review-d.md"
+            expected = target.sync_profiles.expected()[profile.name]
+            profile.write_text(expected)
+            self.assertIsNone(target._profile_problem(profile, "mb-review-d"))
+            profile.write_text(expected + "\n# unsafe drift\n")
+            self.assertIn("byte-match", target._profile_problem(profile, "mb-review-d"))
+
+    def test_review_d_prompt_must_match_config_renderer(self):
+        with tempfile.TemporaryDirectory() as td:
+            prompt = Path(td) / "review.md"
+            config = target.connector_packets.load()
+            prompt.write_text(target.connector_packets.render_live_ticket(config, "magnet-baron"))
+            self.assertIsNone(target._prompt_problem("grok-bot-review-d", prompt))
+            prompt.write_text("role: review-d\nmode: live-storefront-audit\nurl: https://evil.example/\n")
+            self.assertIn("byte-match", target._prompt_problem("grok-bot-review-d", prompt))
+
+    def test_marketplace_prompt_binds_evidence_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / "sold.csv"
+            evidence.write_text("price\n12.00\n")
+            digest = "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+            prompt = root / "market.md"
+            prompt.write_text(
+                "role: marketplace-intelligence\nsource: owner-deposited\n"
+                f"evidence-path: {evidence}\nevidence-sha256: {digest}\n"
+            )
+            self.assertIsNone(target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
+            evidence.write_text("price\n999.00\n")
+            self.assertIn("digest", target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
 
     def test_inspect_fails_closed_for_unwired_routes_and_missing_profile(self):
         with tempfile.TemporaryDirectory() as td:
@@ -82,6 +120,7 @@ class GrokAgentTests(unittest.TestCase):
                     "model": "grok-4.6", "host": "grok-cli", "harness": "grok",
                     "route_state": "live_verified",
                 }}},
+                "connectors.json": json.loads((HERE.parent / "config" / "connectors.json").read_text()),
             }
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \

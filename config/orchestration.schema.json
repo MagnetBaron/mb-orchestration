@@ -546,7 +546,7 @@
               "required_capabilities": {
                 "type": "array",
                 "uniqueItems": true,
-                "items": { "enum": ["browser", "pixels", "clarity-auth"] }
+                "items": { "enum": ["browser", "pixels", "clarity-auth", "deposited-evidence"] }
               }
             }
           }

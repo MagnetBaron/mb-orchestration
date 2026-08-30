@@ -71,7 +71,8 @@
       "capability": {
         "browser": "browser",
         "pixels": "pixels",
-        "clarity-auth": "clarity-auth"
+        "clarity-auth": "clarity-auth",
+        "deposited-evidence": "deposited-evidence"
       }
     },
     "grokbot-cursor": {

@@ -67,10 +67,11 @@ class FailClosedTests(unittest.TestCase):
         self.assertNotIn("glm-5.3-flash-unwired", ids)
         self.assertTrue(decision["ok"])
 
-    def test_marketplace_bot_is_cataloged_unwired_and_never_resolves(self):
+    def test_marketplace_app_route_is_retired_and_never_resolves(self):
         registry = live()
         route = registry["routes"]["grok-bot-marketplace-intelligence"]
-        self.assertEqual(route["route_state"], "unwired")
+        self.assertEqual(route["route_state"], "disabled")
+        self.assertEqual(route["lifecycle"], "retired")
         self.assertEqual(route["provider"], "grok-bot-marketplace-intelligence")
         self.assertEqual(route["capabilities"], ["marketplace_intelligence"])
         self.assertFalse(

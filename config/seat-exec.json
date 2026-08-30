@@ -73,7 +73,7 @@
     "grok-bot-marketplace-intelligence": {
       "bin": "grok", "args_template": ["--cwd", "{repo}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain"],
       "reads": "marketplace-evidence", "worktree": false, "never_metered_host": true,
-      "required_agent": "mb-marketplace-intelligence", "required_capabilities": [],
+      "required_agent": "mb-marketplace-intelligence", "required_capabilities": ["deposited-evidence"],
       "note": "Named Grok CLI agent. Reads newly deposited approved snapshots or positively authorized API outputs only. Route stays unwired until profile sync plus a recorded one-time role test. Never a review verdict or implementer."
     },
     "review-e": {
