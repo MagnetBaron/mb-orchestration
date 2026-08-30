@@ -131,6 +131,23 @@ class SchemaAndIdempotencyTests(unittest.TestCase):
         )
         self.assertNotEqual(a["event_id"], b["event_id"])
 
+    def test_integration_session_records_only_runtime_and_canonical_ids(self):
+        decision = _decision(integration_session={
+            "runtime": "grokbot-cursor",
+            "canonical_ids": ["visual_qa", "browser", "visual_qa"],
+            "values": {"token": "must-not-escape"},
+            "observed_ids": ["private-local-alias"],
+        })
+        ev = observe.event_from_route_decision(
+            decision, run_id="run-session", ts="2026-08-29T00:00:00+00:00",
+        )
+        self.assertEqual(ev["integration_session"], {
+            "runtime": "grokbot-cursor", "canonical_ids": ["browser", "visual_qa"],
+        })
+        self.assertNotIn("must-not-escape", json.dumps(ev))
+        self.assertNotIn("private-local-alias", json.dumps(ev))
+        self.assertEqual(observe.validate_event(ev), [])
+
 
 class AppendSafetyTests(unittest.TestCase):
     def test_concurrent_append(self):

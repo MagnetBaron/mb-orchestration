@@ -91,6 +91,7 @@ _FINGERPRINT_KEYS = (
     "kind", "run_id", "source", "actor_id", "profile_id",
     "intake", "task", "implementation", "review", "handoff",
     "usage", "terminal", "outcomes", "provider", "verdict", "tokens",
+    "integration_session",
 )
 
 _IDENTIFIER_KEYS = frozenset({
@@ -98,7 +99,7 @@ _IDENTIFIER_KEYS = frozenset({
     "provider", "providers", "authors", "requested", "effective", "family",
     "independence_group", "review_scope", "seat", "class", "scale",
     "review_depth", "action", "status", "park_reason_code", "fallback_reason",
-    "role", "physical", "verdict", "schema_version",
+    "role", "physical", "verdict", "schema_version", "runtime", "canonical_ids",
 })
 
 
@@ -547,7 +548,7 @@ def make_event(kind, *, run_id, ts, source="observe-cli", actor_id=None, profile
     }
     for key in ("intake", "task", "implementation", "review", "handoff", "usage",
                 "timing", "terminal", "outcomes", "tokens", "verdict", "provider",
-                "independence_group", "review_scope", "routing_satisfied"):
+                "independence_group", "review_scope", "routing_satisfied", "integration_session"):
         if key in fields and fields[key] is not None:
             ev[key] = fields[key]
     extra = {k: v for k, v in fields.items()
@@ -584,6 +585,16 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
         "fix_loops": None,
         "retractions": None,
     }
+    session_summary = decision.get("integration_session")
+    if isinstance(session_summary, dict):
+        runtime = session_summary.get("runtime")
+        canonical_ids = session_summary.get("canonical_ids")
+        session_summary = {
+            "runtime": runtime,
+            "canonical_ids": sorted({x for x in (canonical_ids or []) if isinstance(x, str) and x}),
+        } if isinstance(runtime, str) and runtime else None
+    else:
+        session_summary = None
     return make_event(
         "run_plan" if source == "run-brief" else "route_decision",
         run_id=run_id, ts=ts, source=source, actor_id=actor_id, profile_id=profile_id,
@@ -628,6 +639,7 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
             "park_reason_code": park_reason_code(park),
         },
         outcomes=outcomes,
+        integration_session=session_summary,
         tokens=tokens,
         routing_satisfied=routing_ok,
         gates={k: bool(v) for k, v in (decision.get("gates") or {}).items()},

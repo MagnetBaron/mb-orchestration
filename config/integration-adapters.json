@@ -11,6 +11,7 @@
     "grok-build": "grok",
     "grok-bot-review-d": "grokbot-cursor",
     "grok-bot-heat-map": "grokbot-cursor",
+    "grok-bot-marketplace-intelligence": "grokbot-cursor",
     "fable-5": "claude",
     "opus-5": "claude",
     "opus-4.8": "claude",
@@ -46,6 +47,9 @@
       },
       "plugin": {
         "magnet-baron-skills@magnet-baron": "magnet-baron-skills"
+      },
+      "app": {
+        "browser": "browser"
       }
     },
     "grok": {
@@ -60,6 +64,23 @@
     "grokbot-cursor": {
       "mcp": {},
       "plugin": {}
+    }
+  },
+  "session_only_aliases": {
+    "grokbot-cursor": {
+      "app": {
+        "heat-map": "heat-map",
+        "marketplace-intelligence": "marketplace-intelligence",
+        "visual-qa": "visual-qa"
+      },
+      "capability": {
+        "analytics": "analytics",
+        "browser": "browser",
+        "code": "code",
+        "ide": "ide",
+        "marketplace-intelligence": "marketplace_intelligence",
+        "visual-qa": "visual_qa"
+      }
     }
   },
   "sources": [
@@ -103,6 +124,14 @@
       "path": "~/.codex/config.toml",
       "format": "toml-object-keys",
       "key": "apps"
+    },
+    {
+      "id": "grok-mcp",
+      "runtime": "grok",
+      "kind": "mcp",
+      "path": "~/.grok/config.toml",
+      "format": "toml-object-keys",
+      "key": "mcp_servers"
     },
     {
       "id": "grok-plugins-enabled",

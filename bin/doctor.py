@@ -11,7 +11,8 @@ Two layers:
     links, references to moved/old paths, and raw live IDs that should live in
     config/connectors.json instead of going stale in prose.
 
-No network calls. `jsonschema` is used when importable; otherwise the built-in
+No network calls and no runtime-inventory writes. Doctor parses allowlisted
+integration manifests read-only. `jsonschema` is used when importable; otherwise the built-in
 structural checks below are authoritative. Exit 0 = clean; 1 = errors (or
 warnings under --strict).
 """
@@ -166,9 +167,12 @@ def check_connectors(conns, provider_ids):
                 err(f"connector {name}: available_on unknown provider {pid!r}")
 
 
-def check_integration_adapters(adapters, provider_ids):
+def check_integration_adapters(adapters, providers_data):
     if not adapters:
         return
+    providers_data = providers_data or {}
+    provs = providers_data.get("providers") or {}
+    provider_ids = set(provs)
     try:
         integ = load_module("integrations_doctor", HERE / "integrations.py")
         integ.load_adapters()
@@ -201,13 +205,42 @@ def check_integration_adapters(adapters, provider_ids):
                     err(f"integration-adapters: aliases.{runtime}.{kind} needs non-empty string names")
                 elif kind in {"mcp", "plugin"} and canonical not in allowed:
                     err(f"integration-adapters: alias {runtime}:{kind}:{observed} maps to unregistered {canonical!r}")
+    session_aliases = adapters.get("session_only_aliases") or {}
+    capability_catalog = set((providers_data.get("capability_catalog") or {})) - {"_note"}
+    for runtime, kinds in session_aliases.items():
+        if not isinstance(kinds, dict):
+            err(f"integration-adapters: session_only_aliases.{runtime} must be an object")
+            continue
+        for kind, aliases in kinds.items():
+            if kind not in {"app", "capability"}:
+                err(f"integration-adapters: session_only_aliases.{runtime}.{kind} must be app or capability")
+                continue
+            if not isinstance(aliases, dict):
+                err(f"integration-adapters: session_only_aliases.{runtime}.{kind} must be an object")
+                continue
+            for observed, canonical in aliases.items():
+                if not isinstance(observed, str) or not observed or not isinstance(canonical, str) or not canonical:
+                    err(f"integration-adapters: session_only_aliases.{runtime}.{kind} needs non-empty string names")
+                elif kind == "capability" and canonical not in capability_catalog:
+                    err(f"integration-adapters: session-only capability maps to unknown {canonical!r}")
+    grokbot_caps = set((((session_aliases.get("grokbot-cursor") or {}).get("capability")) or {}).values())
+    grokbot_providers = {
+        pid: p for pid, p in provs.items()
+        if (adapters.get("provider_runtimes") or {}).get(pid) == "grokbot-cursor"
+    }
+    if grokbot_providers and not (session_aliases.get("grokbot-cursor") or {}):
+        err("integration-adapters: grokbot-cursor requires explicit session-only aliases")
+    for pid, provider in sorted(grokbot_providers.items()):
+        missing = sorted(set(provider.get("capabilities") or []) - grokbot_caps)
+        if missing:
+            err(f"integration-adapters: grokbot-cursor session capability aliases do not cover {pid}: {missing}")
     try:
-        inv = integ.refresh()
-        unregistered = sum(1 for r in inv.get("records", []) if not r.get("registered"))
-        info(f"integration inventory: {len(inv.get('records', []))} observed, {unregistered} unregistered; "
-             "runtime grants still require session-callable proof")
+        records, events = integ.discover(adapters)
+        unregistered = sum(1 for r in records if not r.get("registered"))
+        info(f"integration inventory read-only discovery: {len(records)} observed, {unregistered} unregistered, "
+             f"{len(events)} unavailable source(s); runtime grants still require session-callable proof")
     except Exception as exc:
-        err(f"integration inventory refresh/recovery failed closed: {exc}")
+        err(f"integration inventory read-only discovery failed closed: {exc}")
 
 
 VALID_CONNECTOR_STATUS = ("active", "ready", "primed")
@@ -542,24 +575,19 @@ def check_review_depth(depth):
                 err(f"review-depth class {cid}: {col}={spec.get(col)!r} not a valid level")
 
 
-def check_seat_exec(seat_exec, provs, provider_ids):
+def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
     """seat-exec.json recipes must not drift from the registry: every recipe keys a known
     provider; the never_metered_host marker matches providers.json `billing` (the secrets/PII
     executor guard, as data); and `bin` matches `kind` (CLI seats have a bin, app/api/local
     seats do not). Consumed by bin/run-brief.py."""
     if not seat_exec:
         return
+    registry = registry if isinstance(registry, dict) else (load_json("model-registry.json") or {})
     recipes = seat_exec.get("recipes", {})
     if not recipes:
         err("seat-exec.json: no recipes defined")
         return
     valid_reads = {"brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"}
-    grok_required_flags = {
-        "--cwd": "{worktree}",
-        "--prompt-file": "{brief_path}",
-        "--model": "grok-4.6",
-        "--reasoning-effort": None,
-    }
     grok_unsupported_flags = {"--workdir", "--brief"}
     for pid, r in recipes.items():
         if pid not in provider_ids:
@@ -587,6 +615,22 @@ def check_seat_exec(seat_exec, provs, provider_ids):
         if not isinstance(r.get("worktree"), bool):
             err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
         if pid == "grok-build":
+            expected_model = p.get("model")
+            route_id = p.get("route")
+            route = ((registry or {}).get("routes") or {}).get(route_id)
+            if not isinstance(expected_model, str) or not expected_model:
+                err("provider 'grok-build': selectable model must be a non-empty string")
+            if not isinstance(route, dict) or route.get("model") != expected_model:
+                err(
+                    f"provider 'grok-build': model {expected_model!r} must match "
+                    f"model-registry route {route_id!r}"
+                )
+            grok_required_flags = {
+                "--cwd": "{worktree}",
+                "--prompt-file": "{brief_path}",
+                "--model": expected_model,
+                "--reasoning-effort": None,
+            }
             raw_args = r.get("args_template")
             args = raw_args if isinstance(raw_args, list) else []
             if bin_ != "grok":
@@ -615,11 +659,6 @@ def check_seat_exec(seat_exec, provs, provider_ids):
                     )
             if args.count("--no-subagents") != 1:
                 err("seat-exec recipe 'grok-build': requires exactly one --no-subagents")
-            if (provs.get(pid) or {}).get("model") != "grok-4.6":
-                err(
-                    "provider 'grok-build': selectable model must be exact 'grok-4.6'; "
-                    "'grok-4.6-build' is only an internal route key"
-                )
         flag = r.get("separate_invocation_when_dispatcher")
         if flag is not None and flag is not True and flag is not False:
             err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")
@@ -942,7 +981,7 @@ def main(argv=None):
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)
     check_connectors(conns, provider_ids)
-    check_integration_adapters(integration_adapters, provider_ids)
+    check_integration_adapters(integration_adapters, providers)
     check_connector_lifecycle(conns, providers)
     check_skills(skills, providers, conns)
     check_entrypoints(entry, provs, provider_ids)
@@ -954,7 +993,7 @@ def main(argv=None):
     check_roles_and_windows_run(CONFIG / "providers.json", CONFIG / "roles.json")
     check_forbidden_matcher()
     check_model_registry(providers, conns)
-    check_seat_exec(seat_exec, provs, provider_ids)
+    check_seat_exec(seat_exec, provs, provider_ids, model_reg)
     check_runledger()
     prose_hygiene()
     check_bin_references()

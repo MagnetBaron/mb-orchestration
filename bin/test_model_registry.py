@@ -2282,7 +2282,22 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
                 wrong_provider_model["providers"],
                 set(wrong_provider_model["providers"]),
             )
-            self.assertTrue(any("selectable model must be exact" in e for e in doc.ERRORS), doc.ERRORS)
+            self.assertTrue(any("must match model-registry route" in e for e in doc.ERRORS), doc.ERRORS)
+
+            derived = copy.deepcopy(provs)
+            derived_registry = copy.deepcopy(live())
+            derived_seat = copy.deepcopy(seat)
+            derived["providers"]["grok-build"]["model"] = "grok-next-test"
+            derived_registry["routes"]["grok-4.6-build"]["model"] = "grok-next-test"
+            derived_seat["recipes"]["grok-build"]["args_template"][5] = "grok-next-test"
+            doc.ERRORS.clear()
+            doc.check_seat_exec(
+                derived_seat,
+                derived["providers"],
+                set(derived["providers"]),
+                derived_registry,
+            )
+            self.assertEqual(doc.ERRORS, [])
         finally:
             doc.ERRORS[:] = saved
 

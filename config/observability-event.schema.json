@@ -29,6 +29,18 @@
     "actor_id": { "type": ["string", "null"] },
     "profile_id": { "type": ["string", "null"] },
     "dry_run": { "type": "boolean" },
+    "integration_session": {
+      "type": "object",
+      "required": ["runtime", "canonical_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": { "type": "string", "minLength": 1 },
+        "canonical_ids": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "intake": {
       "type": "object",
       "additionalProperties": true,

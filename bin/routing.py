@@ -67,15 +67,19 @@ def connector_is_active(meta):
     return (meta or {}).get("status") == "active"
 
 
-def connector_is_effective(provider_id, connector_id, meta, inventory=None, session=None):
+def connector_is_effective(provider_id, connector_id, meta, inventory=None, session=None,
+                           require_callable=True):
     """Central observed-effective predicate for a provider connector grant.
 
     ``available_on`` and ``status=active`` are only the vetted ceiling. Fresh
-    runtime/session evidence must additionally prove that the connector is
-    enabled, configured, healthy, and callable in this process.
+    Runtime/session evidence must additionally prove that the connector is
+    enabled, configured, and healthy. Runtime grants keep the default
+    ``require_callable=True``; static role validation may explicitly request
+    configured-manifest evidence without changing runtime routing.
     """
     return integrations.connector_effective(
-        provider_id, connector_id, meta, inv=inventory, overlay=session
+        provider_id, connector_id, meta, inv=inventory, overlay=session,
+        require_callable=require_callable,
     )
 
 
@@ -196,19 +200,24 @@ def mcp_volume_matches(name, connectors, provider_id=None, inventory=None, sessi
     return [], "; ".join(reasons) or "no active matching connector on the MCP volume seat"
 
 
-def capabilities_of(provider_id, provider, connectors, inventory=None, session=None):
+def capabilities_of(provider_id, provider, connectors, inventory=None, session=None,
+                    require_callable=True):
     """Union of coarse capabilities (providers.json) and connector access (connectors.json).
 
     Connector IDs and aliases are stripped from the raw capability list even when they
     equal a coarse word. A class is stripped only when it is not in the capability
     catalog. A derived label is granted only when at least one matching connector is
     active, its lifecycle predicate passes, `available_on` includes this provider, and fresh
-    runtime/session evidence proves it callable.
+    runtime/session evidence proves it callable (the default). Static role
+    validation may explicitly set ``require_callable=False``; runtime callers
+    must retain the default.
     """
     derived = connector_derived_labels(connectors)
     caps = {c for c in (provider.get("capabilities") or []) if c not in derived}
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():
-        ok, _reason = connector_is_effective(provider_id, cname, meta, inventory, session)
+        ok, _reason = connector_is_effective(
+            provider_id, cname, meta, inventory, session, require_callable=require_callable
+        )
         if not ok:
             continue
         caps.add(cname)

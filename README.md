@@ -47,7 +47,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `model-registry.json` | Canonical model/route/ranking catalog (identity, lifecycle, route state, evidence, per-role quality vs selection) |
 | `subscriptions.json` | The plans you pay for — **the one file a new user edits** |
 | `connectors.json` | Vetted MCP/analytics/store/Slack authorization ceiling and public bindings; live proof comes from the runtime inventory |
-| `integration-adapters.json` | Safe runtime-manifest adapters, aliases, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
+| `integration-adapters.json` | Safe runtime-manifest adapters, aliases, session-only Grok Bot/Cursor capability map, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
 | `entrypoints.json` | Entry surfaces, user profiles, per-run dispatcher fallback order |
 | `handoff-policy.json` | Ordinary preauthorization and restricted-data fail-closed classes |
 | `usage-windows.json` | Reset anchors + soft caps per seat |

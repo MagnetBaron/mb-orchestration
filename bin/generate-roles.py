@@ -55,7 +55,7 @@ def mcp_mutation_map(runtime: str, inventory=None):
             for pid in (meta.get("available_on") or [])
         )
         observed, _reason = integrations.effective(
-            runtime, "mcp", name, require_callable=True, inv=inventory
+            runtime, "mcp", name, require_callable=False, inv=inventory
         )
         if not authorized or not observed:
             continue
@@ -122,7 +122,9 @@ def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict, 
     if cap is None:
         return True
     prov = (providers_data.get("providers") or {}).get(seat, {})
-    return cap in routing.capabilities_of(seat, prov, connectors, inventory=inventory)
+    return cap in routing.capabilities_of(
+        seat, prov, connectors, inventory=inventory, require_callable=False
+    )
 
 
 def provider_levels(providers_data: dict) -> dict[str, str]:

@@ -31,6 +31,13 @@ def load_generate():
 gen = load_generate()
 
 
+def load_doctor():
+    spec = importlib.util.spec_from_file_location("doctor_integrations", HERE / "doctor.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def record(runtime="codex", kind="mcp", ident="github", **changes):
     row = {
         "runtime": runtime, "kind": kind, "id": ident,
@@ -175,6 +182,47 @@ class IntegrationInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(integrations.InventoryError, "cross runtime"):
             integrations.load_session(str(session_file))
 
+    def test_session_only_grokbot_alias_and_value_free_provenance(self):
+        self.write([])
+        inv = integrations.refresh(force=True)
+        session_file = Path(self.tmp.name) / "grokbot-session.json"
+        row = record(runtime="grokbot-cursor", kind="capability", ident="visual-qa")
+        row["token"] = "must-not-escape"
+        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [row]}))
+        overlay = integrations.load_session(str(session_file))
+        ok, _ = integrations.effective(
+            "grokbot-cursor", "capability", "visual_qa", require_callable=True,
+            inv=inv, overlay=overlay,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(
+            integrations.session_provenance(overlay),
+            {"runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"]},
+        )
+        self.assertNotIn("must-not-escape", json.dumps(integrations.session_provenance(overlay)))
+
+        failed = record(runtime="grokbot-cursor", kind="capability", ident="browser", callable=False)
+        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [failed]}))
+        self.assertIsNone(integrations.session_provenance(integrations.load_session(str(session_file))))
+
+        unknown = record(runtime="grokbot-cursor", kind="capability", ident="not-registered")
+        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [unknown]}))
+        self.assertIsNone(integrations.session_provenance(integrations.load_session(str(session_file))))
+
+    def test_pid_owned_lock_never_age_steals_live_owner_and_reclaims_dead_owner(self):
+        path = Path(self.tmp.name) / "owned.lock"
+        path.write_text(json.dumps({"pid": os.getpid(), "owner": "live", "created_at": "old"}))
+        os.utime(path, (1, 1))
+        with self.assertRaisesRegex(integrations.InventoryError, "lock timeout"):
+            integrations._lock(path, 0.05)
+        self.assertTrue(path.exists())
+
+        path.write_text(json.dumps({"pid": 2_000_000_000, "owner": "dead", "created_at": "now"}))
+        token = integrations._lock(path, 0.1)
+        self.assertNotEqual(token, "dead")
+        integrations._unlock(path, token)
+        self.assertFalse(path.exists())
+
     def test_manifest_configured_is_distinct_from_current_callable(self):
         self.write([record(callable=False, health="unknown")])
         inv = integrations.refresh(force=True)
@@ -201,6 +249,71 @@ class IntegrationInventoryTests(unittest.TestCase):
             self.assertFalse(hits[key]["enabled"])
             self.assertEqual(hits[key]["health"], "blocked")
 
+    def test_real_manifest_discover_capabilities_and_role_validation_without_fixture(self):
+        os.environ.pop("MB_INTEGRATION_FIXTURE", None)
+        source_root = Path(self.tmp.name) / "real-home"
+        os.environ["MB_INTEGRATION_SOURCE_ROOT"] = str(source_root)
+        claude = source_root / ".claude.json"
+        claude.parent.mkdir(parents=True, exist_ok=True)
+        claude.write_text(json.dumps({"mcpServers": {"gsc-indexing": {}, "dataforseo": {}}}))
+        claude_plugins = source_root / ".claude/plugins/installed_plugins.json"
+        claude_plugins.parent.mkdir(parents=True, exist_ok=True)
+        claude_plugins.write_text(json.dumps({"plugins": {"magnet-baron-skills@magnet-baron": {}}}))
+        codex = source_root / ".codex/config.toml"
+        codex.parent.mkdir(parents=True, exist_ok=True)
+        codex.write_text('[apps.browser]\nenabled = true\n')
+        grok = source_root / ".grok/config.toml"
+        grok.parent.mkdir(parents=True, exist_ok=True)
+        grok.write_text(
+            '[mcp_servers.shopify-mb-internal]\nenabled = true\n'
+            '[mcp_servers.github]\nenabled = true\n'
+            '[plugins]\nenabled = ["magnet-baron-skills"]\ndisabled = []\n'
+        )
+        integrations.reset_process_cache()
+        config = integrations.load_adapters()
+        records, events = integrations.discover(config)
+        self.assertEqual(events, [])
+        inv = {"records": records}
+        shopify = next(r for r in records if r.get("canonical_id") == "shopify-mb-internal")
+        self.assertIsNone(shopify["installed"])
+        browser_app = next(r for r in records if r.get("canonical_id") == "browser" and r["kind"] == "app")
+        self.assertIsNone(browser_app["installed"])
+        self.assertTrue(integrations.effective(
+            "codex", "app", "browser", require_callable=False, inv=inv
+        )[0])
+        self.assertFalse(integrations.effective(
+            "codex", "app", "browser", require_callable=True, inv=inv
+        )[0])
+        provider_data = json.loads((ROOT / "config/providers.json").read_text())
+        provider = provider_data["providers"]["grok-build"]
+        connectors = json.loads((ROOT / "config/connectors.json").read_text())
+        runtime_caps = routing.capabilities_of(
+            "grok-build", provider, connectors, inventory=inv
+        )
+        configured_caps = routing.capabilities_of(
+            "grok-build", provider, connectors, inventory=inv, require_callable=False
+        )
+        self.assertNotIn("shopify-mb-internal", runtime_caps)
+        self.assertIn("shopify-mb-internal", configured_caps)
+        loaded = gen.load(ROOT / "config/roles.json", ROOT / "config/providers.json", inventory=inv)
+        self.assertIn("shopify-theme-build", loaded["roles"])
+
+    def test_doctor_discovery_is_read_only_and_checks_grokbot_alias_coverage(self):
+        os.environ.pop("MB_INTEGRATION_FIXTURE", None)
+        os.environ["MB_INTEGRATION_SOURCE_ROOT"] = str(Path(self.tmp.name) / "empty-home")
+        doctor = load_doctor()
+        adapters = json.loads((ROOT / "config/integration-adapters.json").read_text())
+        providers = json.loads((ROOT / "config/providers.json").read_text())
+        doctor.check_integration_adapters(adapters, providers)
+        self.assertEqual(doctor.ERRORS, [])
+        self.assertFalse(integrations.cache_path().exists())
+        self.assertFalse(integrations.events_path().exists())
+
+        del adapters["session_only_aliases"]["grokbot-cursor"]["capability"]["browser"]
+        doctor.ERRORS.clear()
+        doctor.check_integration_adapters(adapters, providers)
+        self.assertTrue(any("do not cover grok-bot-review-d" in e for e in doctor.ERRORS), doctor.ERRORS)
+
     def test_cli_session_merge_json_and_check(self):
         self.write([])
         session_file = Path(self.tmp.name) / "session.json"
@@ -221,6 +334,25 @@ class IntegrationInventoryTests(unittest.TestCase):
         )
         self.assertEqual(stdio.returncode, 0, stdio.stderr)
         self.assertEqual(json.loads(stdio.stdout)["session_runtime"], "codex")
+
+        routed = subprocess.run(
+            [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
+             "--intake-provider", "opus-5", "--integration-session", str(session_file),
+             "--json", "--no-record"],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        self.assertEqual(routed.returncode, 0, routed.stderr)
+        self.assertEqual(json.loads(routed.stdout)["integration_session"], {
+            "runtime": "codex", "canonical_ids": ["github"],
+        })
+        human = subprocess.run(
+            [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
+             "--intake-provider", "opus-5", "--integration-session", str(session_file),
+             "--no-record"],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        self.assertEqual(human.returncode, 0, human.stderr)
+        self.assertIn("integration session: runtime=codex canonical_ids=github", human.stdout)
 
 
 class GrantBypassTests(unittest.TestCase):

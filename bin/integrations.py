@@ -15,6 +15,7 @@ import stat
 import tempfile
 import time
 import tomllib
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -50,6 +51,8 @@ def load_adapters() -> dict:
         raise InventoryError("integration-adapters schema must be version 1")
     if not isinstance(data.get("provider_runtimes"), dict):
         raise InventoryError("integration-adapters provider_runtimes must be an object")
+    if not isinstance(data.get("session_only_aliases"), dict):
+        raise InventoryError("integration-adapters session_only_aliases must be an object")
     if not isinstance(data.get("sources"), list):
         raise InventoryError("integration-adapters sources must be a list")
     for src in data["sources"]:
@@ -155,8 +158,12 @@ def _safe_names(src: dict, parsed_cache: dict | None = None) -> list[tuple[str, 
     return out
 
 
-def _canonical(config: dict, runtime: str, kind: str, observed_id: str) -> str | None:
-    aliases = (((config.get("aliases") or {}).get(runtime) or {}).get(kind) or {})
+def _canonical(config: dict, runtime: str, kind: str, observed_id: str, *, session=False) -> str | None:
+    aliases = dict((((config.get("aliases") or {}).get(runtime) or {}).get(kind) or {}))
+    if session:
+        aliases.update(
+            (((config.get("session_only_aliases") or {}).get(runtime) or {}).get(kind) or {})
+        )
     return aliases.get(observed_id) or (observed_id if observed_id in set(aliases.values()) else None)
 
 
@@ -268,16 +275,50 @@ def _read_cache(path: Path, config: dict, fingerprints: dict) -> tuple[dict | No
         return None, "corrupt_cache"
 
 
-def _lock(path: Path, timeout: float):
+def _pid_alive(pid: int) -> bool:
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _lock_owner(path: Path) -> dict | None:
+    try:
+        owner = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(owner, dict):
+        return None
+    if not isinstance(owner.get("pid"), int) or not isinstance(owner.get("owner"), str):
+        return None
+    return owner
+
+
+def _lock(path: Path, timeout: float) -> str:
+    owner_token = uuid.uuid4().hex
+    payload = json.dumps({"pid": os.getpid(), "owner": owner_token, "created_at": now_iso()}) + "\n"
     deadline = time.monotonic() + timeout
     while True:
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            os.close(fd)
-            return
+            try:
+                os.write(fd, payload.encode("utf-8"))
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            return owner_token
         except FileExistsError:
             try:
-                if time.time() - path.stat().st_mtime > max(30.0, timeout * 4):
+                owner = _lock_owner(path)
+                age = time.time() - path.stat().st_mtime
+                dead_owner = owner is not None and not _pid_alive(owner["pid"])
+                malformed_stale = owner is None and age > max(30.0, timeout * 4)
+                if dead_owner or malformed_stale:
                     path.unlink()
                     continue
             except FileNotFoundError:
@@ -285,6 +326,15 @@ def _lock(path: Path, timeout: float):
             if time.monotonic() >= deadline:
                 raise InventoryError("integration inventory lock timeout")
             time.sleep(0.02)
+
+
+def _unlock(path: Path, owner_token: str) -> None:
+    owner = _lock_owner(path)
+    if owner is not None and owner.get("owner") == owner_token:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _atomic_write(path: Path, data: dict) -> None:
@@ -326,7 +376,7 @@ def refresh(force: bool = False) -> dict:
         reason = "force_refresh"
     lock = Path(str(path) + ".lock")
     path.parent.mkdir(parents=True, exist_ok=True)
-    _lock(lock, float(config["lock_timeout_seconds"]))
+    owner_token = _lock(lock, float(config["lock_timeout_seconds"]))
     try:
         if not force:
             cached, second_reason = _read_cache(path, config, fps)
@@ -351,10 +401,7 @@ def refresh(force: bool = False) -> dict:
         _PROCESS_INVENTORY = data
         return data
     finally:
-        try:
-            lock.unlink()
-        except FileNotFoundError:
-            pass
+        _unlock(lock, owner_token)
 
 
 def reset_process_cache() -> None:
@@ -397,7 +444,7 @@ def load_session(source: str | None = None) -> dict | None:
                 raise InventoryError("session records may not cross runtime boundaries")
             merged["runtime"] = runtime
         rec = _validate_record(merged, session=True)
-        canonical = _canonical(load_adapters(), runtime, rec["kind"], rec["observed_id"])
+        canonical = _canonical(load_adapters(), runtime, rec["kind"], rec["observed_id"], session=True)
         rec["canonical_id"] = canonical
         rec["registered"] = canonical is not None
         clean.append(rec)
@@ -410,6 +457,25 @@ def session() -> dict | None:
     if _PROCESS_SESSION is None and os.environ.get("MB_INTEGRATION_SESSION"):
         return load_session()
     return _PROCESS_SESSION
+
+
+def session_provenance(overlay: dict | None = None) -> dict | None:
+    """Return a value-free summary of successful process-scoped integration evidence."""
+    overlay = session() if overlay is None else overlay
+    if not overlay or not isinstance(overlay.get("runtime"), str):
+        return None
+    runtime = overlay["runtime"]
+    empty = {"records": []}
+    canonical_ids = sorted({
+        rec["canonical_id"]
+        for rec in overlay.get("records", [])
+        if isinstance(rec, dict) and isinstance(rec.get("canonical_id"), str)
+        and effective(runtime, rec.get("kind"), rec["canonical_id"], require_callable=True,
+                      inv=empty, overlay=overlay)[0]
+    })
+    if not canonical_ids:
+        return None
+    return {"runtime": runtime, "canonical_ids": canonical_ids}
 
 
 def merged_records(inv: dict | None = None, overlay: dict | None = None) -> list[dict]:
@@ -438,11 +504,17 @@ def effective(runtime: str, kind: str, canonical_id: str, *, require_callable: b
     for rec in hits:
         if rec.get("suggested") and not rec.get("installed"):
             continue
-        if not rec.get("installed") or not rec.get("enabled") or not rec.get("configured") or rec.get("blocked"):
+        if not rec.get("enabled") or not rec.get("configured") or rec.get("blocked"):
+            continue
+        # A canonical MCP/app manifest proves configured presence, but not that a
+        # package, auth, or transport is callable. Plugin manifests additionally
+        # prove installation. Runtime routes always request callable proof below.
+        if kind not in {"mcp", "app"} and not rec.get("installed"):
             continue
         if rec.get("health") in {"needs_auth", "blocked", "unavailable"}:
             continue
-        if require_callable and (not rec.get("callable") or rec.get("health") != "verified"):
+        if require_callable and (not rec.get("installed") or not rec.get("callable")
+                                 or rec.get("health") != "verified"):
             continue
         return True, "observed effective"
     suffix = " and callable in this process" if require_callable else ""
@@ -450,7 +522,8 @@ def effective(runtime: str, kind: str, canonical_id: str, *, require_callable: b
 
 
 def connector_effective(provider_id: str, connector_id: str, meta: dict,
-                        *, inv: dict | None = None, overlay: dict | None = None) -> tuple[bool, str]:
+                        *, inv: dict | None = None, overlay: dict | None = None,
+                        require_callable: bool = True) -> tuple[bool, str]:
     if (meta or {}).get("status") != "active":
         return False, f"{connector_id} lifecycle is not active"
     if provider_id not in ((meta or {}).get("available_on") or []):
@@ -458,7 +531,8 @@ def connector_effective(provider_id: str, connector_id: str, meta: dict,
     runtime = provider_runtime(provider_id)
     if not runtime:
         return False, f"{provider_id} has no explicit runtime mapping"
-    ok, reason = effective(runtime, "mcp", connector_id, require_callable=True, inv=inv, overlay=overlay)
+    ok, reason = effective(runtime, "mcp", connector_id, require_callable=require_callable,
+                           inv=inv, overlay=overlay)
     return ok, reason
 
 

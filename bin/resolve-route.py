@@ -801,6 +801,7 @@ def main(argv=None):
         except (integrations.InventoryError, OSError) as exc:
             _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
             sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
+    integration_session = integrations.session_provenance()
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
@@ -915,6 +916,8 @@ def main(argv=None):
         "user_said_ship": args.user_said_ship, "implement": implement, "usage_updated": updated,
         "implement_requested": bool(args.implement),
     }
+    if integration_session is not None:
+        decision["integration_session"] = integration_session
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     obs_meta = _emit_decision(decision, args, duration_ms)
@@ -930,6 +933,9 @@ def main(argv=None):
 
     print(f"ROUTE  class={args.klass} scale={args.scale} risk={risk_flags or '-'}")
     print("-" * 72)
+    if integration_session is not None:
+        print(f"integration session: runtime={integration_session['runtime']} "
+              f"canonical_ids={','.join(integration_session['canonical_ids'])}")
     print(f"review depth: {level}")
     for r in reasons:
         print(f"  · {r}")

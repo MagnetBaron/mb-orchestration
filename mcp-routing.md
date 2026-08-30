@@ -26,7 +26,10 @@ arbitrary files and never retains command arguments, values, URLs, environment v
 tokens, stdout/stderr, backups, logs, or marketplace/cache catalogs. Its schema-versioned cache lives
 outside git under `$MB_DATA_DIR`, refreshes when an allowlisted source fingerprint changes or its
 bounded TTL expires, and uses a bounded lock plus atomic mode-0600 replace. Missing, truncated,
-corrupt, and old-schema caches rebuild automatically.
+corrupt, and old-schema caches rebuild automatically. The lock records its PID and a random owner
+token: a live owner is never evicted merely because the lock is old; dead owners are reclaimed, and
+malformed locks are reclaimed only after the bounded stale interval. `bin/doctor.py` performs the
+same allowlisted discovery read-only and does not refresh or write the cache/event log.
 
 User install/remove/enable/disable actions are noticed at the next process boundary. Removal revokes;
 a vetted addition becomes usable only with observed proof. Unknown discoveries are reported as
@@ -43,7 +46,12 @@ python3 bin/detect-integrations.py --session FILE   # use - for stdin
 
 The single observed-effective predicate in `bin/integrations.py` is consumed by
 `routing.capabilities_of`, `routing.mcp_volume_matches`, skill capability gates, and the generated-
-role MCP mutation map. There is no static-active bypass. Portable synthetic fixtures are explicit
+role MCP mutation map. Production manifest discovery can prove that an MCP/app is configured for
+static generation and validation, but cannot prove installation, verified health, or current-session
+callability. Runtime route selection always requires all three through an ephemeral session overlay,
+so there is no static-active bypass. Successful overlays are reported only as runtime plus registered
+canonical IDs; observed aliases and values are never printed or persisted. Grok Bot/Cursor capabilities
+are explicitly session-only because those surfaces have no canonical local manifest. Portable synthetic fixtures are explicit
 test inputs only; production routing never loads them unless an operator explicitly sets the fixture
 override.
 
