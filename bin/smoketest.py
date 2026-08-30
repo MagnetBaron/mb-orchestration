@@ -194,6 +194,14 @@ def c_detect_capability():
         f"{len(d['effective_fable_seats'])} fable effective, conflict={d['declaration_conflict']}"
 
 
+def c_connectors():
+    r = run([PY, "bin/test_connectors.py"])
+    detail = "visual-QA render/trigger/deny regression suite"
+    if r.returncode != 0:
+        detail = (r.stderr or r.stdout).strip().splitlines()[-1]
+    return r.returncode == 0, detail
+
+
 def c_generate_roles():
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
@@ -497,6 +505,7 @@ def main(argv=None):
     check("integration inventory (dynamic fail-closed grants)",
           lambda: (run([PY, "bin/test_integrations.py"]).returncode == 0,
                    "add/remove/disable/recovery/concurrency/session/bypass suite"))
+    check("connectors (visual-QA exact-trigger and deny gates)", c_connectors)
     check("generate-roles (idempotent + toml)", c_generate_roles)
     check("skills wiring (resolve + fail-closed negatives)", c_skills)
     check("primed MCP connector validates + inert (nothing wired)", c_primed_connector_inert)

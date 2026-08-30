@@ -66,12 +66,14 @@ class VisualQaConfigTests(unittest.TestCase):
         for store, meta in config["stores"].items():
             with self.subTest(store=store):
                 rendered = connectors.render_live_ticket(config, store)
-                body = rendered.split("\n\n", 1)[1]
-                self.assertTrue(body.startswith(trigger + "\n"))
-                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", body)
-                self.assertIn("scope: public storefront read-only", body)
-                self.assertNotIn("preview_theme_id", body)
-                self.assertNotIn("checkout", body.lower())
+                first_nonblank = next(line for line in rendered.splitlines() if line.strip())
+                self.assertEqual(first_nonblank, trigger)
+                self.assertTrue(rendered.startswith(trigger + "\n"))
+                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", rendered)
+                self.assertIn("scope: public storefront read-only", rendered)
+                self.assertNotIn("preview_theme_id", rendered)
+                self.assertNotIn("checkout", rendered.lower())
+                self.assertNotIn("Channel:", rendered)
 
     def test_preview_ticket_remains_preview_scoped(self):
         config = live_config()

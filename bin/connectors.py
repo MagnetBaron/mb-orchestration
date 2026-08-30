@@ -77,7 +77,6 @@ def render_ticket(c, store):
 def render_live_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
-    chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     live_hosts = s.get("live_hosts") or []
     if not live_hosts:
         sys.exit(f"connectors: store {store!r} has no configured live_hosts")
@@ -87,7 +86,6 @@ def render_live_ticket(c, store):
     if not trigger:
         sys.exit("connectors: live-storefront-audit has no message_must_begin_exact")
     return (
-        f"Channel: {chan}\n\n"
         f"{trigger}\n"
         f"site: {name}\n"
         f"url: https://{live_hosts[0]}/\n"
