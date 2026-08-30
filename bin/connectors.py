@@ -95,8 +95,8 @@ def _validate_navigation_url(c, store, url):
     deny = c.get("grok_cli", {}).get("visual_qa", {}).get("deny_before_navigation", {})
     decoded_url = _fully_unquote(url).lower()
     decoded_path = _fully_unquote(parsed.path).lower()
-    if "\\" in decoded_path:
-        sys.exit(f"connectors: store {store!r} URL uses a denied path separator")
+    if "\\" in decoded_url:
+        sys.exit(f"connectors: store {store!r} URL uses a denied browser path separator")
     normalized_path = posixpath.normpath("/" + decoded_path.lstrip("/"))
     if host in {str(value).lower() for value in deny.get("hosts") or []}:
         sys.exit(f"connectors: store {store!r} URL uses a denied host")

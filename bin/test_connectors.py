@@ -87,6 +87,7 @@ class VisualQaConfigTests(unittest.TestCase):
             "https://gadgetduke.com/%2563heckout?preview_theme_id=151997775942",
             "https://gadgetduke.com/else/../checkout?preview_theme_id=151997775942",
             "https://gadgetduke.com/x/..%5Ccheckout?preview_theme_id=151997775942",
+            "https://evil.example%5C.preview.shopifypreview.com/",
             "https://gadgetduke.com/products/simgym-demo?preview_theme_id=151997775942",
         ]
         for url in cases:
@@ -94,6 +95,10 @@ class VisualQaConfigTests(unittest.TestCase):
                 config["stores"]["gadget-duke"]["review_d_preview_url"] = url
                 with self.assertRaisesRegex(SystemExit, "denied"):
                     connectors.render_ticket(config, "gadget-duke")
+
+        config["stores"]["gadget-duke"]["review_d_preview_url"] = "https://[::1/"
+        with self.assertRaisesRegex(SystemExit, "malformed"):
+            connectors.render_ticket(config, "gadget-duke")
 
     def test_live_ticket_applies_same_deny_before_navigation_gate(self):
         config = live_config()
