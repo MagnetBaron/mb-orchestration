@@ -32,6 +32,13 @@ rr = load_mod("resolve_route_obs", HERE / "resolve-route.py")
 run_brief = load_mod("run_brief_obs", HERE / "run-brief.py")
 doc = load_mod("doctor_obs", HERE / "doctor.py")
 
+ATTESTATION = {
+    "source": "dispatcher-runtime-v1",
+    "observed_at": "2026-08-29T00:00:00+00:00",
+    "expires_at": "2026-08-29T00:01:00+00:00",
+    "digest": "sha256:" + "a" * 64,
+}
+
 
 def _decision(**overrides):
     base = {
@@ -135,6 +142,7 @@ class SchemaAndIdempotencyTests(unittest.TestCase):
         decision = _decision(integration_session={
             "runtime": "grokbot-cursor",
             "canonical_ids": ["visual_qa", "browser", "visual_qa"],
+            "attestation": dict(ATTESTATION),
             "values": {"token": "must-not-escape"},
             "observed_ids": ["private-local-alias"],
         })
@@ -143,20 +151,28 @@ class SchemaAndIdempotencyTests(unittest.TestCase):
         )
         self.assertEqual(ev["integration_session"], {
             "runtime": "grokbot-cursor", "canonical_ids": ["browser", "visual_qa"],
+            "attestation": ATTESTATION,
         })
         self.assertNotIn("must-not-escape", json.dumps(ev))
         self.assertNotIn("private-local-alias", json.dumps(ev))
         self.assertEqual(observe.validate_event(ev), [])
 
         zero = observe.event_from_route_decision(
-            _decision(integration_session={"runtime": "codex", "canonical_ids": []}),
+            _decision(integration_session={
+                "runtime": "codex", "canonical_ids": [], "attestation": dict(ATTESTATION),
+            }),
             run_id="run-session-zero", ts="2026-08-29T00:00:00+00:00",
         )
-        self.assertEqual(zero["integration_session"], {"runtime": "codex", "canonical_ids": []})
+        self.assertEqual(zero["integration_session"], {
+            "runtime": "codex", "canonical_ids": [], "attestation": ATTESTATION,
+        })
 
         scoped = observe.make_event(
             "route_decision", run_id="run-scoped-runtime", ts="2026-08-29T00:00:00+00:00",
-            integration_session={"runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"]},
+            integration_session={
+                "runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"],
+                "attestation": dict(ATTESTATION),
+            },
             unrelated={"runtime": "private@example.test"},
         )
         self.assertEqual(scoped["integration_session"]["runtime"], "grokbot-cursor")

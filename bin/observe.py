@@ -596,10 +596,17 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
     if isinstance(session_summary, dict):
         runtime = session_summary.get("runtime")
         canonical_ids = session_summary.get("canonical_ids")
+        attestation = session_summary.get("attestation") or {}
+        safe_attestation = {
+            key: attestation.get(key)
+            for key in ("source", "observed_at", "expires_at", "digest")
+        }
         session_summary = {
             "runtime": runtime,
             "canonical_ids": sorted({x for x in (canonical_ids or []) if isinstance(x, str) and x}),
-        } if isinstance(runtime, str) and runtime else None
+            "attestation": safe_attestation,
+        } if (isinstance(runtime, str) and runtime
+              and all(isinstance(value, str) and value for value in safe_attestation.values())) else None
     else:
         session_summary = None
     return make_event(

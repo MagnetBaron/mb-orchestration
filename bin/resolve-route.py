@@ -937,7 +937,10 @@ def main(argv=None):
     if integration_session is not None:
         canonical_ids = integration_session["canonical_ids"]
         rendered_ids = ",".join(canonical_ids) if canonical_ids else "[]"
-        print(f"integration session: runtime={integration_session['runtime']} canonical_ids={rendered_ids}")
+        attestation = integration_session["attestation"]
+        print(f"integration session: runtime={integration_session['runtime']} canonical_ids={rendered_ids} "
+              f"source={attestation['source']} observed_at={attestation['observed_at']} "
+              f"expires_at={attestation['expires_at']} digest={attestation['digest']}")
     print(f"review depth: {level}")
     for r in reasons:
         print(f"  · {r}")

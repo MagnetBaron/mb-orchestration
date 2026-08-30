@@ -55,6 +55,7 @@ def main(argv=None) -> int:
         "generated_at": inv.get("generated_at"),
         "refresh_reason": inv.get("refresh_reason"),
         "session_runtime": overlay.get("runtime") if overlay else None,
+        "session_provenance": integrations.session_provenance(overlay),
         "session_persisted": False,
         "cache_mode_0600": integrations.cache_mode_ok(),
         "records": records,

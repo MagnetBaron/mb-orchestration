@@ -45,14 +45,30 @@ python3 bin/detect-integrations.py --check
 python3 bin/detect-integrations.py --session FILE   # use - for stdin
 ```
 
+Codex plugin installation is read only from the active Plugins tab or CLI `/plugins` inventory,
+never from `config.toml` `plugins` keys or the on-disk download cache. OpenAI documents those config
+keys as a plugin-specific MCP allowlist; they are policy overrides, not proof that a plugin is
+installed or enabled ([Plugins](https://learn.chatgpt.com/docs/plugins),
+[config reference](https://learn.chatgpt.com/docs/config-file/config-reference)). Because there is no
+safe non-interactive local manager manifest, Codex plugins fail closed unless the current runtime
+supplies them in the attested session inventory. Profile/project config layers and leftover cache
+directories cannot resurrect a removed plugin.
+
 The single observed-effective predicate in `bin/integrations.py` is consumed by
 `routing.capabilities_of`, `routing.mcp_volume_matches`, skill capability gates, and the generated-
 role MCP mutation map. Production manifest discovery can prove that an MCP/app is configured for
 static generation and validation, but cannot prove installation, verified health, or current-session
 callability. Runtime route selection always requires all three through an ephemeral session overlay,
-so there is no static-active bypass. Supplied overlays are reported only as runtime plus registered
-canonical IDs; an empty ID list distinguishes zero proved capabilities from no overlay, while observed
-aliases and values are never printed or persisted. Grok Bot/Cursor capabilities
+so there is no static-active bypass. Explicit manifest denials (`blocked`, disabled/unconfigured,
+`installed:false`, or negative auth/health) are monotonic and cannot be replaced by a positive overlay.
+Every overlay is schema-versioned, bounded to a one-process random challenge, no more than 60 seconds
+old, expires within 120 seconds, HMAC-SHA256 verified with that challenge, and single-use inside that process. Files must be
+regular non-symlinks with mode 0600; `-` means explicit stdin; `MB_INTEGRATION_SESSION` accepts a file
+path only and cannot implicitly consume stdin or inline JSON. The dispatcher must rotate the 32+
+character `MB_INTEGRATION_SESSION_NONCE` for every launched process and never persist or print it.
+Supplied overlays are reported only as runtime plus registered canonical IDs and value-free
+source/time/digest provenance; an empty ID list distinguishes zero proved capabilities from no
+overlay, while nonces, observed aliases, and values are never printed or persisted. Grok Bot/Cursor capabilities
 are explicitly session-only because those surfaces have no canonical local manifest. Portable synthetic fixtures are explicit
 test inputs only; production routing never loads them unless an operator explicitly sets the fixture
 override.

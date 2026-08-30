@@ -106,7 +106,10 @@ Daily: invoke `/orca` (or the identical `/orchestrate` compatibility alias), the
 Before capability-sensitive routing, refresh safe local state with
 `python3 bin/detect-integrations.py --refresh`. A dispatcher that can enumerate its current
 callable tools passes a one-runtime overlay with `resolve-route.py --integration-session <file>`
-(or `-` for stdin). The overlay is process-scoped and never cached. Suggested/installable,
+(or `-` for stdin). The trusted dispatcher creates the v1 envelope with
+`integrations.build_session_document`, sets a fresh per-process `MB_INTEGRATION_SESSION_NONCE`, and
+uses a mode-0600 file or explicit stdin; inline/reusable/stale assertions fail closed. The overlay is
+process-scoped and never cached. Suggested/installable,
 installed, enabled, configured, blocked/auth-health, and current-session callable states stay
 distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.
 

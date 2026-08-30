@@ -31,13 +31,24 @@
     "dry_run": { "type": "boolean" },
     "integration_session": {
       "type": "object",
-      "required": ["runtime", "canonical_ids"],
+      "required": ["runtime", "canonical_ids", "attestation"],
       "additionalProperties": false,
       "properties": {
         "runtime": { "type": "string", "minLength": 1 },
         "canonical_ids": {
           "type": "array", "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "attestation": {
+          "type": "object",
+          "required": ["source", "observed_at", "expires_at", "digest"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "const": "dispatcher-runtime-v1" },
+            "observed_at": { "type": "string", "minLength": 10 },
+            "expires_at": { "type": "string", "minLength": 10 },
+            "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          }
         }
       }
     },

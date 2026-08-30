@@ -57,10 +57,15 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.old_data = os.environ.get("MB_DATA_DIR")
         self.old_fixture = os.environ.get("MB_INTEGRATION_FIXTURE")
         self.old_source_root = os.environ.get("MB_INTEGRATION_SOURCE_ROOT")
+        self.old_session = os.environ.get("MB_INTEGRATION_SESSION")
+        self.old_session_nonce = os.environ.get("MB_INTEGRATION_SESSION_NONCE")
         self.addCleanup(self._restore_environment)
         self.addCleanup(integrations.reset_process_cache)
         os.environ["MB_DATA_DIR"] = str(self.data)
         os.environ["MB_INTEGRATION_FIXTURE"] = str(self.fixture)
+        self.session_nonce = "unit-test-process-challenge-00000001"
+        os.environ["MB_INTEGRATION_SESSION_NONCE"] = self.session_nonce
+        os.environ.pop("MB_INTEGRATION_SESSION", None)
         self.write([record()])
         integrations.reset_process_cache()
 
@@ -69,6 +74,8 @@ class IntegrationInventoryTests(unittest.TestCase):
             ("MB_DATA_DIR", self.old_data),
             ("MB_INTEGRATION_FIXTURE", self.old_fixture),
             ("MB_INTEGRATION_SOURCE_ROOT", self.old_source_root),
+            ("MB_INTEGRATION_SESSION", self.old_session),
+            ("MB_INTEGRATION_SESSION_NONCE", self.old_session_nonce),
         ):
             if value is None:
                 os.environ.pop(key, None)
@@ -77,6 +84,15 @@ class IntegrationInventoryTests(unittest.TestCase):
 
     def write(self, records):
         self.fixture.write_text(json.dumps({"records": records}))
+
+    def session_document(self, runtime, records, **times):
+        return integrations.build_session_document(
+            runtime, records, os.environ["MB_INTEGRATION_SESSION_NONCE"], **times
+        )
+
+    def write_session(self, path, runtime, records, **times):
+        path.write_text(json.dumps(self.session_document(runtime, records, **times)))
+        path.chmod(0o600)
 
     def test_add_remove_disable_and_fingerprint_refresh(self):
         first = integrations.refresh()
@@ -168,7 +184,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         inv = integrations.refresh(force=True)
         before = integrations.cache_path().read_bytes()
         session_file = Path(self.tmp.name) / "session.json"
-        session_file.write_text(json.dumps({"runtime": "codex", "records": [record()]}))
+        self.write_session(session_file, "codex", [record()])
         overlay = integrations.load_session(str(session_file))
         ok, _ = integrations.effective("codex", "mcp", "github", require_callable=True,
                                        inv=inv, overlay=overlay)
@@ -179,7 +195,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertEqual(before, integrations.cache_path().read_bytes())
         self.assertNotIn("session", integrations.cache_path().read_text())
 
-        session_file.write_text(json.dumps({"runtime": "codex", "records": [record(runtime="claude")]}))
+        self.write_session(session_file, "codex", [record(runtime="claude")])
         with self.assertRaisesRegex(integrations.InventoryError, "cross runtime"):
             integrations.load_session(str(session_file))
 
@@ -188,36 +204,177 @@ class IntegrationInventoryTests(unittest.TestCase):
         inv = integrations.refresh(force=True)
         session_file = Path(self.tmp.name) / "grokbot-session.json"
         row = record(runtime="grokbot-cursor", kind="capability", ident="visual-qa")
-        row["token"] = "must-not-escape"
-        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [row]}))
+        self.write_session(session_file, "grokbot-cursor", [row])
         overlay = integrations.load_session(str(session_file))
         ok, _ = integrations.effective(
             "grokbot-cursor", "capability", "visual_qa", require_callable=True,
             inv=inv, overlay=overlay,
         )
         self.assertTrue(ok)
-        self.assertEqual(
-            integrations.session_provenance(overlay),
-            {"runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"]},
-        )
+        provenance = integrations.session_provenance(overlay)
+        self.assertEqual(provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(provenance["canonical_ids"], ["visual_qa"])
+        self.assertEqual(set(provenance["attestation"]), {
+            "source", "observed_at", "expires_at", "digest",
+        })
+        self.assertNotIn("nonce", json.dumps(provenance))
+        self.assertNotIn(self.session_nonce, json.dumps(provenance))
         self.assertNotIn("must-not-escape", json.dumps(integrations.session_provenance(overlay)))
 
         failed = record(runtime="grokbot-cursor", kind="capability", ident="browser", callable=False)
-        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [failed]}))
-        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
-            "runtime": "grokbot-cursor", "canonical_ids": [],
-        })
+        self.write_session(session_file, "grokbot-cursor", [failed])
+        failed_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
+        self.assertEqual(failed_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(failed_provenance["canonical_ids"], [])
 
         unknown = record(runtime="grokbot-cursor", kind="capability", ident="not-registered")
-        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [unknown]}))
-        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
-            "runtime": "grokbot-cursor", "canonical_ids": [],
-        })
+        self.write_session(session_file, "grokbot-cursor", [unknown])
+        unknown_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
+        self.assertEqual(unknown_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(unknown_provenance["canonical_ids"], [])
 
-        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": []}))
-        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
-            "runtime": "grokbot-cursor", "canonical_ids": [],
-        })
+        self.write_session(session_file, "grokbot-cursor", [])
+        empty_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
+        self.assertEqual(empty_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(empty_provenance["canonical_ids"], [])
+
+    def test_session_attestation_rejects_stale_future_tampered_reused_and_secret_fields(self):
+        path = Path(self.tmp.name) / "attestation.json"
+        now = datetime.now(timezone.utc)
+
+        self.write_session(
+            path, "codex", [record()],
+            observed_at=now - timedelta(seconds=90),
+            expires_at=now + timedelta(seconds=10),
+        )
+        with self.assertRaisesRegex(integrations.InventoryError, "stale"):
+            integrations.load_session(str(path))
+
+        self.write_session(
+            path, "codex", [record()],
+            observed_at=now + timedelta(seconds=10),
+            expires_at=now + timedelta(seconds=50),
+        )
+        with self.assertRaisesRegex(integrations.InventoryError, "future"):
+            integrations.load_session(str(path))
+
+        document = self.session_document("codex", [record()])
+        document["records"][0]["callable"] = False
+        path.write_text(json.dumps(document))
+        path.chmod(0o600)
+        with self.assertRaisesRegex(integrations.InventoryError, "digest mismatch"):
+            integrations.load_session(str(path))
+
+        secret_record = record(token="must-not-escape")
+        path.write_text(json.dumps(self.session_document("codex", [secret_record])))
+        path.chmod(0o600)
+        with self.assertRaisesRegex(integrations.InventoryError, "unknown fields"):
+            integrations.load_session(str(path))
+
+        self.write_session(path, "codex", [record()])
+        first = integrations.load_session(str(path))
+        digest = first["attestation"]["digest"]
+        self.assertNotIn("must-not-escape", json.dumps(integrations.session_provenance(first)))
+        with self.assertRaisesRegex(integrations.InventoryError, "already consumed"):
+            integrations.load_session(str(path))
+        self.assertRegex(digest, r"^sha256:[a-f0-9]{64}$")
+
+        wrong_nonce = integrations.build_session_document("codex", [record()], "different-process-challenge-000000")
+        path.write_text(json.dumps(wrong_nonce))
+        path.chmod(0o600)
+        with self.assertRaisesRegex(integrations.InventoryError, "process challenge"):
+            integrations.load_session(str(path))
+
+        self.write_session(path, "codex", [record(ident="dfs-mcp")])
+        path.chmod(0o644)
+        with self.assertRaisesRegex(integrations.InventoryError, "owner-only"):
+            integrations.load_session(str(path))
+
+        os.environ["MB_INTEGRATION_SESSION"] = json.dumps(self.session_document("codex", []))
+        with self.assertRaisesRegex(integrations.InventoryError, "inline session JSON is forbidden"):
+            integrations.load_session()
+
+    def test_manifest_denials_are_monotonic_over_positive_session_attestation(self):
+        path = Path(self.tmp.name) / "positive-session.json"
+        self.write_session(path, "codex", [record()])
+        overlay = integrations.load_session(str(path))
+        config = integrations.load_adapters()
+        positive = integrations._record(config, "codex", "mcp", "github")
+        self.assertTrue(integrations.effective(
+            "codex", "mcp", "github", require_callable=True,
+            inv={"records": [positive]}, overlay=overlay,
+        )[0])
+        denials = (
+            dict(positive, blocked=True, health="blocked"),
+            dict(positive, enabled=False),
+            dict(positive, configured=False),
+            dict(positive, installed=False),
+            dict(positive, health="needs_auth"),
+        )
+        for denied in denials:
+            with self.subTest(denied=denied):
+                ok, reason = integrations.effective(
+                    "codex", "mcp", "github", require_callable=True,
+                    inv={"records": [denied]}, overlay=overlay,
+                )
+                self.assertFalse(ok)
+                self.assertIn("explicitly denied", reason)
+                merged = integrations.merged_records({"records": [denied]}, overlay)
+                self.assertTrue(integrations._explicit_negative(merged[0]))
+
+        # A later positive duplicate must not erase earlier negative evidence in
+        # the merged diagnostic view, either.
+        merged = integrations.merged_records(
+            {"records": [denials[0], positive]}, overlay,
+        )
+        self.assertEqual(len(merged), 1)
+        self.assertTrue(integrations._explicit_negative(merged[0]))
+
+    def test_codex_plugin_config_cache_profile_and_project_layers_are_not_install_inventory(self):
+        os.environ.pop("MB_INTEGRATION_FIXTURE", None)
+        source_root = Path(self.tmp.name) / "codex-plugin-home"
+        os.environ["MB_INTEGRATION_SOURCE_ROOT"] = str(source_root)
+        config_path = source_root / ".codex/config.toml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            '[plugins."magnet-baron-skills@magnet-baron"]\nenabled = true\n'
+            '[profiles.shop.plugins."magnet-baron-skills@magnet-baron"]\nenabled = true\n'
+        )
+        project_config = source_root / "project/.codex/config.toml"
+        project_config.parent.mkdir(parents=True, exist_ok=True)
+        project_config.write_text(
+            '[plugins."magnet-baron-skills@magnet-baron"]\nenabled = true\n'
+        )
+        cached_manifest = (
+            source_root / ".codex/plugins/cache/magnet-baron/magnet-baron-skills/0.2.9/"
+            ".codex-plugin/plugin.json"
+        )
+        cached_manifest.parent.mkdir(parents=True, exist_ok=True)
+        cached_manifest.write_text('{"name":"magnet-baron-skills"}')
+        integrations.reset_process_cache()
+        records, events = integrations.discover(integrations.load_adapters())
+        self.assertEqual(events, [])
+        self.assertFalse(any(r["runtime"] == "codex" and r["kind"] == "plugin" for r in records))
+        inv = {"records": records}
+        self.assertFalse(integrations.plugin_effective(
+            "codex", "magnet-baron-skills", inv=inv
+        )[0])
+
+        installed = Path(self.tmp.name) / "installed-session.json"
+        self.write_session(installed, "codex", [record(
+            kind="plugin", ident="magnet-baron-skills@magnet-baron", callable=False,
+        )])
+        active_overlay = integrations.load_session(str(installed))
+        self.assertTrue(integrations.plugin_effective(
+            "codex", "magnet-baron-skills", inv=inv, overlay=active_overlay
+        )[0])
+
+        removed = Path(self.tmp.name) / "removed-session.json"
+        self.write_session(removed, "codex", [])
+        removed_overlay = integrations.load_session(str(removed))
+        self.assertFalse(integrations.plugin_effective(
+            "codex", "magnet-baron-skills", inv=inv, overlay=removed_overlay
+        )[0])
 
     def test_pid_owned_lock_protects_normal_live_owner_and_reclaims_recycled_or_dead(self):
         path = Path(self.tmp.name) / "owned.lock"
@@ -274,10 +431,10 @@ class IntegrationInventoryTests(unittest.TestCase):
         integrations.reset_process_cache()
         inv = integrations.refresh(force=True)
         hits = {(r["kind"], r["canonical_id"]): r for r in inv["records"] if r.get("canonical_id")}
-        for key in (("mcp", "github"), ("plugin", "magnet-baron-skills")):
-            self.assertTrue(hits[key]["blocked"])
-            self.assertFalse(hits[key]["enabled"])
-            self.assertEqual(hits[key]["health"], "blocked")
+        self.assertTrue(hits[("mcp", "github")]["blocked"])
+        self.assertFalse(hits[("mcp", "github")]["enabled"])
+        self.assertEqual(hits[("mcp", "github")]["health"], "blocked")
+        self.assertNotIn(("plugin", "magnet-baron-skills"), hits)
 
     def test_real_manifest_discover_capabilities_and_role_validation_without_fixture(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)
@@ -347,7 +504,7 @@ class IntegrationInventoryTests(unittest.TestCase):
     def test_cli_session_merge_json_and_check(self):
         self.write([])
         session_file = Path(self.tmp.name) / "session.json"
-        session_file.write_text(json.dumps({"runtime": "codex", "records": [record()]}))
+        self.write_session(session_file, "codex", [record()])
         env = dict(os.environ)
         got = subprocess.run(
             [sys.executable, str(HERE / "detect-integrations.py"), "--json", "--session", str(session_file), "--check"],
@@ -372,9 +529,10 @@ class IntegrationInventoryTests(unittest.TestCase):
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
         self.assertEqual(routed.returncode, 0, routed.stderr)
-        self.assertEqual(json.loads(routed.stdout)["integration_session"], {
-            "runtime": "codex", "canonical_ids": ["github"],
-        })
+        routed_session = json.loads(routed.stdout)["integration_session"]
+        self.assertEqual(routed_session["runtime"], "codex")
+        self.assertEqual(routed_session["canonical_ids"], ["github"])
+        self.assertRegex(routed_session["attestation"]["digest"], r"^sha256:[a-f0-9]{64}$")
         human = subprocess.run(
             [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
              "--intake-provider", "opus-5", "--integration-session", str(session_file),
@@ -382,9 +540,9 @@ class IntegrationInventoryTests(unittest.TestCase):
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
         self.assertEqual(human.returncode, 0, human.stderr)
-        self.assertIn("integration session: runtime=codex canonical_ids=github", human.stdout)
+        self.assertIn("integration session: runtime=codex canonical_ids=github source=dispatcher-runtime-v1", human.stdout)
 
-        session_file.write_text(json.dumps({"runtime": "codex", "records": []}))
+        self.write_session(session_file, "codex", [])
         empty = subprocess.run(
             [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
              "--intake-provider", "opus-5", "--integration-session", str(session_file),
@@ -392,9 +550,9 @@ class IntegrationInventoryTests(unittest.TestCase):
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
         self.assertEqual(empty.returncode, 0, empty.stderr)
-        self.assertEqual(json.loads(empty.stdout)["integration_session"], {
-            "runtime": "codex", "canonical_ids": [],
-        })
+        empty_session = json.loads(empty.stdout)["integration_session"]
+        self.assertEqual(empty_session["runtime"], "codex")
+        self.assertEqual(empty_session["canonical_ids"], [])
         empty_human = subprocess.run(
             [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
              "--intake-provider", "opus-5", "--integration-session", str(session_file),

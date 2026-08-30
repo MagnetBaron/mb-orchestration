@@ -4,19 +4,23 @@
 The inventory is observation, never authorization. ``connectors.json`` remains the
 maximum vetted scope; an MCP grant additionally needs fresh runtime/session proof.
 Only allowlisted manifests are parsed and only names plus boolean/status metadata are
-retained. Session overlays are process-scoped and are never written to the cache.
+retained. Session overlays are challenge-bound, short-lived, process-scoped, and never
+written to the cache. Explicit negative runtime evidence is monotonic: an overlay cannot
+turn a blocked, disabled, unconfigured, or uninstalled integration into an effective one.
 """
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
+import re
 import stat
 import tempfile
 import time
 import tomllib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import mborch
@@ -26,8 +30,20 @@ EVENTS_NAME = "integration-inventory-events.jsonl"
 HEALTH = frozenset({"verified", "unknown", "needs_auth", "blocked", "unavailable"})
 KINDS = frozenset({"mcp", "plugin", "app", "connector", "capability"})
 LOCK_RECYCLED_PID_MAX_AGE_SECONDS = 3600.0
+SESSION_SCHEMA_VERSION = 1
+SESSION_SOURCE = "dispatcher-runtime-v1"
+SESSION_MAX_AGE_SECONDS = 60.0
+SESSION_MAX_TTL_SECONDS = 120.0
+SESSION_FUTURE_SKEW_SECONDS = 5.0
+SESSION_MAX_BYTES = 262_144
+_SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$")
+_SESSION_BOOL_KEYS = frozenset({"enabled", "configured", "blocked", "callable"})
+_SESSION_RECORD_KEYS = frozenset({
+    "runtime", "kind", "id", "observed_id", "installed", *_SESSION_BOOL_KEYS, "health",
+})
 _PROCESS_INVENTORY = None
 _PROCESS_SESSION = None
+_CONSUMED_SESSION_DIGESTS: dict[str, datetime] = {}
 
 
 class InventoryError(ValueError):
@@ -61,6 +77,11 @@ def load_adapters() -> dict:
             raise InventoryError("every integration source needs id/runtime/kind/path/format/key")
         if src["kind"] not in KINDS:
             raise InventoryError(f"integration source {src['id']}: unknown kind")
+        evidence = src.get("evidence", "observation")
+        if evidence not in {"observation", "policy-only"}:
+            raise InventoryError(f"integration source {src['id']}: unknown evidence class")
+        if evidence == "policy-only" and (src["runtime"], src["kind"]) != ("codex", "plugin"):
+            raise InventoryError(f"integration source {src['id']}: policy-only is restricted to Codex plugin config")
         raw = str(src["path"])
         if "*" in raw or "?" in raw or any(x in raw.lower() for x in ("backup", "cache", "marketplace", "log")):
             raise InventoryError(f"integration source {src['id']}: non-canonical path is forbidden")
@@ -91,9 +112,13 @@ def _fingerprint(path: Path) -> dict:
 
 
 def source_fingerprints(config: dict) -> dict:
+    adapter_digest = hashlib.sha256(
+        json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
     fixture = os.environ.get("MB_INTEGRATION_FIXTURE")
     if fixture:
-        return {"fixture": _fingerprint(Path(fixture).expanduser())}
+        return {"adapter_config": {"sha256": adapter_digest},
+                "fixture": _fingerprint(Path(fixture).expanduser())}
     by_path = {}
     out = {}
     for src in config["sources"]:
@@ -102,6 +127,7 @@ def source_fingerprints(config: dict) -> dict:
         if key not in by_path:
             by_path[key] = _fingerprint(path)
         out[src["id"]] = by_path[key]
+    out["adapter_config"] = {"sha256": adapter_digest}
     return out
 
 
@@ -236,7 +262,12 @@ def discover(config: dict) -> tuple[list[dict], list[str]]:
     records, events, parsed_cache = [], [], {}
     for src in config["sources"]:
         try:
-            for name, disabled in _safe_names(src, parsed_cache):
+            names = _safe_names(src, parsed_cache)
+            if src.get("evidence") == "policy-only":
+                # Codex `plugins` config is an MCP allowlist/policy layer. It is
+                # not the Plugins tab or `/plugins` installation inventory.
+                continue
+            for name, disabled in names:
                 records.append(_record(config, src["runtime"], src["kind"], name,
                                        disabled=disabled, source=src["id"]))
         except InventoryError:
@@ -423,38 +454,193 @@ def inventory() -> dict:
     return _PROCESS_INVENTORY
 
 
-def load_session(source: str | None = None) -> dict | None:
-    global _PROCESS_SESSION
+def _session_iso(value: datetime) -> str:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise InventoryError("session attestation timestamps must include a timezone")
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _session_unsigned(data: dict) -> dict:
+    attestation = data.get("attestation") or {}
+    return {
+        "schema_version": data.get("schema_version"),
+        "runtime": data.get("runtime"),
+        "records": data.get("records"),
+        "attestation": {
+            "source": attestation.get("source"),
+            "observed_at": attestation.get("observed_at"),
+            "expires_at": attestation.get("expires_at"),
+            "nonce_digest": attestation.get("nonce_digest"),
+        },
+    }
+
+
+def _session_digest(data: dict, nonce: str) -> str:
+    encoded = json.dumps(_session_unsigned(data), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hmac.new(nonce.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
+
+
+def build_session_document(runtime: str, records: list[dict], nonce: str, *,
+                           observed_at: datetime | None = None,
+                           expires_at: datetime | None = None) -> dict:
+    """Build the strict value-free v1 envelope a trusted runtime dispatcher emits."""
+    if not isinstance(nonce, str) or not 32 <= len(nonce) <= 512:
+        raise InventoryError("session attestation nonce must contain 32 to 512 characters")
+    observed_at = observed_at or datetime.now(timezone.utc)
+    expires_at = expires_at or (observed_at + timedelta(seconds=60))
+    doc = {
+        "schema_version": SESSION_SCHEMA_VERSION,
+        "runtime": runtime,
+        "records": records,
+        "attestation": {
+            "source": SESSION_SOURCE,
+            "observed_at": _session_iso(observed_at),
+            "expires_at": _session_iso(expires_at),
+            "nonce_digest": "sha256:" + hashlib.sha256(str(nonce).encode("utf-8")).hexdigest(),
+        },
+    }
+    doc["attestation"]["digest"] = _session_digest(doc, nonce)
+    return doc
+
+
+def _parse_session_time(value, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise InventoryError(f"session attestation {field} must be an ISO timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise InventoryError(f"session attestation {field} is malformed") from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise InventoryError(f"session attestation {field} must include a timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _read_session_source(source: str | None) -> str | None:
+    from_env = source is None
     if source is None:
         source = os.environ.get("MB_INTEGRATION_SESSION")
     if not source:
         return None
+    if not isinstance(source, str):
+        raise InventoryError("session source must be a file path or '-' for explicit stdin")
+    if source.lstrip().startswith(("{", "[")):
+        raise InventoryError("inline session JSON is forbidden; use a mode-0600 file or explicit stdin")
     if source == "-":
+        if from_env:
+            raise InventoryError("MB_INTEGRATION_SESSION may not request stdin")
         import sys
-        raw = sys.stdin.read()
+        raw = sys.stdin.read(SESSION_MAX_BYTES + 1)
     else:
-        raw = Path(source).expanduser().read_text()
+        path = Path(source).expanduser()
+        if path.is_symlink() or not path.is_file():
+            raise InventoryError("session overlay file must be a regular non-symlink file")
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if mode & 0o077:
+            raise InventoryError("session overlay file must be owner-only (mode 0600)")
+        if path.stat().st_size > SESSION_MAX_BYTES:
+            raise InventoryError("session overlay exceeds the bounded size limit")
+        raw = path.read_text()
+    if len(raw.encode("utf-8")) > SESSION_MAX_BYTES:
+        raise InventoryError("session overlay exceeds the bounded size limit")
+    return raw
+
+
+def _validate_session_envelope(data: dict, now: datetime | None = None) -> tuple[datetime, datetime, str]:
+    if set(data) != {"schema_version", "runtime", "records", "attestation"}:
+        raise InventoryError("session overlay has unknown or missing top-level fields")
+    if data.get("schema_version") != SESSION_SCHEMA_VERSION:
+        raise InventoryError(f"session overlay schema_version must be {SESSION_SCHEMA_VERSION}")
+    runtime = data.get("runtime")
+    records = data.get("records")
+    if not isinstance(runtime, str) or not _SAFE_SESSION_ID.fullmatch(runtime):
+        raise InventoryError("session overlay needs one safe runtime id")
+    if not isinstance(records, list) or len(records) > 500:
+        raise InventoryError("session overlay records must be a bounded list")
+    attestation = data.get("attestation")
+    expected_attestation = {"source", "observed_at", "expires_at", "nonce_digest", "digest"}
+    if not isinstance(attestation, dict) or set(attestation) != expected_attestation:
+        raise InventoryError("session attestation has unknown or missing fields")
+    if attestation.get("source") != SESSION_SOURCE:
+        raise InventoryError("session attestation source is not runtime-trusted")
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    observed_at = _parse_session_time(attestation.get("observed_at"), "observed_at")
+    expires_at = _parse_session_time(attestation.get("expires_at"), "expires_at")
+    if observed_at > now + timedelta(seconds=SESSION_FUTURE_SKEW_SECONDS):
+        raise InventoryError("session attestation is from the future")
+    if (now - observed_at).total_seconds() > SESSION_MAX_AGE_SECONDS:
+        raise InventoryError("session attestation is stale")
+    lifetime = (expires_at - observed_at).total_seconds()
+    if lifetime <= 0 or lifetime > SESSION_MAX_TTL_SECONDS or expires_at <= now:
+        raise InventoryError("session attestation expiry is invalid or stale")
+    nonce = os.environ.get("MB_INTEGRATION_SESSION_NONCE")
+    if not isinstance(nonce, str) or not 32 <= len(nonce) <= 512:
+        raise InventoryError("fresh MB_INTEGRATION_SESSION_NONCE is required")
+    expected_nonce = "sha256:" + hashlib.sha256(nonce.encode("utf-8")).hexdigest()
+    if not hmac.compare_digest(str(attestation.get("nonce_digest")), expected_nonce):
+        raise InventoryError("session attestation is not bound to this process challenge")
+    claimed_digest = attestation.get("digest")
+    if not isinstance(claimed_digest, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", claimed_digest):
+        raise InventoryError("session attestation digest is malformed")
+    expected_digest = _session_digest(data, nonce)
+    if not hmac.compare_digest(claimed_digest, expected_digest):
+        raise InventoryError("session attestation digest mismatch")
+    for old_digest, old_expiry in list(_CONSUMED_SESSION_DIGESTS.items()):
+        if old_expiry <= now:
+            del _CONSUMED_SESSION_DIGESTS[old_digest]
+    if claimed_digest in _CONSUMED_SESSION_DIGESTS:
+        raise InventoryError("session attestation was already consumed in this process")
+    return observed_at, expires_at, claimed_digest
+
+
+def load_session(source: str | None = None) -> dict | None:
+    global _PROCESS_SESSION
+    raw = _read_session_source(source)
+    if raw is None:
+        return None
+    _PROCESS_SESSION = None
     try:
         data = json.loads(raw)
     except Exception:
         raise InventoryError("session overlay is malformed JSON") from None
-    runtime = data.get("runtime") if isinstance(data, dict) else None
-    records = data.get("records") if isinstance(data, dict) else None
-    if not isinstance(runtime, str) or not runtime or not isinstance(records, list):
-        raise InventoryError("session overlay needs one runtime and a records list")
+    if not isinstance(data, dict):
+        raise InventoryError("session overlay must be a JSON object")
+    observed_at, expires_at, digest = _validate_session_envelope(data)
+    runtime = data["runtime"]
+    records = data["records"]
     clean = []
     for raw_rec in records:
+        if not isinstance(raw_rec, dict) or not set(raw_rec).issubset(_SESSION_RECORD_KEYS):
+            raise InventoryError("session record has unknown fields")
         merged = dict(raw_rec) if isinstance(raw_rec, dict) else raw_rec
         if isinstance(merged, dict):
             if merged.get("runtime") not in (None, runtime):
                 raise InventoryError("session records may not cross runtime boundaries")
             merged["runtime"] = runtime
+            observed_id = merged.get("observed_id") or merged.get("id")
+            if not isinstance(observed_id, str) or not _SAFE_SESSION_ID.fullmatch(observed_id):
+                raise InventoryError("session record id is malformed")
+            for key in _SESSION_BOOL_KEYS:
+                if key in merged and not isinstance(merged[key], bool):
+                    raise InventoryError(f"session record {observed_id}: {key} must be boolean")
+            if "installed" in merged and merged["installed"] is not None and not isinstance(merged["installed"], bool):
+                raise InventoryError(f"session record {observed_id}: installed must be boolean or null")
         rec = _validate_record(merged, session=True)
         canonical = _canonical(load_adapters(), runtime, rec["kind"], rec["observed_id"], session=True)
         rec["canonical_id"] = canonical
         rec["registered"] = canonical is not None
         clean.append(rec)
-    _PROCESS_SESSION = {"runtime": runtime, "process_scope": True, "records": clean}
+    _CONSUMED_SESSION_DIGESTS[digest] = expires_at
+    _PROCESS_SESSION = {
+        "runtime": runtime,
+        "process_scope": True,
+        "records": clean,
+        "attestation": {
+            "source": data["attestation"]["source"],
+            "observed_at": _session_iso(observed_at),
+            "expires_at": _session_iso(expires_at),
+            "digest": digest,
+        },
+    }
     return _PROCESS_SESSION
 
 
@@ -479,17 +665,56 @@ def session_provenance(overlay: dict | None = None) -> dict | None:
         and effective(runtime, rec.get("kind"), rec["canonical_id"], require_callable=True,
                       inv=empty, overlay=overlay)[0]
     })
-    return {"runtime": runtime, "canonical_ids": canonical_ids}
+    attestation = overlay.get("attestation") or {}
+    return {
+        "runtime": runtime,
+        "canonical_ids": canonical_ids,
+        "attestation": {
+            "source": attestation.get("source"),
+            "observed_at": attestation.get("observed_at"),
+            "expires_at": attestation.get("expires_at"),
+            "digest": attestation.get("digest"),
+        },
+    }
+
+
+def _overlay_is_fresh(overlay: dict | None) -> bool:
+    if not overlay:
+        return False
+    try:
+        expiry = _parse_session_time((overlay.get("attestation") or {}).get("expires_at"), "expires_at")
+    except InventoryError:
+        return False
+    return expiry > datetime.now(timezone.utc)
+
+
+def _explicit_negative(rec: dict) -> bool:
+    return bool(
+        rec.get("blocked") is True
+        or rec.get("enabled") is False
+        or rec.get("configured") is False
+        or rec.get("installed") is False
+        or rec.get("health") in {"needs_auth", "blocked", "unavailable"}
+    )
 
 
 def merged_records(inv: dict | None = None, overlay: dict | None = None) -> list[dict]:
     inv = inventory() if inv is None else inv
     overlay = session() if overlay is None else overlay
-    by_key = {(r.get("runtime"), r.get("kind"), r.get("canonical_id") or r.get("observed_id")): dict(r)
-              for r in inv.get("records", []) if isinstance(r, dict)}
-    if overlay:
+    by_key = {}
+    for r in inv.get("records", []):
+        if not isinstance(r, dict):
+            continue
+        key = (r.get("runtime"), r.get("kind"), r.get("canonical_id") or r.get("observed_id"))
+        # Preserve a negative observation even when a duplicate positive base record
+        # follows it. This keeps the merged diagnostic view aligned with effective().
+        if key not in by_key or _explicit_negative(r):
+            by_key[key] = dict(r)
+    if _overlay_is_fresh(overlay):
         for r in overlay.get("records", []):
             key = (r.get("runtime"), r.get("kind"), r.get("canonical_id") or r.get("observed_id"))
+            if key in by_key and _explicit_negative(by_key[key]):
+                continue
             by_key[key] = dict(r)
     return sorted(by_key.values(), key=lambda r: (str(r.get("runtime")), str(r.get("kind")), str(r.get("observed_id"))))
 
@@ -501,8 +726,19 @@ def provider_runtime(provider_id: str, config: dict | None = None) -> str | None
 
 def effective(runtime: str, kind: str, canonical_id: str, *, require_callable: bool,
               inv: dict | None = None, overlay: dict | None = None) -> tuple[bool, str]:
-    hits = [r for r in merged_records(inv, overlay)
-            if r.get("runtime") == runtime and r.get("kind") == kind and r.get("canonical_id") == canonical_id]
+    inv = inventory() if inv is None else inv
+    overlay = session() if overlay is None else overlay
+    base_hits = [r for r in inv.get("records", []) if isinstance(r, dict)
+                 and r.get("runtime") == runtime and r.get("kind") == kind
+                 and r.get("canonical_id") == canonical_id]
+    if any(_explicit_negative(rec) for rec in base_hits):
+        return False, f"{runtime}:{kind}:{canonical_id} is explicitly denied by observed runtime state"
+    overlay_hits = []
+    if _overlay_is_fresh(overlay) and overlay.get("runtime") == runtime:
+        overlay_hits = [r for r in overlay.get("records", []) if isinstance(r, dict)
+                        and r.get("runtime") == runtime and r.get("kind") == kind
+                        and r.get("canonical_id") == canonical_id]
+    hits = base_hits + overlay_hits
     if not hits:
         return False, f"{runtime}:{kind}:{canonical_id} is not freshly observed"
     for rec in hits:
