@@ -699,6 +699,12 @@ def _explicit_negative(rec: dict) -> bool:
 
 
 def merged_records(inv: dict | None = None, overlay: dict | None = None) -> list[dict]:
+    """Coalesce observations by canonical identity with explicit denial winning.
+
+    This is the single ordering rule shared by diagnostics and effective routing.
+    It intentionally treats aliases that resolve to the same canonical ID as one
+    integration, regardless of record source or input ordering.
+    """
     inv = inventory() if inv is None else inv
     overlay = session() if overlay is None else overlay
     by_key = {}
@@ -726,19 +732,11 @@ def provider_runtime(provider_id: str, config: dict | None = None) -> str | None
 
 def effective(runtime: str, kind: str, canonical_id: str, *, require_callable: bool,
               inv: dict | None = None, overlay: dict | None = None) -> tuple[bool, str]:
-    inv = inventory() if inv is None else inv
-    overlay = session() if overlay is None else overlay
-    base_hits = [r for r in inv.get("records", []) if isinstance(r, dict)
-                 and r.get("runtime") == runtime and r.get("kind") == kind
-                 and r.get("canonical_id") == canonical_id]
-    if any(_explicit_negative(rec) for rec in base_hits):
+    hits = [r for r in merged_records(inv, overlay)
+            if r.get("runtime") == runtime and r.get("kind") == kind
+            and r.get("canonical_id") == canonical_id]
+    if any(_explicit_negative(rec) for rec in hits):
         return False, f"{runtime}:{kind}:{canonical_id} is explicitly denied by observed runtime state"
-    overlay_hits = []
-    if _overlay_is_fresh(overlay) and overlay.get("runtime") == runtime:
-        overlay_hits = [r for r in overlay.get("records", []) if isinstance(r, dict)
-                        and r.get("runtime") == runtime and r.get("kind") == kind
-                        and r.get("canonical_id") == canonical_id]
-    hits = base_hits + overlay_hits
     if not hits:
         return False, f"{runtime}:{kind}:{canonical_id} is not freshly observed"
     for rec in hits:

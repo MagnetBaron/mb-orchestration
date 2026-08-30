@@ -61,6 +61,8 @@ static generation and validation, but cannot prove installation, verified health
 callability. Runtime route selection always requires all three through an ephemeral session overlay,
 so there is no static-active bypass. Explicit manifest denials (`blocked`, disabled/unconfigured,
 `installed:false`, or negative auth/health) are monotonic and cannot be replaced by a positive overlay.
+Manifest and session records are coalesced by runtime, kind, and canonical ID; denial wins across
+duplicate records and aliases in either input order, including plugin removal observations.
 Every overlay is schema-versioned, bounded to a one-process random challenge, no more than 60 seconds
 old, expires within 120 seconds, HMAC-SHA256 verified with that challenge, and single-use inside that process. Files must be
 regular non-symlinks with mode 0600; `-` means explicit stdin; `MB_INTEGRATION_SESSION` accepts a file

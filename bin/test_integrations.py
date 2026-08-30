@@ -330,6 +330,103 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertTrue(integrations._explicit_negative(merged[0]))
 
+    def test_session_denials_coalesce_across_order_aliases_routing_and_provenance(self):
+        path = Path(self.tmp.name) / "contradictory-session.json"
+        config = integrations.load_adapters()
+        base_positive = integrations._record(config, "codex", "mcp", "github")
+        session_positive = record()
+        session_negative = record(enabled=False)
+
+        # A negative session observation defeats a positive manifest and does
+        # not enter the routing capability set.
+        self.write_session(path, "codex", [session_negative])
+        overlay = integrations.load_session(str(path))
+        ok, reason = integrations.effective(
+            "codex", "mcp", "github", require_callable=True,
+            inv={"records": [base_positive]}, overlay=overlay,
+        )
+        self.assertFalse(ok)
+        self.assertIn("explicitly denied", reason)
+        connectors = {"mcp_connectors": {"github": {
+            "status": "active", "available_on": ["codex-sol"], "class": "code",
+        }}}
+        capabilities = routing.capabilities_of(
+            "codex-sol", {"capabilities": []}, connectors,
+            inventory={"records": [base_positive]}, session=overlay,
+        )
+        self.assertNotIn("github", capabilities)
+
+        # Contradictory session records are order-independent: denial wins.
+        for rows in (
+            [session_negative, session_positive],
+            [session_positive, session_negative],
+        ):
+            with self.subTest(order=[row["enabled"] for row in rows]):
+                self.write_session(path, "codex", rows)
+                overlay = integrations.load_session(str(path))
+                self.assertFalse(integrations.effective(
+                    "codex", "mcp", "github", require_callable=True,
+                    inv={"records": [base_positive]}, overlay=overlay,
+                )[0])
+                merged = integrations.merged_records(
+                    {"records": [base_positive]}, overlay,
+                )
+                github = [row for row in merged if row.get("canonical_id") == "github"]
+                self.assertEqual(len(github), 1)
+                self.assertTrue(integrations._explicit_negative(github[0]))
+
+        # Different aliases resolving to one canonical capability also coalesce
+        # with denial winning, and the denied ID is absent from provenance.
+        alias_positive = record(
+            runtime="grokbot-cursor", kind="capability", ident="visual-qa",
+        )
+        canonical_negative = record(
+            runtime="grokbot-cursor", kind="capability", ident="visual_qa",
+            blocked=True,
+        )
+        for rows in (
+            [alias_positive, canonical_negative],
+            [canonical_negative, alias_positive],
+        ):
+            self.write_session(path, "grokbot-cursor", rows)
+            overlay = integrations.load_session(str(path))
+            self.assertFalse(integrations.effective(
+                "grokbot-cursor", "capability", "visual_qa", require_callable=True,
+                inv={"records": []}, overlay=overlay,
+            )[0])
+            self.assertEqual(integrations.session_provenance(overlay)["canonical_ids"], [])
+            merged = integrations.merged_records({"records": []}, overlay)
+            self.assertEqual(len(merged), 1)
+            self.assertTrue(integrations._explicit_negative(merged[0]))
+
+    def test_plugin_removal_denials_defeat_positive_manifest_and_session(self):
+        path = Path(self.tmp.name) / "plugin-removal-session.json"
+        plugin_id = "magnet-baron-skills@magnet-baron"
+        positive = record(kind="plugin", ident=plugin_id, callable=False)
+        base = integrations._validate_record(positive, session=False)
+        base["canonical_id"] = "magnet-baron-skills"
+        base["registered"] = True
+        denials = (
+            record(kind="plugin", ident=plugin_id, installed=False, callable=False),
+            record(kind="plugin", ident=plugin_id, enabled=False, callable=False),
+            record(kind="plugin", ident=plugin_id, blocked=True, callable=False),
+        )
+        for negative in denials:
+            for rows in ([positive, negative], [negative, positive]):
+                with self.subTest(negative=negative, order=[r.get("installed") for r in rows]):
+                    self.write_session(path, "codex", rows)
+                    overlay = integrations.load_session(str(path))
+                    ok, reason = integrations.plugin_effective(
+                        "codex", "magnet-baron-skills",
+                        inv={"records": [base]}, overlay=overlay,
+                    )
+                    self.assertFalse(ok)
+                    self.assertIn("explicitly denied", reason)
+                    merged = integrations.merged_records({"records": [base]}, overlay)
+                    plugins = [row for row in merged if row.get("canonical_id") == "magnet-baron-skills"]
+                    self.assertEqual(len(plugins), 1)
+                    self.assertTrue(integrations._explicit_negative(plugins[0]))
+
     def test_codex_plugin_config_cache_profile_and_project_layers_are_not_install_inventory(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)
         source_root = Path(self.tmp.name) / "codex-plugin-home"
