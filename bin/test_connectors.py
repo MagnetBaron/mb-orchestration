@@ -66,14 +66,17 @@ class VisualQaConfigTests(unittest.TestCase):
         for store, meta in config["stores"].items():
             with self.subTest(store=store):
                 rendered = connectors.render_live_ticket(config, store)
-                first_nonblank = next(line for line in rendered.splitlines() if line.strip())
+                payload, routing_hint = rendered.split("\n--- non-copy routing hint ---\n", 1)
+                first_nonblank = next(line for line in payload.splitlines() if line.strip())
                 self.assertEqual(first_nonblank, trigger)
                 self.assertTrue(rendered.startswith(trigger + "\n"))
-                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", rendered)
-                self.assertIn("scope: public storefront read-only", rendered)
-                self.assertNotIn("preview_theme_id", rendered)
-                self.assertNotIn("checkout", rendered.lower())
-                self.assertNotIn("Channel:", rendered)
+                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", payload)
+                self.assertIn("scope: public storefront read-only", payload)
+                self.assertNotIn("preview_theme_id", payload)
+                self.assertNotIn("checkout", payload.lower())
+                self.assertNotIn("Destination channel:", payload)
+                expected_channel = config["slack"]["visual_qa_channel"]["name"]
+                self.assertEqual(routing_hint, f"Destination channel: {expected_channel}\n")
 
     def test_preview_ticket_remains_preview_scoped(self):
         config = live_config()

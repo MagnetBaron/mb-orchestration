@@ -77,6 +77,7 @@ def render_ticket(c, store):
 def render_live_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
+    chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     live_hosts = s.get("live_hosts") or []
     if not live_hosts:
         sys.exit(f"connectors: store {store!r} has no configured live_hosts")
@@ -90,7 +91,9 @@ def render_live_ticket(c, store):
         f"site: {name}\n"
         f"url: https://{live_hosts[0]}/\n"
         "scope: public storefront read-only\n"
-        "pages: Home, search, collection, PDP\n"
+        "pages: Home, search, collection, PDP\n\n"
+        "--- non-copy routing hint ---\n"
+        f"Destination channel: {chan}\n"
     )
 
 
