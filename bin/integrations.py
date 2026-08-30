@@ -17,6 +17,7 @@ import os
 import re
 import stat
 import tempfile
+import threading
 import time
 import tomllib
 import uuid
@@ -44,6 +45,8 @@ _SESSION_RECORD_KEYS = frozenset({
 _PROCESS_INVENTORY = None
 _PROCESS_SESSION = None
 _CONSUMED_SESSION_DIGESTS: dict[str, datetime] = {}
+_SESSION_CONSUME_LOCK = threading.Lock()
+_SESSION_LOAD_LOCK = threading.Lock()
 
 
 class InventoryError(ValueError):
@@ -179,8 +182,16 @@ def _safe_names(src: dict, parsed_cache: dict | None = None) -> list[tuple[str, 
         if not isinstance(name, str) or not name or len(name) > 200:
             continue
         meta = object_values.get(name)
-        disabled = (bool(src.get("disabled")) or name in disabled_names
-                    or (isinstance(meta, dict) and meta.get("enabled") is False))
+        malformed_or_disabled_enabled = (
+            isinstance(meta, dict)
+            and "enabled" in meta
+            and meta.get("enabled") is not True
+        )
+        disabled = (
+            bool(src.get("disabled"))
+            or name in disabled_names
+            or malformed_or_disabled_enabled
+        )
         out.append((name, disabled))
     return out
 
@@ -228,11 +239,22 @@ def _validate_record(rec: dict, *, session=False) -> dict:
         raise InventoryError(f"integration record {observed}: invalid health")
     clean = {"runtime": runtime, "kind": kind, "observed_id": observed}
     for key in ("registered", "suggested", "enabled", "configured", "blocked", "callable"):
-        clean[key] = bool(rec.get(key, False))
+        value = rec.get(key, False)
+        if type(value) is not bool:
+            raise InventoryError(f"integration record {observed}: {key} must be boolean")
+        clean[key] = value
     # Installed is tri-state only for MCP/app manifest evidence: None means the
     # field is not applicable/observable, while explicit False is a denial.
     installed = rec.get("installed", False)
-    clean["installed"] = None if installed is None and kind in {"mcp", "app"} else bool(installed)
+    if installed is None and kind in {"mcp", "app"}:
+        clean["installed"] = None
+    elif type(installed) is bool:
+        clean["installed"] = installed
+    else:
+        raise InventoryError(
+            f"integration record {observed}: installed must be boolean"
+            + (" or null" if kind in {"mcp", "app"} else "")
+        )
     clean["health"] = health
     clean["source"] = "session" if session else "fixture"
     return clean
@@ -306,6 +328,18 @@ def _read_cache(path: Path, config: dict, fingerprints: dict) -> tuple[dict | No
             return None, "fingerprint_changed"
         if not isinstance(data.get("records"), list):
             return None, "corrupt_cache"
+        for raw in data["records"]:
+            validated = _validate_record(raw)
+            canonical = _canonical(
+                config,
+                validated["runtime"],
+                validated["kind"],
+                validated["observed_id"],
+            )
+            if raw.get("canonical_id") != canonical:
+                return None, "corrupt_cache"
+            if raw.get("registered") is not (canonical is not None):
+                return None, "corrupt_cache"
         return data, "cache_hit"
     except Exception:
         return None, "corrupt_cache"
@@ -548,8 +582,8 @@ def _read_session_file(path: Path) -> str:
                 )
             if before.st_uid != os.getuid():
                 raise InventoryError("session overlay file must be owned by the current user")
-            if stat.S_IMODE(before.st_mode) & 0o077:
-                raise InventoryError("session overlay file must be owner-only (mode 0600)")
+            if stat.S_IMODE(before.st_mode) != 0o600:
+                raise InventoryError("session overlay file must have exact mode 0600")
             if before.st_size > SESSION_MAX_BYTES:
                 raise InventoryError("session overlay exceeds the bounded size limit")
             chunks = []
@@ -644,20 +678,37 @@ def _validate_session_envelope(data: dict, now: datetime | None = None) -> tuple
     expected_digest = _session_digest(data, nonce)
     if not hmac.compare_digest(claimed_digest, expected_digest):
         raise InventoryError("session attestation digest mismatch")
-    for old_digest, old_expiry in list(_CONSUMED_SESSION_DIGESTS.items()):
-        if old_expiry <= now:
-            del _CONSUMED_SESSION_DIGESTS[old_digest]
-    if claimed_digest in _CONSUMED_SESSION_DIGESTS:
-        raise InventoryError("session attestation was already consumed in this process")
+    # Claim the digest before any caller can leave envelope validation. This is a
+    # process-local, fail-closed one-shot gate: concurrent loads of the same
+    # attestation cannot both pass the former check-then-insert window.
+    with _SESSION_CONSUME_LOCK:
+        for old_digest, old_expiry in list(_CONSUMED_SESSION_DIGESTS.items()):
+            if old_expiry <= now:
+                del _CONSUMED_SESSION_DIGESTS[old_digest]
+        if claimed_digest in _CONSUMED_SESSION_DIGESTS:
+            raise InventoryError("session attestation was already consumed in this process")
+        _CONSUMED_SESSION_DIGESTS[claimed_digest] = expires_at
     return observed_at, expires_at, claimed_digest
 
 
 def load_session(source: str | None = None) -> dict | None:
     global _PROCESS_SESSION
-    raw = _read_session_source(source)
-    if raw is None:
-        return None
-    _PROCESS_SESSION = None
+    # An explicit load is replacement, not an additive refresh. Withdraw the old
+    # grant before reading or validating its replacement so a malformed, missing,
+    # or concurrently changed source can never leave stale authority active.
+    # Serialize the complete read/consume/publish transaction so distinct callers
+    # each return their own validated overlay without exposing an older one while
+    # replacement validation is in progress.
+    with _SESSION_LOAD_LOCK:
+        _PROCESS_SESSION = None
+        raw = _read_session_source(source)
+        if raw is None:
+            return None
+        return _load_session_raw(raw)
+
+
+def _load_session_raw(raw: str) -> dict:
+    global _PROCESS_SESSION
     try:
         data = json.loads(raw)
     except Exception:
@@ -689,8 +740,7 @@ def load_session(source: str | None = None) -> dict | None:
         rec["canonical_id"] = canonical
         rec["registered"] = canonical is not None
         clean.append(rec)
-    _CONSUMED_SESSION_DIGESTS[digest] = expires_at
-    _PROCESS_SESSION = {
+    loaded = {
         "runtime": runtime,
         "process_scope": True,
         "records": clean,
@@ -701,13 +751,19 @@ def load_session(source: str | None = None) -> dict | None:
             "digest": digest,
         },
     }
-    return _PROCESS_SESSION
+    _PROCESS_SESSION = loaded
+    return loaded
 
 
 def session() -> dict | None:
     global _PROCESS_SESSION
     if _PROCESS_SESSION is None and os.environ.get("MB_INTEGRATION_SESSION"):
-        return load_session()
+        with _SESSION_LOAD_LOCK:
+            if _PROCESS_SESSION is None:
+                raw = _read_session_source(None)
+                if raw is None:
+                    return None
+                return _load_session_raw(raw)
     return _PROCESS_SESSION
 
 

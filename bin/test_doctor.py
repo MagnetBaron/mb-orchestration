@@ -44,6 +44,129 @@ class StalePolicyTests(unittest.TestCase):
         self.assertEqual([], doctor.stale_policy_matches(text))
 
 
+class ProviderBooleanContractTests(unittest.TestCase):
+    def setUp(self):
+        self.providers = json.loads((ROOT / "config" / "providers.json").read_text())
+        self._errors = doctor.ERRORS[:]
+        self._warnings = doctor.WARNINGS[:]
+        doctor.ERRORS.clear()
+        doctor.WARNINGS.clear()
+
+    def tearDown(self):
+        doctor.ERRORS[:] = self._errors
+        doctor.WARNINGS[:] = self._warnings
+
+    def test_provider_enabled_and_wired_require_exact_booleans(self):
+        mutated = copy.deepcopy(self.providers)
+        mutated["providers"]["grok-build"]["enabled"] = "false"
+        mutated["providers"]["grok-bot-review-d"]["wired"] = "false"
+        mutated["providers"]["opus-5"]["review_eligible"] = "false"
+        mutated["providers"]["codex-terra"]["dispatch_eligible"] = "true"
+        doctor.check_providers(mutated)
+        blob = "\n".join(doctor.ERRORS)
+        self.assertIn("grok-build: enabled must be a boolean", blob)
+        self.assertIn("grok-bot-review-d: wired must be a boolean", blob)
+        self.assertIn("opus-5: review_eligible must be a boolean", blob)
+        self.assertIn("codex-terra: dispatch_eligible must be a boolean", blob)
+
+    def test_all_present_provider_boolean_fields_reject_non_boolean_scalars(self):
+        for field in ("enabled", "wired", "review_eligible", "dispatch_eligible"):
+            for value in (None, 0, 1):
+                with self.subTest(field=field, value=value):
+                    doctor.ERRORS.clear()
+                    mutated = copy.deepcopy(self.providers)
+                    mutated["providers"]["grok-bot-review-d"][field] = value
+                    doctor.check_providers(mutated)
+                    self.assertTrue(any(
+                        f"grok-bot-review-d: {field} must be a boolean" in error
+                        for error in doctor.ERRORS
+                    ), doctor.ERRORS)
+
+    def test_review_order_and_fallback_require_enabled_review_eligible_provider(self):
+        mutated = copy.deepcopy(self.providers)
+        mutated["providers"]["opus-5"]["enabled"] = False
+        mutated["providers"]["opus-4.8"]["review_eligible"] = False
+        doctor.check_providers(mutated)
+        blob = "\n".join(doctor.ERRORS)
+        self.assertIn("review order/fallback provider 'opus-5' is not enabled", blob)
+        self.assertIn("review order/fallback provider 'opus-4.8' is not review_eligible", blob)
+
+    def test_review_eligibility_requires_provider_function_and_capability(self):
+        mutated = copy.deepcopy(self.providers)
+        provider = mutated["providers"]["grok-bot-review-d"]
+        provider["review_eligible"] = True
+        doctor.check_providers(mutated)
+        blob = "\n".join(doctor.ERRORS)
+        self.assertIn("review_eligible requires review function", blob)
+        self.assertIn("review_eligible requires review capability", blob)
+
+
+class ProviderBackingContractTests(unittest.TestCase):
+    def setUp(self):
+        self.providers = json.loads((ROOT / "config" / "providers.json").read_text())
+        self.subscriptions = json.loads((ROOT / "config" / "subscriptions.json").read_text())
+        self.windows = json.loads((ROOT / "config" / "usage-windows.json").read_text())
+        self._errors = doctor.ERRORS[:]
+        doctor.ERRORS.clear()
+
+    def tearDown(self):
+        doctor.ERRORS[:] = self._errors
+
+    def test_canonical_provider_backings_are_bidirectionally_owned(self):
+        doctor.check_provider_backings(
+            self.providers["providers"], self.subscriptions, self.windows
+        )
+        self.assertEqual(doctor.ERRORS, [])
+
+    def test_enabled_provider_rejects_missing_unknown_or_cross_family_backing(self):
+        for value in (None, "", "missing-plan", "codex-200"):
+            with self.subTest(value=value):
+                doctor.ERRORS.clear()
+                mutated = copy.deepcopy(self.providers)
+                mutated["providers"]["grok-build"]["backed_by"] = value
+                doctor.check_provider_backings(
+                    mutated["providers"], self.subscriptions, self.windows
+                )
+                self.assertTrue(any(
+                    "grok-build" in error and (
+                        "backed_by" in error or "usage-window" in error
+                    ) for error in doctor.ERRORS
+                ), doctor.ERRORS)
+
+    def test_usage_seat_must_belong_to_provider_backing_and_family(self):
+        mutated = copy.deepcopy(self.providers)
+        mutated["providers"]["grok-build"]["usage_seat"] = "codex-plan"
+        doctor.check_provider_backings(
+            mutated["providers"], self.subscriptions, self.windows
+        )
+        self.assertTrue(any(
+            "grok-build" in error and "not owned" in error for error in doctor.ERRORS
+        ), doctor.ERRORS)
+
+
+class MonitoringSourceContractTests(unittest.TestCase):
+    def setUp(self):
+        self._errors = doctor.ERRORS[:]
+        doctor.ERRORS.clear()
+
+    def tearDown(self):
+        doctor.ERRORS[:] = self._errors
+
+    def test_monitoring_source_enabled_must_be_exact_boolean(self):
+        for enabled in ("false", "true", 0, 1, None, [], {}):
+            with self.subTest(enabled=enabled):
+                doctor.ERRORS.clear()
+                doctor.check_monitoring_sources({
+                    "sources": {"teamclaude": {
+                        "enabled": enabled,
+                        "cmd": "teamclaude status --json",
+                    }}
+                })
+                self.assertTrue(any(
+                    "enabled must be a boolean" in error for error in doctor.ERRORS
+                ), doctor.ERRORS)
+
+
 class SeatExecTeamclaudeTests(unittest.TestCase):
     """TeamClaude-hosted Anthropic routes must never render the auth-blocked direct Claude CLI."""
 
@@ -231,6 +354,16 @@ class StandingGrokSandboxRecipeTests(unittest.TestCase):
         self.assertTrue(any(
             "grok-bot-marketplace-intelligence" in problem
             and "code-owned execution input binding" in problem
+            for problem in doctor.ERRORS
+        ))
+
+    def test_doctor_rejects_standing_route_for_a_different_named_agent(self):
+        registry = copy.deepcopy(self.registry)
+        registry["routes"]["grok-cli-review-d"]["invocation_id"] = "mb-unrelated-agent"
+        doctor.check_seat_exec(self.seat_exec, self.provs, self.ids, registry)
+        self.assertTrue(any(
+            "grok-bot-review-d" in problem
+            and "invocation_id must be exact 'mb-review-d'" in problem
             for problem in doctor.ERRORS
         ))
 

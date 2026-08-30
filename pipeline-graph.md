@@ -10,8 +10,8 @@ the dispatcher's head. The durable record is `bin/runledger.py` (append-only
 constants in `bin/runledger.py` (`EVENTS`, `FIX_LOOP_CAP`) — that script is the source of
 truth; this doc explains it.
 
-This is STATE + a PLANNER, never a daemon and never an actor — consistent with the
-`DOCTRINE.md` non-goals ("no watcher daemon", "not a meta-agent", "policy only"). Correction
+This graph is STATE + a PLANNER, never a daemon or general task actor — consistent with the
+`DOCTRINE.md` non-goals ("no watcher daemon", "not a meta-agent", no general live executor). Correction
 happens at the checkpoints `EDGE-CASES.md` already defines, not by polling.
 
 ## States and transitions
@@ -59,13 +59,15 @@ happens at the checkpoints `EDGE-CASES.md` already defines, not by polling.
   families before `landed`; unsatisfiable → `parked` (never a self-imposed cap while quota
   exists — that is a `park` only on genuine exhaustion).
 
-## EXECUTOR — deferred, and why
+## GENERAL EXECUTOR — deferred, and why
 
 `run-brief.py` plans; it never acts. A live executor (shell the seats, drive worktrees, land)
 is **out of scope and gated** pending an owner go/no-go, because it is a different risk class:
 
-1. **First component that ACTS.** Everything today decides or records; an executor writes and
-   lands. New failure mode: wrong action, not just wrong advice.
+1. **First general component that ACTS.** Today the narrow `grok-agent.py --smoke --execute`
+   exception may invoke a copy-isolated provider for one fixed transport sentinel; it reads no task
+   packet and cannot land. The deferred executor would shell resolved work seats, write worktrees,
+   and land. New failure mode: wrong task action, not just wrong advice or a fixed smoke.
 2. **Gates are advisory, not interlocked.** The repo emits gate booleans; nothing here refuses
    a land when one is unmet. Autonomous landing needs the gates machine-**interlocked**.
 3. **Runaway spend/quota.** Unattended fan-out burns subscription quota fast (a measured

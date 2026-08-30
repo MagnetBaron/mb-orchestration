@@ -27,10 +27,13 @@
               "family": { "type": "string", "minLength": 1 },
               "kind": { "enum": ["cli", "api", "app", "ide", "local"] },
               "model": { "type": ["string", "null"] },
+              "enabled": { "type": "boolean" },
+              "wired": { "type": "boolean" },
               "functions": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
               "review_eligible": { "type": "boolean" },
               "dispatch_eligible": { "type": "boolean" },
-              "usage_seat": { "type": "string" },
+              "usage_seat": { "type": "string", "minLength": 1 },
+              "backed_by": { "type": ["string", "null"], "not": { "const": "UNRESOLVED" } },
               "dispatch_evidence": {
                 "type": "object",
                 "required": ["status", "date", "trials", "completed", "reversals", "source"],
@@ -44,7 +47,14 @@
                 }
               },
               "detect": { "type": "object", "required": ["method"], "properties": { "method": { "enum": ["command", "npm", "app", "api", "capability", "local"] } } }
-            }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "enabled": { "const": false } }, "required": ["enabled"] },
+                "then": {},
+                "else": { "required": ["backed_by"], "properties": { "backed_by": { "type": "string", "minLength": 1 } } }
+              }
+            ]
           }
         },
         "forbidden_models": { "type": "object" },
@@ -391,7 +401,18 @@
         "retention_days": { "type": "integer", "minimum": 0 },
         "reserve_defaults": { "type": "object" },
         "cost_policy": { "type": "object" },
-        "sources": { "type": "object" },
+        "sources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["enabled"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "cmd": { "type": "string", "minLength": 1 },
+              "note": { "type": "string" }
+            }
+          }
+        },
         "observability": {
           "type": "object",
           "required": ["enabled", "events_path", "retention_days"],

@@ -20,8 +20,9 @@ seat, park and report — do not invent data. `available_on` alone never proves 
 
 ## Self-healing runtime inventory
 
-`config/integration-adapters.json` allowlists canonical Claude, Codex, Grok, and Grok Bot/Cursor-
-shared manifests and maps only safe observed names to registered IDs. The detector never searches
+`config/integration-adapters.json` allowlists canonical Claude, Codex, Grok, Cursor-shared, and
+historical Grok Bot manifests and maps only safe observed names to registered IDs. Historical Bot
+observations cannot promote the replacement named CLI roles. The detector never searches
 arbitrary files and never retains command arguments, values, URLs, environment values, headers,
 tokens, stdout/stderr, backups, logs, or marketplace/cache catalogs. Its schema-versioned cache lives
 outside git under `$MB_DATA_DIR`, refreshes when an allowlisted source fingerprint changes or its
@@ -70,8 +71,9 @@ path only and cannot implicitly consume stdin or inline JSON. The dispatcher mus
 character `MB_INTEGRATION_SESSION_NONCE` for every launched process and never persist or print it.
 Supplied overlays are reported only as runtime plus registered canonical IDs and value-free
 source/time/digest provenance; an empty ID list distinguishes zero proved capabilities from no
-overlay, while nonces, observed aliases, and values are never printed or persisted. Grok Bot/Cursor capabilities
-are explicitly session-only because those surfaces have no canonical local manifest. Portable synthetic fixtures are explicit
+overlay, while nonces, observed aliases, and values are never printed or persisted. Legacy Grok Bot
+observations and Cursor capabilities are explicitly session-only because those surfaces have no
+canonical local manifest; legacy observations grant no active Bot route. Portable synthetic fixtures are explicit
 test inputs only; production routing never loads them unless an operator explicitly sets the fixture
 override.
 
@@ -128,7 +130,7 @@ Activation (primed/ready → active, wiring a role/seat to it) is a **standing-c
 | **Code review** | Opus 5 → Codex Sol → Review E | Judgment on git diff (Fable out of gating) | MCP not required |
 | **General Google MCP work** (one-off Drive pull, sitemap check, small GSC query) | **Codex GPT Terra** first | Has Google MCP; cheaper than Sol/Opus for tool loops | Luna (coordination helper, not the MCP-volume seat); Grok without connector |
 | **Bulk analytics** (GSC rows, keyword batches, trends sweeps, multi-page Drive extract) | **Codex GPT Terra** (Luna coordination helper may assist) | Volume MCP loops; write CSV/summary to `output_path` | Opus for row dumps; Sol unless analysis judgment is the product |
-| **Analytics judgment** (what the numbers mean, priority, strategy) | **Codex Sol** under 90% (`sol-usage.md`), else **Opus 5** | Scarce judgment on already-fetched data | Re-fetching bulk on Sol/Opus |
+| **Analytics judgment** (what the numbers mean, priority, strategy) | First usable **Codex Sol** / **Opus 5** judgment seat per `usage-status.py`, reserve policy, and router output | Scarce judgment on already-fetched data | Re-fetching bulk on Sol/Opus |
 | **Product description research** (keywords, SERP intent, GSC queries for a SKU family) | **Codex GPT Terra** (MCP) | Google MCP required | |
 | **Product description draft / bulk listing copy** | **Grok Build** (Shopify path) after research packet exists | Volume writing; catalog edits | Opus writing every SKU |
 | **Product description brand / claim risk** | **Opus 5** or Sol review | Claims, compliance, voice | |

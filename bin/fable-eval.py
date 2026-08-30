@@ -56,13 +56,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import re
+import selectors
 import shutil
+import signal
 import string
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -90,6 +94,9 @@ import mborch  # noqa: E402  (shared config/data resolution — used for data_di
 TEAMCLAUDE_BIN = os.environ.get("TEAMCLAUDE_BIN", "teamclaude")
 TEAMCLAUDE_ARGV = os.environ.get("TEAMCLAUDE_ARGV", "run,--,-p,{prompt},--model,{model}")
 DEFAULT_TIMEOUT = int(os.environ.get("FABLE_EVAL_TIMEOUT", "300"))
+MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
+PROVIDER_OUTPUT_CHUNK_BYTES = 65_536
+PROVIDER_TERMINATE_GRACE_SECONDS = 1.0
 
 
 class TeamclaudeError(RuntimeError):
@@ -101,6 +108,147 @@ def teamclaude_available() -> bool:
     return shutil.which(TEAMCLAUDE_BIN) is not None
 
 
+def _run_bounded_teamclaude(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+    """Drain bounded pipes and always stop the private provider process group."""
+    process = None
+    process_group_id = None
+    selector = None
+    group_stopped = False
+
+    def kill_direct_bounded() -> bool:
+        if process is None:
+            return True
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        except OSError:
+            return False
+        try:
+            process.wait(timeout=PROVIDER_TERMINATE_GRACE_SECONDS)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return True
+
+    def leader_exited_without_reap() -> bool:
+        if process is None or not all(
+            hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOHANG", "WNOWAIT")
+        ):
+            return False
+        try:
+            return os.waitid(
+                os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT
+            ) is not None
+        except (ChildProcessError, OSError):
+            return False
+
+    def stop_group() -> bool:
+        nonlocal group_stopped
+        if group_stopped or process is None or process_group_id is None:
+            return True
+        group_stopped = True
+        reached_group = False
+        try:
+            os.killpg(process_group_id, signal.SIGTERM)
+            reached_group = True
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            if leader_exited_without_reap():
+                try:
+                    process.wait(timeout=PROVIDER_TERMINATE_GRACE_SECONDS)
+                except (OSError, subprocess.TimeoutExpired):
+                    return False
+                return True
+            kill_direct_bounded()
+            return False
+        except OSError:
+            kill_direct_bounded()
+            return False
+        if reached_group:
+            try:
+                os.killpg(process_group_id, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                kill_direct_bounded()
+                return False
+        try:
+            process.wait(timeout=PROVIDER_TERMINATE_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            return kill_direct_bounded()
+        except OSError:
+            return False
+        return True
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            text=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+        process_group_id = process.pid
+        if process.stdout is None or process.stderr is None:
+            stop_group()
+            raise TeamclaudeError("teamclaude did not expose bounded output pipes")
+        selector = selectors.DefaultSelector()
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        for name, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, data=name)
+        deadline = time.monotonic() + timeout
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                stop_group()
+                raise TeamclaudeError(f"teamclaude timed out after {timeout}s")
+            for key, _events in selector.select(remaining):
+                try:
+                    chunk = os.read(key.fileobj.fileno(), PROVIDER_OUTPUT_CHUNK_BYTES)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                name = key.data
+                combined = sum(len(value) for value in buffers.values()) + len(chunk)
+                if len(buffers[name]) + len(chunk) > MAX_PROVIDER_OUTPUT_BYTES \
+                        or combined > MAX_PROVIDER_OUTPUT_BYTES:
+                    stop_group()
+                    raise TeamclaudeError(
+                        "teamclaude exceeded the bounded output limit; output was withheld"
+                    )
+                buffers[name].extend(chunk)
+        if not stop_group():
+            raise TeamclaudeError("teamclaude process group could not be stopped cleanly")
+        if process.returncode is None:
+            raise TeamclaudeError("teamclaude leader was not reaped")
+        try:
+            stdout = bytes(buffers["stdout"]).decode("utf-8")
+            stderr = bytes(buffers["stderr"]).decode("utf-8")
+        except UnicodeError:
+            raise TeamclaudeError("teamclaude returned non-UTF-8 output") from None
+        return subprocess.CompletedProcess(cmd, process.returncode, stdout=stdout, stderr=stderr)
+    except FileNotFoundError as exc:
+        stop_group()
+        raise TeamclaudeError(f"teamclaude binary {TEAMCLAUDE_BIN!r} not found on PATH") from exc
+    except OSError as exc:
+        stop_group()
+        raise TeamclaudeError(f"teamclaude could not start: {exc}") from exc
+    finally:
+        if selector is not None:
+            selector.close()
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+            stop_group()
+
+
 def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOUT) -> str:
     """Run ONE cold, single-shot completion of `prompt` on `model`, via teamclaude.
 
@@ -108,29 +256,55 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
     the blind voice grader come through here. The taker/grader sees ONLY the string in
     `prompt` — no rubric, no answer key, no arm identity, no test metadata.
 
-    Returns the model's stdout (stripped). Raises TeamclaudeError on any non-zero exit or
-    launch failure so the caller fails closed rather than grading an empty answer.
+    Returns the model's stdout (stripped). Raises TeamclaudeError on any non-zero exit,
+    stderr output, empty/oversized stdout, malformed template, or launch failure so the
+    caller fails closed rather than grading a transport failure as an answer.
     """
-    argv = [part.format(prompt=prompt, model=model) for part in TEAMCLAUDE_ARGV.split(",")]
+    if not isinstance(model, str) or not model.strip():
+        raise TeamclaudeError("teamclaude model id must be non-empty")
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise TeamclaudeError("teamclaude prompt must be non-empty")
+    template = TEAMCLAUDE_ARGV.split(",")
+    if template.count("{model}") != 1 or template.count("{prompt}") != 1:
+        raise TeamclaudeError(
+            "TEAMCLAUDE_ARGV must contain exactly one whole-argument {model} and {prompt}"
+        )
+    for part in template:
+        try:
+            fields = [field for _literal, field, _spec, _conversion in string.Formatter().parse(part)
+                      if field is not None]
+        except ValueError:
+            raise TeamclaudeError("TEAMCLAUDE_ARGV contains malformed placeholders") from None
+        if fields and part not in {"{model}", "{prompt}"}:
+            raise TeamclaudeError(
+                "TEAMCLAUDE_ARGV placeholders must occupy code-owned whole arguments"
+            )
+        if any(field not in {"model", "prompt"} for field in fields):
+            raise TeamclaudeError("TEAMCLAUDE_ARGV contains an unknown placeholder")
+    argv = [model if part == "{model}" else prompt if part == "{prompt}" else part
+            for part in template]
     cmd = [TEAMCLAUDE_BIN, *argv]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except FileNotFoundError as exc:
-        raise TeamclaudeError(f"teamclaude binary {TEAMCLAUDE_BIN!r} not found on PATH") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise TeamclaudeError(f"teamclaude timed out after {timeout}s for model {model}") from exc
+    proc = _run_bounded_teamclaude(cmd, timeout)
     if proc.returncode != 0:
         raise TeamclaudeError(
             f"teamclaude exit {proc.returncode} for model {model}: {proc.stderr.strip()[:400]}"
         )
-    return proc.stdout.strip()
+    stdout = proc.stdout if isinstance(proc.stdout, str) else ""
+    stderr = proc.stderr if isinstance(proc.stderr, str) else ""
+    if len(stdout.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES \
+            or len(stderr.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
+        raise TeamclaudeError("teamclaude exceeded the bounded output limit")
+    if stderr:
+        raise TeamclaudeError("teamclaude emitted stderr on a status-0 provider call")
+    output = stdout.strip()
+    if not output:
+        raise TeamclaudeError("teamclaude returned empty stdout")
+    return output
 
 
 # ======================================================================================
 # Model-id resolution — single source of truth is providers.json (no stale ids in code)
 # ======================================================================================
-FALLBACK_MODELS = {"fable": "claude-fable-5", "opus": "claude-opus-5"}
-
 # Human labels for scoresheet text. Keys are canonical / alias invocation ids.
 ARM_LABELS = {
     "claude-opus-5": "Opus 5",
@@ -173,15 +347,106 @@ def overall_outcome_line(earned: list, results: list, opus_model: str) -> str:
     )
 
 
+class ProviderConfigError(SystemExit):
+    """Fail-closed provider activation/configuration boundary."""
+
+
 def _safe_providers() -> dict:
-    """Load providers.json, degrading to {} on any error (a concurrent config edit must
-    not crash a measurement run — model ids fall back to FALLBACK_MODELS)."""
+    """Load a non-empty providers registry or park before any provider invocation."""
     try:
-        return mborch.load_config("providers.json", required=False) or {}
-    except SystemExit:
-        print("fable-eval: WARNING — providers.json unreadable right now; using fallback model ids.",
-              file=sys.stderr)
-        return {}
+        root = mborch.load_config("providers.json", required=True)
+    except SystemExit as exc:
+        raise ProviderConfigError(
+            "fable-eval: providers.json is unreadable; pass explicit --fable-model and "
+            "--opus-model only if the owner intends to bypass config-derived model selection"
+        ) from exc
+    if not isinstance(root, dict) or not isinstance(root.get("providers"), dict) \
+            or not root["providers"]:
+        raise ProviderConfigError(
+            "fable-eval: providers.json must contain a non-empty providers object"
+        )
+    return root
+
+
+def _configured_model(providers: dict, *provider_ids: str) -> str | None:
+    """Return the first model backed by an active provider entry.
+
+    ``enabled`` is optional for compatibility, but when present only exact
+    ``true`` activates the entry.  Disabled and malformed entries are ignored so
+    config-derived evaluation arms cannot accidentally invoke them.  Explicit
+    CLI model overrides are handled before this helper and remain owner-controlled.
+    """
+    for provider_id in provider_ids:
+        entry = providers.get(provider_id)
+        if not isinstance(entry, dict):
+            continue
+        if "enabled" in entry and entry.get("enabled") is not True:
+            continue
+        model = entry.get("model")
+        if isinstance(model, str) and model.strip():
+            return model
+    return None
+
+
+def _configured_or_required(
+    providers: dict, arm: str, provider_ids: tuple[str, ...]
+) -> str:
+    """Resolve an active configured model; never resurrect a hard-coded live arm."""
+    configured = _configured_model(providers, *provider_ids)
+    if configured:
+        return configured
+    flag = "--fable-model" if arm == "fable" else "--opus-model"
+    raise SystemExit(
+        f"fable-eval: no enabled provider with a valid model for {arm}; "
+        f"pass {flag} for an explicit owner override"
+    )
+
+
+def _safe_model_registry() -> dict:
+    """Load the canonical model identity registry required for alias-safe trials."""
+    try:
+        root = mborch.load_config("model-registry.json", required=True)
+    except SystemExit as exc:
+        raise SystemExit(
+            "fable-eval: model-registry.json is unreadable; model identity cannot be proven"
+        ) from exc
+    if not isinstance(root, dict) or not isinstance(root.get("models"), dict) \
+            or not root["models"]:
+        raise SystemExit(
+            "fable-eval: model-registry.json must contain a non-empty models object"
+        )
+    return root
+
+
+def _canonical_model(registry: dict, raw_id: str, field: str) -> tuple[str, dict]:
+    """Resolve one exact official/model/route invocation alias to a unique model."""
+    if not isinstance(raw_id, str) or not raw_id.strip():
+        raise SystemExit(f"fable-eval: {field} must be a non-empty model id")
+    candidate = raw_id.strip()
+    routes = registry.get("routes") if isinstance(registry.get("routes"), dict) else {}
+    matches = []
+    for canonical, metadata in registry["models"].items():
+        if not isinstance(canonical, str) or not isinstance(metadata, dict):
+            continue
+        aliases = {canonical}
+        aliases.update(
+            value for value in metadata.get("official_ids", [])
+            if isinstance(value, str) and value
+        )
+        aliases.update(
+            route.get("invocation_id")
+            for route in routes.values()
+            if isinstance(route, dict) and route.get("model") == canonical
+            and isinstance(route.get("invocation_id"), str)
+        )
+        if candidate in aliases:
+            matches.append((canonical, metadata))
+    if len(matches) != 1:
+        qualifier = "unknown" if not matches else "ambiguous"
+        raise SystemExit(
+            f"fable-eval: {field} model id {candidate!r} is {qualifier} in model-registry.json"
+        )
+    return matches[0]
 
 
 def resolve_models(args) -> dict:
@@ -190,16 +455,43 @@ def resolve_models(args) -> dict:
     Grader defaults to the Opus id (a NON-Fable frontier reachable via teamclaude) and is
     refused if it equals the Fable id — a blind grader must not be an arm under test.
     """
-    prov = _safe_providers().get("providers", {})
-    fable = args.fable_model or prov.get("fable-5", {}).get("model") or FALLBACK_MODELS["fable"]
-    opus = args.opus_model or (prov.get("opus-5") or prov.get("opus-4.8") or {}).get("model") or FALLBACK_MODELS["opus"]
+    try:
+        root = _safe_providers()
+    except ProviderConfigError:
+        if not (args.fable_model and args.opus_model):
+            raise
+        root = {"providers": {}}
+    prov = root.get("providers", {}) if isinstance(root, dict) else {}
+    if not isinstance(prov, dict):
+        raise SystemExit("fable-eval: providers must be an object")
+    fable = (
+        args.fable_model
+        or _configured_or_required(prov, "fable", ("fable-5",))
+    )
+    opus = (
+        args.opus_model
+        or _configured_or_required(prov, "opus", ("opus-5", "opus-4.8"))
+    )
     grader = args.grader_model or opus
-    if grader == fable:
+    registry = _safe_model_registry()
+    fable_id, fable_meta = _canonical_model(registry, fable, "fable")
+    opus_id, opus_meta = _canonical_model(registry, opus, "opus")
+    grader_id, grader_meta = _canonical_model(registry, grader, "grader")
+    fable_label = str(fable_meta.get("label", fable_id)).lower()
+    opus_label = str(opus_meta.get("label", opus_id)).lower()
+    grader_label = str(grader_meta.get("label", grader_id)).lower()
+    if "fable" not in fable_label:
+        raise SystemExit("fable-eval: fable arm must resolve to a canonical Fable model")
+    if "opus" not in opus_label:
+        raise SystemExit("fable-eval: opus arm must resolve to a canonical Opus model")
+    if fable_id == opus_id:
+        raise SystemExit("fable-eval: Fable and Opus arms resolve to the same canonical model")
+    if grader_id == fable_id or "fable" in grader_label:
         raise SystemExit(
             "fable-eval: grader model must be a NON-Fable model (blind grader cannot be an arm). "
             "Pass --grader-model with a different id."
         )
-    return {"fable": fable, "opus": opus, "grader": grader}
+    return {"fable": fable_id, "opus": opus_id, "grader": grader_id}
 
 
 # ======================================================================================
@@ -303,14 +595,40 @@ def _extract_block(seg: list[str], start_marker: str, stop_prefixes) -> str:
 def load_tests(path: Path) -> list[dict]:
     """Load trials from a .json sidecar or a .md source, by extension."""
     if path.suffix == ".json":
-        data = json.loads(path.read_text())
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            raise SystemExit(f"fable-eval: trials sidecar is unreadable or malformed: {path}") from None
         tests = data["tests"] if isinstance(data, dict) and "tests" in data else data
-        for t in tests:
-            for f in ("id", "prompt"):
-                if f not in t:
-                    raise SystemExit(f"fable-eval: sidecar test missing {f!r}: {t.get('id', '?')}")
-        return tests
-    return parse_markdown(path)
+    else:
+        tests = parse_markdown(path)
+    return validate_trial_suite(tests)
+
+
+def validate_trial_suite(tests) -> list[dict]:
+    """Require the exact three complete trials before any provider can be invoked."""
+    expected_ids = {"coding", "content", "architecture"}
+    if not isinstance(tests, list) or len(tests) != len(expected_ids):
+        raise SystemExit("fable-eval: trial suite must contain exactly three tests")
+    required = ("id", "axis", "prompt", "rubric", "answer_key")
+    seen = []
+    for index, trial in enumerate(tests):
+        if not isinstance(trial, dict):
+            raise SystemExit(f"fable-eval: trial {index + 1} must be an object")
+        for field in required:
+            value = trial.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise SystemExit(
+                    f"fable-eval: trial {index + 1} field {field!r} must be a non-empty string"
+                )
+        seen.append(trial["id"])
+    if len(set(seen)) != len(seen):
+        raise SystemExit("fable-eval: trial ids must be unique to prevent output overwrite")
+    if set(seen) != expected_ids:
+        raise SystemExit(
+            f"fable-eval: trial ids must be exactly {sorted(expected_ids)}, got {sorted(seen)}"
+        )
+    return tests
 
 
 def resolve_tests_path(cli: str | None) -> Path:
@@ -340,7 +658,7 @@ def taker_view(test: dict) -> dict:
 
 def build_sidecar(md_path: Path, out_path: Path, prompts_only: bool) -> list[Path]:
     """Extract md -> combined sidecar json; optionally also a taker-safe prompts-only file."""
-    tests = parse_markdown(md_path)
+    tests = validate_trial_suite(parse_markdown(md_path))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps({"source": str(md_path), "tests": tests}, indent=2) + "\n")
     written = [out_path]
@@ -704,17 +1022,38 @@ def parse_grader_score(raw: str) -> dict:
             obj = json.loads(blob)
         except Exception:
             obj = None
-    if obj is None:
-        m3 = re.search(r"total[\"']?\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)", raw, re.I)
-        if not m3:
-            raise TeamclaudeError("grader returned no parseable JSON or total")
-        return {"total": _clamp(float(m3.group(1)), 0, 10), "subscores": {}, "notes": "(salvaged total)"}
-    subs = {k: obj.get(k) for k in ("length", "facts", "no_fabrication", "formatting", "voice")}
-    if obj.get("total") is not None:
-        total = float(obj["total"])
-    else:
-        total = sum(float(v) for v in subs.values() if isinstance(v, (int, float)))
-    return {"total": round(_clamp(total, 0, 10), 2), "subscores": subs, "notes": obj.get("notes", "")}
+    if not isinstance(obj, dict):
+        raise TeamclaudeError("grader returned no parseable JSON object")
+    maxima = {
+        "length": 1.0,
+        "facts": 2.0,
+        "no_fabrication": 2.0,
+        "formatting": 2.0,
+        "voice": 3.0,
+    }
+    expected = {*maxima, "total", "notes"}
+    if set(obj) != expected:
+        raise TeamclaudeError("grader JSON has unknown or missing score fields")
+    subs = {}
+    for key, maximum in maxima.items():
+        value = obj[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                or not math.isfinite(value) or not 0 <= value <= maximum:
+            raise TeamclaudeError(
+                f"grader subscore {key} must be finite and within 0..{maximum:g}"
+            )
+        subs[key] = float(value)
+    claimed_total = obj["total"]
+    if isinstance(claimed_total, bool) or not isinstance(claimed_total, (int, float)) \
+            or not math.isfinite(claimed_total) or not 0 <= claimed_total <= 10:
+        raise TeamclaudeError("grader total must be finite and within 0..10")
+    derived_total = round(sum(subs.values()), 2)
+    if not math.isclose(float(claimed_total), derived_total, abs_tol=0.01):
+        raise TeamclaudeError("grader total is inconsistent with validated subscores")
+    notes = obj["notes"]
+    if not isinstance(notes, str):
+        raise TeamclaudeError("grader notes must be a string")
+    return {"total": derived_total, "subscores": subs, "notes": notes}
 
 
 def _clamp(x, lo, hi):
@@ -729,7 +1068,30 @@ def grade_content(candidate: str, test: dict, models: dict, *, dry_run: bool, ti
     else:
         raw = run_via_teamclaude(models["grader"], build_grader_prompt(test, candidate, mech), timeout=timeout)
     verdict = parse_grader_score(raw)
-    return {"score": verdict["total"], "grader_raw": raw, "grader_subscores": verdict["subscores"],
+    for key in ("length", "facts", "formatting"):
+        if not math.isclose(
+            verdict["subscores"][key], float(mech["subscores"][key]), abs_tol=0.001
+        ):
+            raise TeamclaudeError(
+                f"grader contradicted pre-verified mechanical subscore {key}"
+            )
+    if mech["subscores"]["no_fabrication"] == 0 \
+            and verdict["subscores"]["no_fabrication"] != 0:
+        raise TeamclaudeError(
+            "grader contradicted a deterministic fabrication violation"
+        )
+    final_subscores = {
+        "length": float(mech["subscores"]["length"]),
+        "facts": float(mech["subscores"]["facts"]),
+        "formatting": float(mech["subscores"]["formatting"]),
+        "no_fabrication": min(
+            float(mech["subscores"]["no_fabrication"]),
+            verdict["subscores"]["no_fabrication"],
+        ),
+        "voice": verdict["subscores"]["voice"],
+    }
+    final_score = round(sum(final_subscores.values()), 2)
+    return {"score": final_score, "grader_raw": raw, "grader_subscores": final_subscores,
             "grader_notes": verdict.get("notes", ""), "mechanical": mech}
 
 
@@ -1072,13 +1434,6 @@ def main(argv=None):
         return 0
 
     tests = load_tests(tests_path)
-    # sanity: three known trials expected; warn (don't fail) if the axes look unfamiliar
-    known = {"coding", "content", "architecture"}
-    got = {t["id"] for t in tests}
-    if not known.issubset(got):
-        print(f"fable-eval: WARNING — expected trial ids {sorted(known)}, parsed {sorted(got)}. "
-              f"Deterministic graders bind to coding/architecture; unknown ids score None.",
-              file=sys.stderr)
 
     models = resolve_models(args)
 

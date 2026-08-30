@@ -127,6 +127,14 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertEqual(got["refresh_reason"], "corrupt_cache")
 
         cached = json.loads(path.read_text())
+        cached["records"][0]["enabled"] = "false"
+        path.write_text(json.dumps(cached))
+        integrations.reset_process_cache()
+        got = integrations.refresh()
+        self.assertEqual(got["refresh_reason"], "corrupt_cache")
+        self.assertIs(json.loads(path.read_text())["records"][0]["enabled"], True)
+
+        cached = json.loads(path.read_text())
         cached["schema_version"] = 0
         path.write_text(json.dumps(cached))
         integrations.reset_process_cache()
@@ -180,6 +188,14 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertNotIn("url", blob)
         self.assertNotIn("token", blob)
 
+    def test_fixture_boolean_strings_fail_closed_instead_of_becoming_truthy(self):
+        self.write([record(
+            installed="false", enabled="false", configured="false",
+            blocked=False, callable="false",
+        )])
+        with self.assertRaisesRegex(integrations.InventoryError, "must be boolean"):
+            integrations.fixture_inventory(self.fixture)
+
     def test_session_is_runtime_bound_ephemeral_and_not_cached(self):
         self.write([])
         inv = integrations.refresh(force=True)
@@ -199,6 +215,21 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.write_session(session_file, "codex", [record(runtime="claude")])
         with self.assertRaisesRegex(integrations.InventoryError, "cross runtime"):
             integrations.load_session(str(session_file))
+
+        # A failed explicit replacement withdraws the formerly valid grant.
+        self.assertIsNone(integrations.session())
+        denied, _ = integrations.effective(
+            "codex", "mcp", "github", require_callable=True, inv=inv
+        )
+        self.assertFalse(denied)
+
+    def test_missing_explicit_session_replacement_clears_prior_overlay(self):
+        path = Path(self.tmp.name) / "valid-session.json"
+        self.write_session(path, "codex", [record()])
+        self.assertIsNotNone(integrations.load_session(str(path)))
+        os.environ.pop("MB_INTEGRATION_SESSION", None)
+        self.assertIsNone(integrations.load_session())
+        self.assertIsNone(integrations.session())
 
     def test_session_only_grokbot_alias_and_value_free_provenance(self):
         self.write([])
@@ -287,13 +318,110 @@ class IntegrationInventoryTests(unittest.TestCase):
             integrations.load_session(str(path))
 
         self.write_session(path, "codex", [record(ident="dfs-mcp")])
-        path.chmod(0o644)
-        with self.assertRaisesRegex(integrations.InventoryError, "owner-only"):
-            integrations.load_session(str(path))
+        for bad_mode in (0o400, 0o644, 0o700):
+            with self.subTest(mode=oct(bad_mode)):
+                path.chmod(bad_mode)
+                with self.assertRaisesRegex(integrations.InventoryError, "exact mode 0600"):
+                    integrations.load_session(str(path))
 
         os.environ["MB_INTEGRATION_SESSION"] = json.dumps(self.session_document("codex", []))
         with self.assertRaisesRegex(integrations.InventoryError, "inline session JSON is forbidden"):
             integrations.load_session()
+
+    def test_concurrent_session_loads_are_atomically_single_consume(self):
+        path = Path(self.tmp.name) / "one-shot-session.json"
+        self.write_session(path, "codex", [record(ident="dfs-mcp")])
+        start = threading.Barrier(3)
+        outcomes = []
+        outcomes_lock = threading.Lock()
+
+        def consume():
+            start.wait()
+            try:
+                loaded = integrations.load_session(str(path))
+            except integrations.InventoryError as exc:
+                outcome = ("error", str(exc))
+            else:
+                outcome = ("success", loaded["attestation"]["digest"])
+            with outcomes_lock:
+                outcomes.append(outcome)
+
+        threads = [threading.Thread(target=consume) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        start.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+
+        successes = [value for kind, value in outcomes if kind == "success"]
+        errors = [value for kind, value in outcomes if kind == "error"]
+        self.assertEqual(len(successes), 1, outcomes)
+        self.assertEqual(len(errors), 1, outcomes)
+        self.assertIn("already consumed", errors[0])
+
+    def test_concurrent_distinct_sessions_return_their_own_runtime(self):
+        codex_path = Path(self.tmp.name) / "codex-session.json"
+        grok_path = Path(self.tmp.name) / "grok-session.json"
+        self.write_session(codex_path, "codex", [record(ident="dfs-mcp")])
+        self.write_session(
+            grok_path,
+            "grok",
+            [record(runtime="grok", kind="capability", ident="browser")],
+        )
+        start = threading.Barrier(3)
+        results = {}
+        results_lock = threading.Lock()
+
+        def consume(label, path):
+            start.wait()
+            loaded = integrations.load_session(str(path))
+            with results_lock:
+                results[label] = loaded["runtime"]
+
+        threads = [
+            threading.Thread(target=consume, args=("codex", codex_path)),
+            threading.Thread(target=consume, args=("grok", grok_path)),
+        ]
+        for thread in threads:
+            thread.start()
+        start.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(results, {"codex": "codex", "grok": "grok"})
+
+    def test_concurrent_lazy_session_callers_share_one_valid_cached_overlay(self):
+        path = Path(self.tmp.name) / "lazy-session.json"
+        self.write_session(path, "codex", [record(ident="dfs-mcp")])
+        os.environ["MB_INTEGRATION_SESSION"] = str(path)
+        integrations.reset_process_cache()
+        start = threading.Barrier(3)
+        results = []
+        errors = []
+        outcome_lock = threading.Lock()
+
+        def lazy_load():
+            start.wait()
+            try:
+                loaded = integrations.session()
+            except Exception as exc:  # pragma: no cover - assertion reports exact error
+                with outcome_lock:
+                    errors.append(exc)
+            else:
+                with outcome_lock:
+                    results.append(loaded["runtime"])
+
+        threads = [threading.Thread(target=lazy_load) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        start.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(results, ["codex", "codex"])
+        self.assertEqual(integrations.session()["runtime"], "codex")
 
     def test_session_file_rejects_symlink_fifo_and_concurrent_mutation(self):
         path = Path(self.tmp.name) / "safe-session.json"
@@ -564,6 +692,16 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertFalse(hits[("mcp", "github")]["enabled"])
         self.assertEqual(hits[("mcp", "github")]["health"], "blocked")
         self.assertNotIn(("plugin", "magnet-baron-skills"), hits)
+
+        codex.write_text('[mcp_servers.github]\nenabled = "false"\n')
+        integrations.reset_process_cache()
+        inv = integrations.refresh(force=True)
+        hit = next(
+            r for r in inv["records"]
+            if r.get("kind") == "mcp" and r.get("canonical_id") == "github"
+        )
+        self.assertFalse(hit["enabled"])
+        self.assertTrue(hit["blocked"])
 
     def test_real_manifest_discover_capabilities_and_role_validation_without_fixture(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)

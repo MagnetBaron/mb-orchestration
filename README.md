@@ -68,14 +68,14 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `model-eval.py` | Score normalized JSONL eval receipts (correctness + token efficiency; latency recorded, weight 0) |
 | `drain-plan.py` | Use-it-or-lose-it drain order + reserve sizing (maximize subscription value) |
 | `doctor.py` | Validate the whole setup (schema + referential integrity + prose hygiene) |
-| `detect-agents.py` | Auto-detect installed CLI agents; discover/register unregistered ones (modular) |
+| `detect-agents.py` | Inventory CLI transport presence and configured state without claiming executable readiness; discover/register unregistered CLIs |
 | `detect-capability.py` | Bidirectional (downgrade+upgrade) capability detection; disable-auto-downgrade levers |
-| `usage-record.py` | Gather usage history (retained, default 1yr); learn reset windows; prune |
+| `usage-record.py` | Gather snapshot/owner usage history (retained, default 1yr); probe external JSON without claiming ingestion; learn reset windows; prune |
 | `observe.py` | Append-only routing-quality log + analysis (privacy-safe; never grants authority) |
 | `dashboard.py` | Self-contained HTML telemetry dashboard (usage, drain order, health score) |
 | `subscription-calculator.py` | Recommend a plan from habits or `--from-history` utilization |
-| `generate-roles.py` | Render host-native Claude/Grok agent files + Codex TOML from the registry |
-| `connectors.py` | Render paste-ready bot allowlists/tickets from `connectors.json` |
+| `generate-roles.py` | Render general host-native Claude/Grok agent files + Codex TOML; installed standing Grok profiles use `sync-grok-agents.py` via `sync-commands.sh` |
+| `connectors.py` | Render validated standing-role allowlists and prompt packets from `connectors.json` |
 | `detect-integrations.py` | Refresh/check the per-runtime plugin/MCP/app inventory; atomic cache under `$MB_DATA_DIR`, with process-only session overlays |
 | `record-429.sh` | Record a real 429 into the ledger (never a timeout) |
 | `mborch.py` · `routing.py` | Shared: layered config resolution (`MB_CONFIG_DIR`) · drain/allocation scoring |
@@ -86,15 +86,17 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 ## Quick start
 
 ```bash
-git clone https://github.com/MagnetBaron/mb-orchestration.git
-git clone https://github.com/MagnetBaron/teamclaude.git   # multi-Claude-seat rotation
+mkdir -p "$HOME/git"
+git clone https://github.com/MagnetBaron/mb-orchestration.git "$HOME/git/mb-orchestration"
+git clone https://github.com/MagnetBaron/teamclaude.git "$HOME/git/teamclaude"   # multi-Claude-seat rotation
 # private — after GitHub auth:
-git clone https://github.com/MagnetBaron/qa-idle-handoff.git
-cd mb-orchestration
+git clone https://github.com/MagnetBaron/qa-idle-handoff.git "$HOME/git/qa-idle-handoff"
+cd "$HOME/git/mb-orchestration"
 python3 bin/doctor.py        # validate config integrity + prose hygiene
 python3 bin/smoketest.py     # walk the whole path
 python3 bin/usage-status.py  # live seat map
-./sync-commands.sh           # distribute /orca (+ /orchestrate alias) to every host
+./sync-commands.sh           # atomically replace each command/skill/profile, then verify all targets
+./sync-commands.sh --check   # verify every installed copy/profile matches this checkout
 ```
 
 Port to a different user: edit `config/subscriptions.json` (your plans), `config/entrypoints.json`

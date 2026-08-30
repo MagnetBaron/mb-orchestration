@@ -25,8 +25,10 @@ python3 bin/connectors.py --render visual-qa-live-ticket magnet-baron
 python3 bin/connectors.py --render visual-qa-live-ticket gadget-duke
 ```
 
-Magnet Baron has no configured `review_d_preview_url`, so its current Review D path is live-audit
-only. Use `visual-qa-live-ticket magnet-baron` until a visitor-preview binding is configured.
+Magnet Baron has no configured `review_d_preview_url`, so its only renderable Review D packet mode is
+live-audit. Use `visual-qa-live-ticket magnet-baron` to prepare that packet until a visitor-preview
+URL is configured; rendering is not execution, and the normal route remains parked until its
+code-owned pixel-input binding exists.
 
 Preview mode accepts an HTTPS subdomain of the configured `*.shopifypreview.com` host, or an exact
 configured live host with a non-empty `preview_theme_id` under a matching per-store rule. Live audit

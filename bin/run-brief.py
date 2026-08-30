@@ -122,23 +122,43 @@ def render_cmd(recipe, ctx):
     return out
 
 
-def plan_for_seat(pid, recipes, ctx, role, dispatcher=None, review_scope=None):
+def plan_for_seat(
+    pid, recipes, ctx, role, dispatcher=None, review_scope=None,
+    *, available=True, input_seat=False,
+):
     """What the executor WOULD do for one seat — or WHY it would refuse to shell it.
     Encodes the hard invariant as an inspectable decision, not a hidden branch."""
     r = recipes.get(pid)
     if r is None:
         return {"seat": pid, "role": role, "shellable": False, "would_run": None,
+                "available": bool(available), "input_seat": bool(input_seat),
                 "reason": f"no seat-exec recipe for {pid!r} (pseudo/last-resort seat) — hand off out-of-band"}
     nmh = bool(r.get("never_metered_host"))
     bin_ = r.get("bin")
     entry = {"seat": pid, "role": role, "reads": r.get("reads"), "worktree": bool(r.get("worktree")),
-             "never_metered_host": nmh, "shellable": nmh and bool(bin_), "would_run": None}
-    if not nmh:
+             "never_metered_host": nmh, "shellable": False, "would_run": None,
+             "available": bool(available), "input_seat": bool(input_seat)}
+    if input_seat:
+        if available:
+            entry["reason"] = (
+                "standing input seat is never direct-shellable from the dry-run recipe; "
+                "only bin/grok-agent.py may validate, stage, and invoke it"
+            )
+        else:
+            entry["reason"] = (
+                "standing input seat is unavailable until its code-owned input binding and "
+                "live gates pass; no direct argv is shown, and only bin/grok-agent.py may "
+                "validate, stage, and invoke it afterward"
+            )
+    elif not available:
+        entry["reason"] = "route step is unavailable — fail closed with no display argv"
+    elif not nmh:
         entry["reason"] = ("METERED host — executor guard: never shell a diff/brief to a metered "
                            "inference host (secrets/PII ban); included capacity or owner-land only")
     elif not bin_:
         entry["reason"] = "no CLI (app/API seat) — reached out-of-band, never shelled"
     else:
+        entry["shellable"] = True
         entry["would_run"] = render_cmd(r, ctx)
         if (role == "review" and r.get("separate_invocation_when_dispatcher")
                 and review_scope == "artifact-only"):
@@ -169,15 +189,19 @@ def build_plan(args) -> dict:
         "output_path": "<output_path>",
         "preview_url": "<preview-url>",
         "agent_profile": "<validated-agent-profile>",
+        "sandbox_profile": "<ephemeral-sandbox-profile>",
     }
 
     impl_plans = []
     for step in (decision.get("implement") or []):
-        role = "review-d-input" if step.get("input_seat") else "implement"
-        p = plan_for_seat(step.get("seat"), recipes, ctx, role)
+        input_seat = bool(step.get("input_seat"))
+        available = bool(step.get("available", True))
+        role = "review-d-input" if input_seat else "implement"
+        p = plan_for_seat(
+            step.get("seat"), recipes, ctx, role,
+            available=available, input_seat=input_seat,
+        )
         p["why"] = step.get("why")
-        p["available"] = step.get("available", True)
-        p["input_seat"] = bool(step.get("input_seat"))
         if step.get("last_resort"):
             p["last_resort"] = True
         if step.get("on"):

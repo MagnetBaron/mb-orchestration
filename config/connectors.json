@@ -127,7 +127,7 @@
       ],
       "mutating_tools": [],
       "class": "analytics-judgment",
-      "note": "MCP-judgment seats only, and only dashboard + a handful of flagged recordings. Bulk recording pulls (up to 250 rows) are a banned row-dump — park volume; Heat Map bot handles browser-only layers.",
+      "note": "MCP-judgment seats only, and only dashboard + a handful of flagged recordings. Bulk recording pulls (up to 250 rows) are a banned row-dump — park volume. The future Heat Map CLI role is intended to handle browser-only layers only after its code-owned Clarity input binding and live gates pass.",
       "status": "active"
     },
     "clarity-gadgetduke": {
@@ -175,8 +175,8 @@
       "login_identity": "server@themagnetbaron.com",
       "login_method": "google-sso",
       "least_privilege": true,
-      "least_privilege_note": "server@ carries NO Google-service data/roles beyond the two Clarity invites; the bot holds a live Google session, so a broad account would be a prompt-injection blast radius.",
-      "role": "Member (Clarity has no read-only role); bot never changes settings/members/data",
+      "least_privilege_note": "server@ is the historical/future least-privilege identity for the two Clarity invites only. The replacement CLI currently has no observed signed-in Clarity/browser source and remains hard-parked; if a code-owned binding is later activated, a broad Google account would enlarge the prompt-injection blast radius.",
+      "role": "Future gated Member identity (Clarity has no read-only role); any activated CLI binding must remain observation-only and never change settings/members/data",
       "projects": {
         "magnet-baron": {
           "id": "wpxqdpcski",

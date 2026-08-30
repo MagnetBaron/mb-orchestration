@@ -96,22 +96,94 @@ def compute_depth(depth_conf, klass, scale, risk_flags):
 
 def provider_seats(pid, providers, rows):
     """Live usage rows backing a provider, best (route_key) first."""
-    prov = providers["providers"].get(pid, {})
-    usage_seat = prov.get("usage_seat")
-    if usage_seat:
-        return sorted([r for r in rows if r.get("seat") == usage_seat], key=routing.route_key)
+    provs = providers.get("providers") if isinstance(providers, dict) else None
+    prov = provs.get(pid) if isinstance(provs, dict) else None
+    if not isinstance(prov, dict) or prov.get("enabled", True) is not True:
+        return []
+    try:
+        subscriptions_root = mborch.load_config("subscriptions.json", required=True)
+    except (SystemExit, OSError, ValueError):
+        return []
+    subscriptions = subscriptions_root.get("subscriptions") \
+        if isinstance(subscriptions_root, dict) else None
+    if not isinstance(subscriptions, dict) or not subscriptions:
+        return []
     sub = prov.get("backed_by")
-    special = {"fireworks-api": ["review-e"]}
-    if sub in special:
-        want = special[sub]
-        seats = [r for r in rows if r["seat"] in want]
-    elif sub in ("claude-any-seat",):
-        seats = [r for r in rows if r.get("family") == "anthropic"]
-    elif sub in ("claude-fable-capable-seats",):
-        seats = [r for r in rows if r.get("fable")]
+    family = prov.get("family")
+    if not isinstance(sub, str) or not sub or not isinstance(family, str) or not family:
+        return []
+    if sub == "claude-any-seat":
+        eligible_subscriptions = {
+            sid for sid, meta in subscriptions.items()
+            if isinstance(meta, dict) and pid in (meta.get("backs_providers") or [])
+        }
+        match = lambda row: (
+            row.get("subscription") in eligible_subscriptions
+            and row.get("family") == family == "anthropic"
+        )
+    elif sub == "claude-fable-capable-seats":
+        eligible_subscriptions = {
+            sid for sid, meta in subscriptions.items()
+            if isinstance(meta, dict) and pid in (meta.get("backs_providers") or [])
+            and (meta.get("grants") or {}).get("fable") is True
+        }
+        match = lambda row: (
+            row.get("subscription") in eligible_subscriptions
+            and row.get("family") == family == "anthropic"
+            and row.get("fable") is True
+        )
+    elif sub == "fireworks-api":
+        if pid != "review-e" or family != "open-weight":
+            return []
+        match = lambda row: (
+            row.get("seat") == "review-e" and row.get("subscription") is None
+            and row.get("family") == family and row.get("billing") == "metered"
+        )
     else:
-        seats = [r for r in rows if r.get("subscription") == sub]
+        subscription = subscriptions.get(sub)
+        if not isinstance(subscription, dict) \
+                or pid not in (subscription.get("backs_providers") or []):
+            return []
+        match = lambda row: row.get("subscription") == sub and row.get("family") == family
+    usage_seat = prov.get("usage_seat")
+    if "usage_seat" in prov:
+        if not isinstance(usage_seat, str) or not usage_seat:
+            return []
+        return sorted(
+            [r for r in rows if r.get("seat") == usage_seat and match(r)],
+            key=routing.route_key,
+        )
+    seats = [r for r in rows if match(r)]
     return sorted(seats, key=routing.route_key)
+
+
+def provider_backing_subscriptions(pid, provider):
+    """Return subscription ids that bidirectionally own this provider backing."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
+        return set()
+    try:
+        root = mborch.load_config("subscriptions.json", required=True)
+    except (SystemExit, OSError, ValueError):
+        return set()
+    subscriptions = root.get("subscriptions") if isinstance(root, dict) else None
+    if not isinstance(subscriptions, dict):
+        return set()
+    backing = provider.get("backed_by")
+    if backing == "claude-any-seat":
+        return {
+            sid for sid, meta in subscriptions.items()
+            if isinstance(meta, dict) and pid in (meta.get("backs_providers") or [])
+        }
+    if backing == "claude-fable-capable-seats":
+        return {
+            sid for sid, meta in subscriptions.items()
+            if isinstance(meta, dict) and pid in (meta.get("backs_providers") or [])
+            and (meta.get("grants") or {}).get("fable") is True
+        }
+    meta = subscriptions.get(backing) if isinstance(backing, str) else None
+    if isinstance(meta, dict) and pid in (meta.get("backs_providers") or []):
+        return {backing}
+    return set()
 
 
 STANDING_REVIEW_AUTHORIZATION_CONSTANTS = {
@@ -214,7 +286,7 @@ def evaluate_handoff(policy, artifacts):
 
 def provider_dispatch_configured(provider_id, provider, registry):
     """Static dispatch claim: evidence + provider and bound-route capabilities agree."""
-    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+    if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
         return False
     if provider.get("dispatch_eligible") is not True:
         return False
@@ -253,9 +325,6 @@ def dispatch_statuses(providers, rows, registry, entrypoints, ledger=None):
         seats = [s for s in provider_seats(pid, providers, rows) if routing.usable(s)] if qualified else []
         if pid == "fable-5":
             seats = [s for s in seats if s.get("seat") not in downgraded]
-        if qualified and not seats and p.get("kind") == "api":
-            seats = [{"seat": pid, "tier": "available", "billing": p.get("billing"),
-                      "family": p.get("family"), "intake": False, "window_kinds": ["none"]}]
         seat = seats[0] if seats else None
         statuses[pid] = {
             "provider": pid,
@@ -296,7 +365,13 @@ def select_dispatcher(entrypoints, providers, rows, registry, requested=None, pr
         # A known non-dispatch entry surface may relay an ordinary brief without gaining
         # dispatch authority. A provider claiming dispatch eligibility but failing its
         # evidence/capability/live-route conjunction is misconfigured and fails closed.
-        if (p.get("dispatch_eligible") or preferred not in relay_ids
+        malformed_dispatch_claim = (
+            "dispatch_eligible" in p
+            and type(p.get("dispatch_eligible")) is not bool
+        )
+        if (not isinstance(p, dict) or p.get("enabled", True) is not True
+                or p.get("dispatch_eligible") is True or malformed_dispatch_claim
+                or preferred not in relay_ids
                 or not disp.get("relay_known_unqualified_intake")):
             return {"satisfied": False, "requested": preferred, "effective": None,
                     "profile": profile, "fallback_used": False,
@@ -347,13 +422,14 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     """Reviewers whose bound catalog route is live. Registry is required; unknown state fails closed."""
     if not registry:
         return []
-    by_name = {r["seat"]: r for r in rows}
     prov = providers["providers"]
     review_ids = list(dict.fromkeys((providers.get("review_order") or []) +
                                     (providers.get("review_fallbacks") or [])))
     order_index = {pid: i for i, pid in enumerate(review_ids)}
-    live_ids = {pid for pid in review_ids
-                if modelreg.provider_route_is_live(registry, prov.get(pid) or {})}
+    live_ids = {
+        pid for pid in review_ids
+        if modelreg.provider_can_review(registry, prov.get(pid) or {})
+    }
     author_ids = set(authors or ())
     # Family independence follows the *effective* dispatcher. A requested intake
     # that fell back is not a review participant unless that provider was selected.
@@ -370,7 +446,10 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     for native_pid in review_ids:
         native = prov.get(native_pid, {})
         native_family = native.get("family")
-        if native_family == "open-weight" or not native.get("review_eligible"):
+        if (
+            native_family == "open-weight"
+            or not modelreg.provider_review_configured(registry, native)
+        ):
             continue
         native_group = modelreg.independence_group_of(registry, native_family)
         if not native_group:
@@ -399,19 +478,16 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     review_e = prov.get("review-e") or {}
     review_e_open = bool(
         review_e.get("wired") is True
-        and modelreg.provider_route_is_live(registry, review_e)
+        and modelreg.provider_can_review(registry, review_e)
         and native_available
         and native_quota_spent
     )
 
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
-    fable_seats = [r for r in rows if r.get("fable") and routing.usable(r) and r["seat"] not in downgraded]
-    anthropic_seats = [r for r in rows if r.get("family") == "anthropic" and routing.usable(r)]
-
     out = []
     for pid in review_ids:
         p = prov.get(pid, {})
-        if not p.get("review_eligible"):
+        if p.get("review_eligible") is not True:
             continue
         if pid == "review-e" and not review_e_open:
             continue
@@ -425,23 +501,19 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
             continue
         route = (registry.get("routes") or {}).get(p.get("route") or "") or {}
         phys = modelreg.physical_invocation(route)
-        seat = None
+        candidates = [
+            row for row in provider_seats(pid, providers, rows)
+            if routing.usable(row)
+            and not (pid == "fable-5" and row.get("seat") in downgraded)
+        ]
         if pid == "fable-5":
-            cand = sorted(fable_seats, key=routing.route_key)
-            seat = cand[0] if cand else None
+            candidates.sort(key=routing.route_key)
         elif fam == "anthropic":
-            # prefer a non-Fable (Pro) seat to spare Fable seats; then by route_key
-            cand = sorted(anthropic_seats, key=lambda r: (bool(r.get("fable")), *routing.route_key(r)))
-            seat = cand[0] if cand else None
+            # Prefer a non-Fable seat only within this provider's validated backing.
+            candidates.sort(key=lambda r: (bool(r.get("fable")), *routing.route_key(r)))
         else:
-            r = by_name.get(pid)
-            if r and routing.usable(r):
-                seat = r
-            elif r is None and p.get("kind") == "api":
-                # Live API route with no usage-window seat: treat as available. Still requires
-                # a live_verified catalog route (live_ids filter above); wired=true is not enough.
-                seat = {"seat": pid, "tier": "available", "billing": p.get("billing"),
-                        "family": fam, "intake": False, "window_kinds": ["none"]}
+            candidates.sort(key=routing.route_key)
+        seat = candidates[0] if candidates else None
         if seat is not None:
             dispatch_independent = not dispatcher_group or group != dispatcher_group
             out.append({"provider": pid, "family": fam, "independence_group": group,
@@ -537,21 +609,59 @@ def review_d_input_step(providers, registry):
     review_d_id = "grok-bot-review-d"
     review_d = (providers.get("providers") or {}).get(review_d_id) or {}
     execution_input_binding = EXECUTION_INPUT_BINDINGS.get(review_d_id)
+    binding_ready = (
+        isinstance(execution_input_binding, str)
+        and bool(execution_input_binding.strip())
+    )
+    enabled = isinstance(review_d, dict) and review_d.get("enabled", True) is True
+    wired = isinstance(review_d, dict) and review_d.get("wired") is True
+    kind_ok = isinstance(review_d, dict) and review_d.get("kind") == "cli"
+    provider_model_ok = (
+        isinstance(review_d, dict) and review_d.get("model") == "grok-4.6"
+    )
+    route_id = review_d.get("route") if isinstance(review_d, dict) else None
+    route = (registry.get("routes") or {}).get(route_id) if isinstance(registry, dict) else None
+    route_shape_ok = (
+        isinstance(route, dict)
+        and route.get("provider") == review_d_id
+        and route.get("model") == "grok-4.6"
+        and route.get("host") == "grok-cli"
+        and route.get("harness") == "grok"
+        and route.get("invocation_id") == "mb-review-d"
+    )
     route_live = modelreg.provider_route_is_live(registry, review_d)
     runtime_caps = {
         cap: integrations.effective("grok", "capability", cap, require_callable=True)
         for cap in ("browser", "pixels")
     }
-    available = (bool(execution_input_binding) and bool(review_d.get("wired")) and route_live
-                 and all(ok for ok, _reason in runtime_caps.values()))
+    available = (
+        binding_ready
+        and enabled
+        and wired
+        and kind_ok
+        and provider_model_ok
+        and route_shape_ok
+        and route_live
+        and all(ok is True for ok, _reason in runtime_caps.values())
+    )
     if available:
         why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
     else:
         missing = []
-        if not execution_input_binding:
+        if not binding_ready:
             missing.append("code-owned pixel input transport is not implemented")
-        if not review_d.get("wired"):
-            missing.append("provider wired is not true")
+        if not enabled:
+            missing.append("provider enabled is not exact true")
+        if not wired:
+            missing.append("provider wired is not exact true")
+        if not kind_ok:
+            missing.append("provider kind is not exact cli")
+        if not provider_model_ok:
+            missing.append("provider model is not exact grok-4.6")
+        if not route_shape_ok:
+            missing.append(
+                "bound route is not the exact grok-4.6/mb-review-d Grok CLI harness for Review D"
+            )
         if not route_live:
             missing.append("CLI route is not live_verified")
         for cap, (ok, reason) in runtime_caps.items():
@@ -570,7 +680,7 @@ def review_d_input_step(providers, registry):
 def provider_can_code(provider, registry):
     """True iff this provider may implement: implement/ide function, `code` on the provider
     AND on its bound live catalog route. Live-route predicate is shared (route_is_live)."""
-    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+    if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
         return False
     fns = set(provider.get("functions") or [])
     if not (fns & IMPLEMENT_FNS):
@@ -586,7 +696,7 @@ def provider_can_code(provider, registry):
 def provider_can_mcp_bulk(provider, registry):
     """True iff this provider may run MCP volume: mcp_bulk function, mcp_bulk on the
     provider AND on its bound live catalog route. Live-route predicate is shared."""
-    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+    if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
         return False
     if "mcp_bulk" not in (provider.get("functions") or []):
         return False
@@ -608,7 +718,7 @@ def last_resort_coder(prov, registry, subscription, cap_ok):
         return None
     ranked = []
     for pid, p in prov.items():
-        if not isinstance(p, dict) or p.get("backed_by") != subscription:
+        if subscription not in provider_backing_subscriptions(pid, p):
             continue
         if not provider_can_code(p, registry):
             continue
@@ -1007,7 +1117,7 @@ def main(argv=None):
             lr = " [LAST RESORT]" if s.get("last_resort") else ""
             sw = " ⚠resets-mid-task" if s.get("resets_mid_task") else ""
             on = f" on {s['on']}" if s.get("on") else ""
-            av = "" if s.get("available", True) else "  [SPENT/DOWN]"
+            av = "" if s.get("available", True) else "  [UNAVAILABLE]"
             print(f"  → {s['seat']}{on}{tag}{lr}{sw}: {s['why']}{av}")
     print("-" * 72)
     print("deterministic: same class + recorded state → same decision. Reserves yield (never strand); metered $ last.")

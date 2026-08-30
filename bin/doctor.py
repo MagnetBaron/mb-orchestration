@@ -104,6 +104,9 @@ def check_providers(providers):
     ids = set(provs)
     review_fns = {}
     for pid, p in provs.items():
+        for key in ("enabled", "wired", "review_eligible", "dispatch_eligible"):
+            if key in p and type(p.get(key)) is not bool:
+                err(f"provider {pid}: {key} must be a boolean when present")
         if p.get("level") not in LEVELS:
             err(f"provider {pid}: bad level {p.get('level')!r}")
         if p.get("family") not in families:
@@ -114,11 +117,17 @@ def check_providers(providers):
             err(f"provider {pid}: selects FORBIDDEN model {p.get('model')!r} (listed in providers.json forbidden_models)")
         if p.get("billing") not in (None, "included", "metered"):
             err(f"provider {pid}: billing must be 'included' or 'metered', got {p.get('billing')!r}")
+        if p.get("review_eligible") is True:
+            if "review" not in (p.get("functions") or []):
+                err(f"provider {pid}: review_eligible requires review function")
+            if "review" not in (p.get("capabilities") or []):
+                err(f"provider {pid}: review_eligible requires review capability")
         sup = p.get("supersedes")
         if sup is not None:
             if sup not in provs:
                 err(f"provider {pid}: supersedes unknown provider {sup!r}")
-            elif provs[sup].get("enabled", True) and not provs[sup].get("compatibility_fallback"):
+            elif (provs[sup].get("enabled", True) is True
+                  and not provs[sup].get("compatibility_fallback")):
                 warn(f"provider {pid} supersedes {sup!r}, but {sup} is still enabled — disable/remove the incumbent (clean slot-in) or mark it compatibility_fallback")
         review_fns[pid] = p.get("functions", [])
     order = list(dict.fromkeys((providers.get("review_order") or []) +
@@ -126,8 +135,12 @@ def check_providers(providers):
     for pid in order:
         if pid not in ids:
             err(f"review order/fallback references unknown provider {pid!r}")
+        elif provs[pid].get("enabled", True) is not True:
+            err(f"review order/fallback provider {pid!r} is not enabled with exact true")
+        elif provs[pid].get("review_eligible") is not True:
+            err(f"review order/fallback provider {pid!r} is not review_eligible")
     for pid, p in provs.items():
-        if p.get("dispatch_eligible"):
+        if p.get("dispatch_eligible") is True:
             if "dispatch" not in (p.get("functions") or []):
                 err(f"provider {pid}: dispatch_eligible requires dispatch function")
             if "dispatch" not in (p.get("capabilities") or []):
@@ -157,6 +170,108 @@ def check_subscriptions(subs, provider_ids):
         if s.get("grants", {}).get("fable"):
             fable_seats.add(s.get("seat_id") or sid)
     return fable_seats
+
+
+def check_provider_backings(provs, subs, windows):
+    """Require provider↔subscription↔usage-window quota ownership to agree."""
+    subscriptions = (subs or {}).get("subscriptions")
+    seats = (windows or {}).get("seats")
+    if not isinstance(subscriptions, dict) or not isinstance(seats, dict):
+        return
+    group_backings = {"claude-any-seat", "claude-fable-capable-seats"}
+    for pid, provider in (provs or {}).items():
+        if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
+            continue
+        referenced_subscriptions = {
+            sid for sid, meta in subscriptions.items()
+            if isinstance(meta, dict) and pid in (meta.get("backs_providers") or [])
+        }
+        special_seat_present = pid == "review-e" and "review-e" in seats
+        # providers.json is an inherited catalog. A user/example layer provisions a
+        # provider by naming it from a subscription (or by carrying the explicit
+        # Review E metered seat). Unprovisioned catalog entries remain dormant and
+        # runtime provider_seats() returns no authority for them.
+        if not referenced_subscriptions and not special_seat_present:
+            continue
+        backing = provider.get("backed_by")
+        family = provider.get("family")
+        if not isinstance(backing, str) or not backing:
+            err(f"provider {pid}: enabled provider requires a non-empty backed_by binding")
+            continue
+        if backing == "fireworks-api":
+            eligible = [
+                (seat, meta) for seat, meta in seats.items()
+                if seat == "review-e" and isinstance(meta, dict)
+                and meta.get("subscription") is None and meta.get("family") == family == "open-weight"
+                and meta.get("billing") == "metered"
+            ] if pid == "review-e" else []
+        elif backing in group_backings:
+            if family != "anthropic":
+                eligible = []
+            else:
+                eligible_subscriptions = {
+                    sid for sid, meta in subscriptions.items()
+                    if sid in referenced_subscriptions
+                    and (
+                        backing != "claude-fable-capable-seats"
+                        or (meta.get("grants") or {}).get("fable") is True
+                    )
+                }
+                eligible = [
+                    (seat, meta) for seat, meta in seats.items()
+                    if isinstance(meta, dict)
+                    and meta.get("subscription") in eligible_subscriptions
+                    and meta.get("family") == family
+                    and (
+                        backing != "claude-fable-capable-seats"
+                        or meta.get("fable") is True
+                    )
+                ]
+        else:
+            subscription = subscriptions.get(backing)
+            eligible = [
+                (seat, meta) for seat, meta in seats.items()
+                if isinstance(meta, dict) and meta.get("subscription") == backing
+                and meta.get("family") == family
+            ] if (
+                isinstance(subscription, dict)
+                and pid in (subscription.get("backs_providers") or [])
+            ) else []
+        usage_seat = provider.get("usage_seat")
+        if usage_seat is not None:
+            if not isinstance(usage_seat, str) or not usage_seat:
+                err(f"provider {pid}: usage_seat must be a non-empty string when present")
+            elif usage_seat not in {seat for seat, _meta in eligible}:
+                err(
+                    f"provider {pid}: usage_seat {usage_seat!r} is not owned by "
+                    f"backed_by {backing!r} with family {family!r}"
+                )
+        elif not eligible:
+            err(
+                f"provider {pid}: backed_by {backing!r} has no bidirectionally owned "
+                "usage-window seat"
+            )
+    for sid, subscription in subscriptions.items():
+        if not isinstance(subscription, dict):
+            continue
+        for pid in subscription.get("backs_providers") or []:
+            provider = (provs or {}).get(pid)
+            if not isinstance(provider, dict):
+                continue
+            backing = provider.get("backed_by")
+            valid = backing == sid
+            if backing == "claude-any-seat":
+                valid = provider.get("family") == "anthropic"
+            elif backing == "claude-fable-capable-seats":
+                valid = (
+                    provider.get("family") == "anthropic"
+                    and (subscription.get("grants") or {}).get("fable") is True
+                )
+            if not valid:
+                err(
+                    f"subscription {sid}: backs provider {pid!r}, but provider backed_by "
+                    f"is {backing!r}"
+                )
 
 
 def check_connectors(conns, provider_ids):
@@ -464,7 +579,9 @@ def check_entrypoints(entry, provs, provider_ids):
     for label, pid in [("default_provider", default)] + [("fallback_order", p) for p in fallback]:
         if pid not in provider_ids:
             err(f"entrypoints dispatcher.{label} {pid!r} is not a known provider")
-        elif not provs.get(pid, {}).get("dispatch_eligible"):
+        elif provs.get(pid, {}).get("enabled", True) is not True:
+            err(f"entrypoints dispatcher.{label} {pid!r} is not enabled with exact true")
+        elif provs.get(pid, {}).get("dispatch_eligible") is not True:
             err(f"entrypoints dispatcher.{label} {pid!r} is not dispatch_eligible")
     if len(fallback) != len(set(fallback)):
         err("entrypoints dispatcher.fallback_order must be unique")
@@ -478,11 +595,16 @@ def check_entrypoints(entry, provs, provider_ids):
         for p in pids:
             if p not in provider_ids:
                 err(f"entry surface {name}: provider {p!r} unknown")
-            elif s.get("can_dispatch") and not provs.get(p, {}).get("dispatch_eligible"):
+            elif provs.get(p, {}).get("enabled", True) is not True:
+                err(f"entry surface {name}: provider {p!r} is not enabled with exact true")
+            elif (s.get("can_dispatch")
+                  and provs.get(p, {}).get("dispatch_eligible") is not True):
                 err(f"entry surface {name}: can_dispatch includes unqualified provider {p!r}")
     for name, profile in (entry.get("profiles") or {}).items():
         p = profile.get("preferred_dispatcher")
-        if p not in provider_ids or not provs.get(p, {}).get("dispatch_eligible"):
+        if (p not in provider_ids
+                or provs.get(p, {}).get("enabled", True) is not True
+                or provs.get(p, {}).get("dispatch_eligible") is not True):
             err(f"entrypoints profile {name}: preferred_dispatcher {p!r} is not dispatch_eligible")
     if "default" not in (entry.get("profiles") or {}):
         err("entrypoints profiles.default is required")
@@ -806,8 +928,15 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 err(f"seat-exec recipe {pid!r}: required_agent must be {approved_agents[pid]!r}")
             if expected_model != "grok-4.6" or not isinstance(route, dict) or route.get("model") != expected_model:
                 err(f"seat-exec recipe {pid!r}: provider and bound route must pin exact model 'grok-4.6'")
+            if isinstance(route, dict) and route.get("provider") != pid:
+                err(f"seat-exec recipe {pid!r}: bound route provider must be exact {pid!r}")
             if isinstance(route, dict) and (route.get("host"), route.get("harness")) != ("grok-cli", "grok"):
                 err(f"seat-exec recipe {pid!r}: bound route must use host='grok-cli' and harness='grok'")
+            if isinstance(route, dict) and route.get("invocation_id") != approved_agents[pid]:
+                err(
+                    f"seat-exec recipe {pid!r}: bound route invocation_id must be exact "
+                    f"{approved_agents[pid]!r}"
+                )
             grok_agent_mod = load_module("grok_agent_doctor_recipe", HERE / "grok-agent.py")
             execution_binding = grok_agent_mod.EXECUTION_INPUT_BINDINGS.get(pid)
             if execution_binding is None and (
@@ -884,15 +1013,19 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
     if grok_agent.STAGED_SANDBOX_PLACEHOLDER != "<ephemeral-sandbox-profile>":
         err("inspect must show the non-executable <ephemeral-sandbox-profile> placeholder")
     dummy_profile = grok_agent.SANDBOX_PROFILE_PREFIX + ("0" * 32)
+    socket_snapshot = ()
     try:
         grok_agent.validate_sandbox_profile_name(dummy_profile)
-        profile_text = grok_agent._sandbox_profile_text(dummy_profile)
+        socket_snapshot = grok_agent.capture_runtime_socket_snapshot()
+        profile_text = grok_agent._sandbox_profile_text(
+            dummy_profile, socket_snapshot=socket_snapshot
+        )
     except ValueError as exc:
         err(f"standing Grok sandbox profile failed closed: {exc}")
         profile_text = ""
     if profile_text and 'extends = "strict"' not in profile_text:
         err("standing Grok sandbox profile must extend strict")
-    if grok_agent.auto_runtime_socket_deny_incompatible():
+    if grok_agent._runtime_socket_snapshot_incompatible(socket_snapshot):
         if sys.platform != "darwin":
             err(
                 "symlink runtime-socket endpoints on a non-macOS host must PARK; "
@@ -911,7 +1044,8 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 "deny resolved non-symlink socket targets only"
             )
     for pid, p in (provs or {}).items():
-        if p.get("review_eligible") and p.get("dispatch_eligible"):
+        if (p.get("review_eligible") is True
+                and p.get("dispatch_eligible") is True):
             recipe = recipes.get(pid)
             if not isinstance(recipe, dict) or recipe.get("separate_invocation_when_dispatcher") is not True:
                 err(f"seat-exec: provider {pid!r} is review_eligible and dispatch_eligible so "
@@ -996,6 +1130,25 @@ def check_observability(monitoring):
             blob = json.dumps(ev)
             if "/Users/" in blob or "/home/" in blob:
                 err("observability fixture contains an absolute user path")
+
+
+def check_monitoring_sources(monitoring):
+    if monitoring is None:
+        return
+    sources = monitoring.get("sources") if isinstance(monitoring, dict) else None
+    if not isinstance(sources, dict):
+        err("monitoring.sources must be an object")
+        return
+    for name, source in sources.items():
+        if not isinstance(source, dict):
+            err(f"monitoring source {name!r} must be an object")
+            continue
+        if type(source.get("enabled")) is not bool:
+            err(f"monitoring source {name!r}: enabled must be a boolean")
+        if "cmd" in source and (
+            not isinstance(source.get("cmd"), str) or not source["cmd"].strip()
+        ):
+            err(f"monitoring source {name!r}: cmd must be a non-empty string when present")
 
 
 def check_runledger():
@@ -1224,10 +1377,12 @@ def main(argv=None):
         rd = monitoring.get("retention_days")
         if not isinstance(rd, int) or rd < 0:
             err(f"monitoring.retention_days must be a non-negative integer, got {rd!r}")
+    check_monitoring_sources(monitoring)
     check_observability(monitoring)
 
     provs, provider_ids, _ = check_providers(providers)
     fable_from_subs = check_subscriptions(subs, provider_ids)
+    check_provider_backings(provs, subs, windows)
     check_connectors(conns, provider_ids)
     check_integration_adapters(integration_adapters, providers)
     check_connector_lifecycle(conns, providers)

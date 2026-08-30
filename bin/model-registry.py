@@ -886,10 +886,68 @@ def route_is_live(registry: dict, route_id, as_of: date | None = None) -> bool:
 
 
 def provider_route_is_live(registry: dict, provider: dict | None, as_of: date | None = None) -> bool:
-    """True iff an enabled provider's bound catalog route passes route_is_live."""
-    if not isinstance(provider, dict) or provider.get("enabled", True) is False:
+    """True iff an enabled/wired provider's bound catalog route passes route_is_live."""
+    if (
+        not isinstance(provider, dict)
+        or provider.get("enabled", True) is not True
+        or provider.get("wired", True) is not True
+    ):
         return False
     return route_is_live(registry, provider.get("route"), as_of=as_of)
+
+
+def provider_review_configured(registry: dict, provider: dict | None) -> bool:
+    """True iff every static layer declares this exact provider as a reviewer."""
+    if not isinstance(provider, dict) or provider.get("enabled", True) is not True:
+        return False
+    if provider.get("review_eligible") is not True:
+        return False
+    if "review" not in (provider.get("functions") or []):
+        return False
+    if "review" not in (provider.get("capabilities") or []):
+        return False
+    route = (registry.get("routes") or {}).get(provider.get("route") or "") \
+        if isinstance(registry, dict) else None
+    return isinstance(route, dict) and "review" in (route.get("capabilities") or [])
+
+
+def provider_can_review(
+    registry: dict, provider: dict | None, as_of: date | None = None
+) -> bool:
+    """True iff the static review conjunction is bound to a currently live route."""
+    return (
+        provider_review_configured(registry, provider)
+        and provider_route_is_live(registry, provider, as_of=as_of)
+    )
+
+
+ROLE_PROVIDER_FUNCTIONS = {
+    "dispatch": frozenset({"dispatch"}),
+    "implementation": frozenset({"implement", "ide"}),
+    "architecture_spec_critique": frozenset({"architecture"}),
+    "code_review": frozenset({"review"}),
+    "mcp_volume": frozenset({"mcp_bulk"}),
+    "mcp_judgment": frozenset({"mcp_judgment"}),
+    "visual_qa": frozenset({"visual_qa"}),
+    "marketplace_intelligence": frozenset({"marketplace_intelligence"}),
+}
+
+
+def provider_supports_role(provider: dict | None, role: str, required_capabilities) -> bool:
+    """Operational role authority is a provider+route conjunction, never route rank alone."""
+    if not isinstance(provider, dict):
+        return False
+    capabilities = set(provider.get("capabilities") or [])
+    if not set(required_capabilities or []).issubset(capabilities):
+        return False
+    required_functions = ROLE_PROVIDER_FUNCTIONS.get(role)
+    if required_functions and not required_functions.intersection(provider.get("functions") or []):
+        return False
+    if role == "code_review" and provider.get("review_eligible") is not True:
+        return False
+    if role == "dispatch" and provider.get("dispatch_eligible") is not True:
+        return False
+    return True
 
 
 def _live_route_errors(registry: dict, rid: str, route: dict, as_of: date) -> list[str]:
@@ -1225,8 +1283,23 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
 
     if providers:
         provs = providers.get("providers") or {}
+        standing_grok_invocations = {
+            "grok-bot-review-d": "mb-review-d",
+            "grok-bot-heat-map": "mb-heat-map",
+            "grok-bot-marketplace-intelligence": "mb-marketplace-intelligence",
+        }
         for pid, p in provs.items():
-            if not isinstance(p, dict) or p.get("enabled", True) is False:
+            if not isinstance(p, dict):
+                errors.append(f"provider {pid}: definition must be an object")
+                continue
+            invalid_boolean = False
+            for key in ("enabled", "wired", "review_eligible", "dispatch_eligible"):
+                if key in p and type(p.get(key)) is not bool:
+                    errors.append(f"provider {pid}: {key} must be a boolean when present")
+                    invalid_boolean = True
+            if invalid_boolean:
+                continue
+            if p.get("enabled", True) is not True:
                 continue
             fn, cap, route_cap = mcp_bulk_layer_flags(p, registry)
             assigned = _mcp_volume_assigned(pid, connectors)
@@ -1237,6 +1310,15 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                     "enabled MCP assignment requires mcp_bulk on provider functions, "
                     "provider capabilities, and bound-route capabilities together"
                 )
+            if p.get("review_eligible") is True:
+                if "review" not in (p.get("functions") or []):
+                    errors.append(
+                        f"provider {pid}: review_eligible requires review in provider functions"
+                    )
+                if "review" not in (p.get("capabilities") or []):
+                    errors.append(
+                        f"provider {pid}: review_eligible requires review in provider capabilities"
+                    )
             route_id = p.get("route")
             if p.get("wired") is True and route_id:
                 bound = routes.get(route_id) or {}
@@ -1252,7 +1334,27 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                 errors.append(f"provider {pid}: route {route_id!r} is not in model-registry.json")
                 continue
             route = routes[route_id]
-            if route.get("provider") not in (None, pid):
+            expected_invocation = standing_grok_invocations.get(pid)
+            if (
+                expected_invocation is not None
+                and route.get("invocation_id") != expected_invocation
+            ):
+                errors.append(
+                    f"provider {pid}: bound route invocation_id must be exact "
+                    f"{expected_invocation!r}"
+                )
+            if (
+                p.get("review_eligible") is True
+                and "review" not in (route.get("capabilities") or [])
+            ):
+                errors.append(
+                    f"provider {pid}: review_eligible requires review on bound route {route_id}"
+                )
+            if expected_invocation is not None and route.get("provider") != pid:
+                errors.append(
+                    f"provider {pid}: standing bound route provider must be exact {pid!r}"
+                )
+            elif expected_invocation is None and route.get("provider") not in (None, pid):
                 errors.append(
                     f"provider {pid}: bound route {route_id} names provider {route.get('provider')!r}"
                 )
@@ -1271,9 +1373,22 @@ def validate(registry: dict, as_of: date | None = None, providers: dict | None =
                 errors.append(
                     f"provider {pid}: family {pf!r} != catalog family {mf!r}"
                 )
-        order = providers.get("review_order") or []
+        order = list(dict.fromkeys(
+            (providers.get("review_order") or [])
+            + (providers.get("review_fallbacks") or [])
+        ))
         for pid in order:
             p = provs.get(pid) or {}
+            if p.get("enabled", True) is not True:
+                errors.append(
+                    f"review_order provider {pid}: provider is not enabled with exact true"
+                )
+                continue
+            if p.get("review_eligible") is not True:
+                errors.append(
+                    f"review_order provider {pid}: provider is not review_eligible"
+                )
+                continue
             route_id = p.get("route")
             if not route_id:
                 continue
@@ -1444,7 +1559,8 @@ def _provider_binding_for_route(route_id: str) -> tuple[str, dict] | None:
     data = _load_structured_repo_json("config/providers.json") or {}
     matches = [
         (pid, p) for pid, p in (data.get("providers") or {}).items()
-        if isinstance(p, dict) and p.get("route") == route_id
+        if (isinstance(p, dict) and p.get("enabled", True) is True
+            and p.get("route") == route_id)
     ]
     return matches[0] if len(matches) == 1 else None
 
@@ -1695,7 +1811,7 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
             required_capabilities=None, required_tools=None, data_boundary=None,
             exclude_models=None, exclude_families=None, exclude_routes=None,
             hosts=None, quota_spent=None, use_quality: bool = False,
-            as_of: date | None = None) -> dict:
+            as_of: date | None = None, providers: dict | None = None) -> dict:
     """Fail-closed resolver. Rank does not grant authority.
 
     Every candidate is filtered with `route_is_live` before matching/ranking. Missing,
@@ -1707,12 +1823,45 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
     family_diversity=2 requires distinct configured independence groups AND distinct
     physical (host, harness, invocation_id) identities — never family strings alone.
     An empty/undeclared group cannot count toward diversity.
+
+    Passing providers performs the operational activation check and rejects the entire
+    decision when provider/route/model/family bindings are invalid. Omitting providers
+    is catalog analysis only; its result never claims operational provider eligibility.
     """
     as_of = as_of or date.today()
     roles = registry.get("roles") or {}
     rankings = registry.get("rankings") or {}
     if role not in roles or role not in rankings:
         return {"ok": False, "role": role, "routes": [], "reason": f"unknown role {role!r}"}
+    if providers is not None:
+        if (
+            not isinstance(providers, dict)
+            or not isinstance(providers.get("providers"), dict)
+            or not providers["providers"]
+        ):
+            return {
+                "ok": False,
+                "role": role,
+                "routes": [],
+                "rejected_same_family": [],
+                "authority_grants": False,
+                "provider_activation_checked": True,
+                "reason": "fail-closed: provider activation config must contain a non-empty providers object",
+            }
+        provider_errors = validate(registry, as_of=as_of, providers=providers)
+        if provider_errors:
+            return {
+                "ok": False,
+                "role": role,
+                "routes": [],
+                "rejected_same_family": [],
+                "authority_grants": False,
+                "provider_activation_checked": True,
+                "reason": (
+                    "fail-closed: provider activation config is invalid: "
+                    + "; ".join(provider_errors[:3])
+                ),
+            }
     spec = roles[role]
     req_caps = list(required_capabilities or spec.get("required_capabilities") or [])
     models = registry.get("models") or {}
@@ -1725,11 +1874,27 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
     )
     candidates = []
     seen = set()
+    active_route_ids = None
+    if providers is not None:
+        active_by_route = {}
+        for pid, provider in (providers.get("providers") or {}).items():
+            if not provider_route_is_live(registry, provider, as_of=as_of) \
+                    or not provider_supports_role(provider, role, req_caps):
+                continue
+            active_by_route.setdefault(provider.get("route"), []).append(pid)
+        # Ambiguous activation is not authority. A route must have one exact active
+        # provider that itself declares the requested role layers.
+        active_route_ids = {
+            route_id for route_id, provider_ids in active_by_route.items()
+            if route_id and len(provider_ids) == 1
+        }
     for entry in ranked:
         rid = entry.get("route")
         if rid in seen or rid not in routes:
             continue
         seen.add(rid)
+        if active_route_ids is not None and rid not in active_route_ids:
+            continue
         if not route_is_live(registry, rid, as_of=as_of):
             continue
         row = _route_row(rid, routes[rid], models.get(routes[rid].get("model"), {}))
@@ -1783,6 +1948,7 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
         "routes": picked,
         "rejected_same_family": rejected_same_family,
         "authority_grants": False,
+        "provider_activation_checked": providers is not None,
         "reason": "",
     }
     if family_diversity and family_diversity >= 2 and len(picked) < family_diversity:
@@ -1803,7 +1969,13 @@ def resolve(registry: dict, role: str, *, n: int = 1, family_diversity: int | No
         result["reason"] = f"fail-closed: needed {n} routes, resolved {len(picked)}"
         return result
     result["ok"] = True
-    result["reason"] = "resolved from live_verified routes; rank did not grant tools or data"
+    result["reason"] = (
+        "resolved from live_verified routes with validated provider activation; "
+        "rank did not grant tools or data"
+        if providers is not None
+        else "catalog-only resolution from live_verified routes; provider activation was not "
+             "checked and rank did not grant tools, data, or operational authority"
+    )
     if not family_diversity:
         result["routes"] = picked[:n]
     return result
@@ -1841,9 +2013,7 @@ def live_review_providers(registry: dict, providers: dict, as_of: date | None = 
     out = []
     for pid in providers.get("review_order") or []:
         p = provs.get(pid) or {}
-        if not p.get("review_eligible"):
-            continue
-        if not provider_route_is_live(registry, p, as_of=as_of):
+        if not provider_can_review(registry, p, as_of=as_of):
             continue
         out.append(pid)
     return out
@@ -2170,6 +2340,7 @@ def main(argv=None) -> int:
             quota_spent=split(args.quota_spent) or None,
             use_quality=args.quality,
             as_of=as_of,
+            providers=providers or {},
         )
         if args.json:
             print(json.dumps(decision, indent=2))

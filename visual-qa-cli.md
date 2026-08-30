@@ -18,10 +18,10 @@ transport-only `--smoke` path are active.
      > /safe/path/review-d.md
    python3 bin/connectors.py --render visual-qa-live-ticket magnet-baron \
      --page home --page search > /safe/path/review-d.md
+   ```
 
    Magnet Baron has no configured `review_d_preview_url`; preview-review is unavailable
    for that store. Use the live-ticket command above, not `visual-qa-ticket magnet-baron`.
-   ```
 
 2. Inspect the fail-closed launch plan:
 
@@ -39,8 +39,10 @@ the CWD value. In the isolated child environment, preflight requires exact build
 become ready. Each smoke/execute run generates a cryptographically unguessable
 `mb-standing-<128-bit lowercase hex>` name so a user-global custom profile cannot shadow
 it. Inspect reports the actual validated recipe with `<ephemeral-staging>`,
-`<staged-prompt>`, and non-executable `<ephemeral-sandbox-profile>` placeholders, never
-the source repository, source prompt path, or live profile name. Execution copies the
+`<staged-prompt>`, and non-executable `<ephemeral-sandbox-profile>` placeholders. Its structured
+`argv` never contains the source repository or source prompt path; its `profile` field is
+`<staged-agent-profile>`, while `agent` identifies the code-owned named role. Diagnostic `problems`
+may name a rejected local path and are local-only troubleshooting output, not a shareable receipt. Execution copies the
 canonical packet into an ephemeral staging directory, writes `.grok/sandbox.toml` with that
 per-run table extending `strict`, copies the already validated generated-agent bytes into
 that private directory, and renders the same snapshot against that staging CWD. The resolved
@@ -53,14 +55,26 @@ Shopify, and GitHub MCP remain unwired. Grok 1.0.13 auto-denies well-known runti
 whenever `restrict_network` is inherited from `strict`. On macOS, where those endpoints
 are symlinks (OrbStack) and child-network blocking is already a no-op, the launcher sets
 `restrict_network = false` and kernel-denies every unique resolved non-symlink target
-from its code-owned runtime-socket candidate list. On any other platform a symlink runtime endpoint parks instead of weakening
-network restriction. Unresolvable socket targets park before provider invocation. The
+from one code-owned runtime-socket snapshot. Candidate, resolved-target, and every lexical path-component
+identity plus exact symlink value are sampled before isolated inspection, immediately before provider
+start, and after completion. A difference visible at any checkpoint, or an unresolvable target, parks
+without releasing output. These user-space checkpoints do not claim race-free protection from a hostile
+concurrent process running as the same UID; private run directories are mode 0700, and normal standing
+roles remain binding-gated. On any other platform
+a symlink runtime endpoint parks instead of weakening network restriction. The
 launcher never falls back to built-in `workspace` / `read-only` / `off`,
 `bypassPermissions`, or an unenforced profile. One copy-isolated launch snapshot is
 loaded before readiness and reused through staging/execution. The prompt and generated agent-profile
-bytes are frozen in that plan. Staged prompt data is revalidated against code-owned allowlists and
-current policy; later policy drift can only park the run, not expand the frozen recipe or payload.
-Smoke and execute have finite subprocess timeouts and park without recording a 429.
+bytes are frozen in that plan. Before the initial immutable snapshot, an exact no-extra-entry manifest
+must match the generated sandbox bytes, agent bytes, canonical prompt bytes, and staged evidence
+size/SHA-256; isolated HOME/GROK_HOME must likewise match their code-owned empty/auth manifests.
+Those manifests, the frozen executable, auth, and binding are revalidated at the launch checkpoints;
+fresh callable capabilities are revalidated at the immediate pre-start activation boundary without
+requiring the short-lived attestation to outlive the provider run. Staged prompt data is revalidated against code-owned allowlists and current policy;
+later policy drift can only park the run, not expand the frozen recipe or payload. Child stdin is
+always `/dev/null`.
+Smoke and execute run in a private process group, have finite subprocess timeouts, terminate the
+whole group on failure, and park without recording a 429.
 Evidence files are capped at 8 MiB and copied with bounded streaming plus a post-copy
 digest revalidation. The child launch contract isolates both `HOME` and `GROK_HOME` per run rather
 than inheriting user-global Grok configuration. The launcher stages only the minimum private auth
@@ -83,6 +97,10 @@ requires a byte-exact match. Arbitrary prompt prose is rejected.
 
 ## Three different proofs
 
+- Transport inventory: `bin/detect-agents.py` reports command presence plus the exact configured
+  enabled/wired and catalog route states and surfaces `detect.note`. It does not inspect the
+  installed profile, code-owned binding, fresh callable capabilities, or launcher preflight, so a
+  present `grok` command never means the role is executable.
 - CLI smoke: the binary accepted the byte-exact staged `mb-review-d.md` definition and
   exact model `grok-4.6`, returning `cli-agent-path-ok`.
 - Transport ready: binary, generated profile, wired provider, `live_verified` route, and a
@@ -109,9 +127,24 @@ alone does not prove visual rendering.
 
 ## Profile distribution and smoke
 
-`python3 bin/generate-roles.py` generates `mb-review-d`, `mb-heat-map`, and
-`mb-marketplace-intelligence`. Installed profiles must byte-match generated output. A safe
-transport-only smoke is:
+From the authoritative trusted-origin checkout, `./sync-commands.sh` invokes the narrow
+`bin/sync-grok-agents.py` distributor for `mb-review-d`, `mb-heat-map`, and
+`mb-marketplace-intelligence`. It reads that checkout's canonical `config/roles.json` and
+`config/providers.json`, never an ambient `MB_CONFIG_DIR` overlay. Each profile must byte-match the
+canonical output with exact frontmatter containing only its code-owned name, JSON-quoted
+description, and `tools: Read, Grep, Glob`; skills, plugins, MCP declarations, and all other extra
+frontmatter are forbidden. Install and verify the complete set with:
+
+```sh
+./sync-commands.sh
+./sync-commands.sh --check
+```
+
+Normal execution releases output only on status 0 with nonempty stdout and empty stderr; C0 terminal
+controls other than LF/TAB, DEL, and C1 controls park the result. Review D's first line must be exactly
+`ship`, `fix-list`, or `blocked`.
+The Heat Map and Marketplace Intelligence roles must not begin with those Review D verdict tokens.
+A safe transport-only smoke is:
 
 ```sh
 python3 bin/grok-agent.py --seat grok-bot-review-d --smoke --execute
@@ -120,5 +153,7 @@ python3 bin/grok-agent.py --seat grok-bot-review-d --smoke --execute
 That smoke requires the same exact sandboxed recipe and invokes the same
 sandbox/profile/model/effort/subagent/output contract, with only the fixed no-tool prompt
 replacing `--prompt-file` input. It does not grant access to the target repository.
-A missing `cli-agent-path-ok` sentinel, a runtime-socket sandbox refusal, or a timeout
-parks the smoke.
+Smoke succeeds only on status 0, stdout exactly `cli-agent-path-ok` with zero or one final LF, and
+empty stderr. Any prefix, suffix, warning/error stream, missing sentinel, runtime-socket sandbox
+refusal, output-limit breach, descendant-cleanup failure, or timeout parks without releasing the
+buffered provider response.

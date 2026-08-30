@@ -37,6 +37,20 @@ COARSE_CAPABILITIES = frozenset({
 MCP_VOLUME_PROVIDER = "codex-terra"
 
 
+def provider_is_enabled(provider):
+    """True only for a provider object with no flag or exact ``enabled: true``.
+
+    Older provider entries predate the flag, so absence remains enabled.  Any
+    present non-boolean value is malformed and therefore inert at runtime.
+    Config validators can report the type error separately; routing itself
+    always fails closed.
+    """
+    return (
+        isinstance(provider, dict)
+        and ("enabled" not in provider or provider.get("enabled") is True)
+    )
+
+
 def expiry_urgency(row):
     """Higher = more quota will be LOST at the next reset if unused. Metered never expires."""
     kinds = row.get("window_kinds") or []
@@ -212,6 +226,8 @@ def capabilities_of(provider_id, provider, connectors, inventory=None, session=N
     validation may explicitly set ``require_callable=False``; runtime callers
     must retain the default.
     """
+    if not provider_is_enabled(provider):
+        return set()
     derived = connector_derived_labels(connectors)
     caps = {c for c in (provider.get("capabilities") or []) if c not in derived}
     for cname, meta in (connectors or {}).get("mcp_connectors", {}).items():

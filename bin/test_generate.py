@@ -91,6 +91,46 @@ class RegistrySchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "defined providers"):
             dump_and_load(providers=prov)
 
+    def test_disabled_provider_is_excluded_from_active_mapping_and_artifact(self):
+        prov = live_providers()
+        self.assertFalse(prov["providers"]["local-llm-example"]["enabled"])
+        mapping = gen.provider_levels(prov)
+        self.assertNotIn("local-llm-example", mapping)
+
+        reg = dump_and_load(providers=prov)
+        with tempfile.TemporaryDirectory() as tmp:
+            outputs = gen.artifacts(
+                reg, Path(tmp) / "claude", Path(tmp) / "grok", Path(tmp) / "codex.toml"
+            )
+            rendered = outputs[Path(tmp) / "codex.toml"]
+        parsed = tomllib.loads(rendered)
+        generated = {
+            provider
+            for level in parsed["capability_levels"].values()
+            for provider in level["providers"]
+        }
+        self.assertNotIn("local-llm-example", generated)
+
+    def test_provider_enabled_when_present_must_be_exact_boolean(self):
+        for malformed in ("false", 0, 1, None, [], {}):
+            with self.subTest(enabled=malformed):
+                prov = live_providers()
+                prov["providers"]["fable-5"]["enabled"] = malformed
+                with self.assertRaisesRegex(ValueError, "fable-5: enabled must be a boolean"):
+                    dump_and_load(providers=prov)
+
+    def test_disabled_provider_cannot_back_a_role(self):
+        prov = live_providers()
+        prov["providers"]["grok-build"]["enabled"] = False
+        with self.assertRaisesRegex(ValueError, "seat must be a provider defined"):
+            dump_and_load(providers=prov)
+
+    def test_disabled_provider_cannot_remain_in_review_order(self):
+        prov = live_providers()
+        prov["providers"]["opus-5"]["enabled"] = False
+        with self.assertRaisesRegex(ValueError, "defined providers and enabled"):
+            dump_and_load(providers=prov)
+
     def test_rejects_forbidden_model_selection(self):
         prov = live_providers()
         prov["forbidden_models"] = {"do-not-run": {"aliases": ["never-this-model"]}}
@@ -294,6 +334,21 @@ class ConnectorLifecycleTests(unittest.TestCase):
         self.assertFalse(routing.connector_is_active({"status": "primed"}))
         self.assertFalse(routing.connector_is_active({"status": "ready"}))
         self.assertTrue(routing.connector_is_active({"status": "active"}))
+
+    def test_disabled_or_malformed_provider_has_no_capabilities(self):
+        connectors = {"mcp_connectors": {}}
+        provider = {"capabilities": ["code", "review"]}
+        self.assertEqual(
+            routing.capabilities_of("candidate", provider, connectors),
+            {"code", "review"},
+        )
+        for disabled in (False, "false", "true", 0, 1, None, [], {}):
+            with self.subTest(enabled=disabled):
+                provider["enabled"] = disabled
+                self.assertEqual(
+                    routing.capabilities_of("candidate", provider, connectors),
+                    set(),
+                )
 
     def test_primed_shopify_does_not_satisfy_write_skill_gate(self):
         conns = {"mcp_connectors": {

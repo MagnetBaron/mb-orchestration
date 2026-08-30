@@ -20,11 +20,13 @@ import re
 import secrets
 import selectors
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
 import time
+from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -70,6 +72,8 @@ SMOKE_PROMPT = "CLI transport smoke only. Use no tools and return exactly: cli-a
 MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
 MAX_PROFILE_BYTES = 256 * 1024
 MAX_AUTH_BYTES = 1024 * 1024
+MAX_SECURITY_TREE_ENTRIES = 64
+MAX_SECURITY_TREE_BYTES = 16 * 1024 * 1024
 HASH_CHUNK_BYTES = 1024 * 1024
 SMOKE_TIMEOUT_SEC = 90
 EXECUTE_TIMEOUT_SEC = 300
@@ -80,6 +84,10 @@ INSPECT_TIMEOUT_SEC = 10
 # drained concurrently to avoid pipe deadlocks.
 MAX_PROVIDER_STREAM_BYTES = 1024 * 1024
 MAX_PROVIDER_COMBINED_BYTES = 2 * 1024 * 1024
+MAX_VERSION_STREAM_BYTES = 4 * 1024
+MAX_VERSION_COMBINED_BYTES = 8 * 1024
+MAX_INSPECT_STREAM_BYTES = 256 * 1024
+MAX_INSPECT_COMBINED_BYTES = 512 * 1024
 PROVIDER_OUTPUT_CHUNK_BYTES = 64 * 1024
 PROVIDER_TERMINATE_GRACE_SEC = 0.5
 SUPPORTED_GROK_VERSION = "1.0.13"
@@ -170,39 +178,126 @@ def _runtime_socket_candidates() -> list[Path]:
     return paths
 
 
-def _endpoint_symlink_incompatible(path: Path) -> bool:
-    try:
-        metadata = os.lstat(path)
-    except FileNotFoundError:
-        return False
-    except OSError as exc:
-        raise ValueError(f"runtime socket {path} cannot be inspected: {exc}") from exc
-    return stat.S_ISLNK(metadata.st_mode)
+RuntimeSocketIdentity = tuple[int, int, int, int, int, int, int, int]
+RuntimePathComponentIdentity = tuple[int, int, int, int, int]
+RuntimePathComponent = tuple[
+    str, RuntimePathComponentIdentity | None, str | None
+]
+RuntimeSocketEntry = tuple[
+    str,
+    RuntimeSocketIdentity | None,
+    bool,
+    str | None,
+    RuntimeSocketIdentity | None,
+    tuple[RuntimePathComponent, ...],
+]
+RuntimeSocketSnapshot = tuple[RuntimeSocketEntry, ...]
+SecurityTreeEntry = tuple[str, str, RuntimeSocketIdentity, str | None]
+SecurityTreeSnapshot = tuple[SecurityTreeEntry, ...]
+SecurityTreeExpectedEntry = tuple[str, str, int | None, str | None]
+SecurityTreeManifest = tuple[SecurityTreeExpectedEntry, ...]
 
 
-def auto_runtime_socket_deny_incompatible() -> bool:
-    """True when Grok 1.0.13 would refuse restrict_network auto-deny (symlink endpoints)."""
-    return any(_endpoint_symlink_incompatible(path) for path in _runtime_socket_candidates())
+def _runtime_socket_identity(metadata: os.stat_result) -> RuntimeSocketIdentity:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
 
 
-def _safe_lstat_exists(path: Path) -> tuple[bool, bool]:
-    """Return (exists_or_symlink, is_symlink) without following the path."""
-    try:
-        metadata = os.lstat(path)
-    except FileNotFoundError:
-        return False, False
-    except OSError as exc:
-        raise ValueError(f"runtime socket {path} cannot be inspected: {exc}") from exc
-    return True, stat.S_ISLNK(metadata.st_mode)
+def _runtime_path_component_identity(
+    metadata: os.stat_result,
+) -> RuntimePathComponentIdentity:
+    # Ancestor directory size/timestamps change on unrelated sibling churn.
+    # Bind replacement-sensitive identity/ownership/type only; the candidate
+    # and resolved-target leaves retain their full identities separately.
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_uid,
+        metadata.st_gid,
+    )
 
 
-def resolve_runtime_socket_denies() -> list[str]:
-    """Return unique resolved existing socket targets, or raise to PARK."""
-    denies: list[str] = []
-    for path in _runtime_socket_candidates():
-        present, is_link = _safe_lstat_exists(path)
-        if not present:
+def _path_component_snapshot(path: Path) -> tuple[RuntimePathComponent, ...]:
+    """Capture every lexical path component identity and exact symlink value."""
+    path = Path(path)
+    if not path.is_absolute():
+        raise ValueError(f"runtime socket path must be absolute: {path}")
+    components: list[RuntimePathComponent] = []
+    current = Path(path.anchor)
+    prefixes = [current]
+    for part in path.parts[1:]:
+        current = current / part
+        prefixes.append(current)
+    for prefix in prefixes:
+        try:
+            metadata = os.lstat(prefix)
+        except FileNotFoundError:
+            components.append((str(prefix), None, None))
+            break
+        except OSError as exc:
+            raise ValueError(
+                f"runtime socket path component {prefix} cannot be inspected: {exc}"
+            ) from exc
+        symlink_value = None
+        if stat.S_ISLNK(metadata.st_mode):
+            try:
+                symlink_value = os.readlink(prefix)
+            except OSError as exc:
+                raise ValueError(
+                    f"runtime socket path component {prefix} cannot be read: {exc}"
+                ) from exc
+        identity = _runtime_path_component_identity(metadata)
+        try:
+            after = os.lstat(prefix)
+        except OSError as exc:
+            raise ValueError(
+                f"runtime socket path component {prefix} changed during snapshot: {exc}"
+            ) from exc
+        if _runtime_path_component_identity(after) != identity:
+            raise ValueError(
+                f"runtime socket path component {prefix} changed during snapshot"
+            )
+        components.append((str(prefix), identity, symlink_value))
+    return tuple(components)
+
+
+def capture_runtime_socket_snapshot(
+    candidates: list[Path] | tuple[Path, ...] | None = None,
+) -> RuntimeSocketSnapshot:
+    """Capture candidate and resolved-target identities in one fail-closed pass."""
+    selected = tuple(_runtime_socket_candidates() if candidates is None else candidates)
+    entries: list[RuntimeSocketEntry] = []
+    for path in selected:
+        path = Path(path)
+        candidate_components = _path_component_snapshot(path)
+        try:
+            metadata = os.lstat(path)
+        except FileNotFoundError:
+            if not candidate_components or candidate_components[-1][1] is not None:
+                raise ValueError(f"runtime socket {path} changed during snapshot")
+            entries.append(
+                (str(path), None, False, None, None, candidate_components)
+            )
             continue
+        except OSError as exc:
+            raise ValueError(f"runtime socket {path} cannot be inspected: {exc}") from exc
+        is_link = stat.S_ISLNK(metadata.st_mode)
+        identity = _runtime_socket_identity(metadata)
+        if (
+            not candidate_components
+            or candidate_components[-1][0] != str(path)
+            or candidate_components[-1][1] != _runtime_path_component_identity(metadata)
+        ):
+            raise ValueError(f"runtime socket {path} changed during snapshot")
         try:
             resolved = Path(os.path.realpath(path))
         except OSError as exc:
@@ -225,13 +320,72 @@ def resolve_runtime_socket_denies() -> list[str]:
                 f"runtime socket {path} exists or is a symlink but has no safe "
                 "existing non-symlink target"
             )
-        text = str(resolved)
-        if text not in denies:
-            denies.append(text)
-        if is_link:
-            # Presence as a symlink is already recorded via the resolved target.
-            continue
+        resolved_components = _path_component_snapshot(resolved)
+        resolved_identity = _runtime_socket_identity(resolved_metadata)
+        if (
+            not resolved_components
+            or resolved_components[-1][0] != str(resolved)
+            or resolved_components[-1][1]
+            != _runtime_path_component_identity(resolved_metadata)
+        ):
+            raise ValueError(f"runtime socket {path} changed during snapshot")
+        try:
+            final_candidate = os.lstat(path)
+            final_resolved = os.lstat(resolved)
+        except OSError as exc:
+            raise ValueError(f"runtime socket {path} changed during snapshot: {exc}") from exc
+        if (
+            _runtime_socket_identity(final_candidate) != identity
+            or _runtime_socket_identity(final_resolved) != resolved_identity
+        ):
+            raise ValueError(f"runtime socket {path} changed during snapshot")
+        entries.append(
+            (
+                str(path),
+                identity,
+                is_link,
+                str(resolved),
+                resolved_identity,
+                candidate_components + resolved_components,
+            )
+        )
+    return tuple(entries)
+
+
+def _runtime_socket_snapshot_incompatible(snapshot: RuntimeSocketSnapshot) -> bool:
+    return any(
+        is_link
+        for _path, _identity, is_link, _resolved, _target, _components in snapshot
+    )
+
+
+def _runtime_socket_snapshot_denies(snapshot: RuntimeSocketSnapshot) -> list[str]:
+    denies: list[str] = []
+    for _path, identity, _is_link, resolved, _target, _components in snapshot:
+        if identity is not None and resolved is not None and resolved not in denies:
+            denies.append(resolved)
     return denies
+
+
+def runtime_socket_snapshot_problem(snapshot: RuntimeSocketSnapshot) -> str | None:
+    candidates = [Path(entry[0]) for entry in snapshot]
+    try:
+        current = capture_runtime_socket_snapshot(candidates)
+    except ValueError as exc:
+        return str(exc)
+    if current != snapshot:
+        return "runtime socket candidate state changed after the sandbox profile snapshot"
+    return None
+
+
+def auto_runtime_socket_deny_incompatible() -> bool:
+    """Compatibility helper; production rendering consumes one shared snapshot."""
+    return _runtime_socket_snapshot_incompatible(capture_runtime_socket_snapshot())
+
+
+def resolve_runtime_socket_denies() -> list[str]:
+    """Compatibility helper; production rendering consumes one shared snapshot."""
+    return _runtime_socket_snapshot_denies(capture_runtime_socket_snapshot())
 
 
 def _toml_string(value: str) -> str:
@@ -244,6 +398,7 @@ def _sandbox_profile_text(
     platform: str | None = None,
     denies: list[str] | None = None,
     incompatible: bool | None = None,
+    socket_snapshot: RuntimeSocketSnapshot | None = None,
 ) -> str:
     name = validate_sandbox_profile_name(sandbox_profile)
     host = sys.platform if platform is None else platform
@@ -252,15 +407,18 @@ def _sandbox_profile_text(
     # is true (inherited from strict). Symlink endpoints such as OrbStack's
     # /var/run/docker.sock make that resolution fail closed inside Grok.
     # Child-network blocking is a documented no-op on macOS only.
+    snapshot = socket_snapshot
+    if snapshot is None and (incompatible is None or denies is None):
+        snapshot = capture_runtime_socket_snapshot()
     if incompatible is None:
-        incompatible = auto_runtime_socket_deny_incompatible()
+        incompatible = _runtime_socket_snapshot_incompatible(snapshot or ())
     if incompatible and host != "darwin":
         raise ValueError(
             "symlink runtime-socket endpoints require weakening inherited "
             "restrict_network, which is allowed only on macOS; PARK on this platform"
         )
     if denies is None:
-        denies = resolve_runtime_socket_denies()
+        denies = _runtime_socket_snapshot_denies(snapshot or ())
     if incompatible:
         lines.append("restrict_network = false")
     if denies:
@@ -381,6 +539,171 @@ def _read_regular_nofollow(path: Path, *, max_bytes: int, label: str) -> bytes:
     return b"".join(chunks)
 
 
+def _security_file_snapshot(
+    path: Path, *, max_bytes: int, label: str
+) -> tuple[RuntimeSocketIdentity, str, int]:
+    """Read one security input through a stable non-following descriptor."""
+    fd = _open_regular_nofollow(path, label)
+    digest = hashlib.sha256()
+    total = 0
+    with os.fdopen(fd, "rb") as handle:
+        before = os.fstat(handle.fileno())
+        while True:
+            chunk = handle.read(HASH_CHUNK_BYTES)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError(f"{label} exceeds the bounded security-tree byte limit")
+            digest.update(chunk)
+        after = os.fstat(handle.fileno())
+    before_identity = _runtime_socket_identity(before)
+    if _runtime_socket_identity(after) != before_identity:
+        raise ValueError(f"{label} changed while its security snapshot was being read")
+    return before_identity, digest.hexdigest(), total
+
+
+def capture_security_tree_snapshot(root: Path, *, label: str) -> SecurityTreeSnapshot:
+    """Snapshot every private config/input entry; additions and swaps fail closed."""
+    root = Path(root)
+    entries: list[SecurityTreeEntry] = []
+    total_bytes = 0
+
+    def visit(path: Path, relative: str) -> None:
+        nonlocal total_bytes
+        try:
+            before = os.lstat(path)
+        except OSError as exc:
+            raise ValueError(f"{label} cannot be inspected: {exc}") from exc
+        identity = _runtime_socket_identity(before)
+        if stat.S_ISLNK(before.st_mode):
+            raise ValueError(f"{label} contains a symlink at {relative}")
+        if stat.S_ISDIR(before.st_mode):
+            entries.append((relative, "directory", identity, None))
+            if len(entries) > MAX_SECURITY_TREE_ENTRIES:
+                raise ValueError(
+                    f"{label} exceeds {MAX_SECURITY_TREE_ENTRIES} entries"
+                )
+            try:
+                with os.scandir(path) as iterator:
+                    names = sorted(item.name for item in iterator)
+            except OSError as exc:
+                raise ValueError(f"{label} cannot enumerate {relative}: {exc}") from exc
+            for name in names:
+                child_relative = name if relative == "." else f"{relative}/{name}"
+                visit(path / name, child_relative)
+            try:
+                after = os.lstat(path)
+            except OSError as exc:
+                raise ValueError(f"{label} changed while enumerating {relative}: {exc}") from exc
+            if _runtime_socket_identity(after) != identity:
+                raise ValueError(f"{label} changed while enumerating {relative}")
+            return
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"{label} contains a non-regular entry at {relative}")
+        remaining = MAX_SECURITY_TREE_BYTES - total_bytes
+        file_identity, digest, size = _security_file_snapshot(
+            path, max_bytes=remaining, label=f"{label} entry {relative}"
+        )
+        if file_identity != identity:
+            raise ValueError(f"{label} entry {relative} changed before it was opened")
+        total_bytes += size
+        entries.append((relative, "file", file_identity, digest))
+        if len(entries) > MAX_SECURITY_TREE_ENTRIES:
+            raise ValueError(f"{label} exceeds {MAX_SECURITY_TREE_ENTRIES} entries")
+
+    visit(root, ".")
+    return tuple(entries)
+
+
+def security_tree_snapshot_problem(
+    root: Path,
+    expected: SecurityTreeSnapshot,
+    *,
+    label: str,
+    manifest: SecurityTreeManifest | None = None,
+) -> str | None:
+    try:
+        current = capture_security_tree_snapshot(root, label=label)
+    except (OSError, ValueError) as exc:
+        return str(exc)
+    if manifest is not None:
+        manifest_problem = security_tree_manifest_problem(current, manifest, label=label)
+        if manifest_problem:
+            return manifest_problem
+    if current != expected:
+        return f"{label} changed after its immutable launch snapshot"
+    return None
+
+
+def build_security_tree_manifest(
+    files: dict[str, bytes | tuple[int, str]],
+) -> SecurityTreeManifest:
+    """Build an exact no-extra-entry manifest from known bytes or size/digest pairs."""
+    directories = {"."}
+    rendered: list[SecurityTreeExpectedEntry] = []
+    for relative, value in files.items():
+        path = Path(relative)
+        if path.is_absolute() or not path.parts or ".." in path.parts:
+            raise ValueError(f"unsafe security manifest path: {relative!r}")
+        normalized = path.as_posix()
+        parent = path.parent
+        while parent.as_posix() not in {"", "."}:
+            directories.add(parent.as_posix())
+            parent = parent.parent
+        if isinstance(value, bytes):
+            size = len(value)
+            digest = hashlib.sha256(value).hexdigest()
+        else:
+            size, digest = value
+            if (
+                not isinstance(size, int)
+                or size < 0
+                or not isinstance(digest, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            ):
+                raise ValueError(f"invalid security manifest digest for {relative!r}")
+        rendered.append((normalized, "file", size, digest))
+    rendered.extend((relative, "directory", None, None) for relative in directories)
+    return tuple(sorted(rendered, key=lambda entry: entry[0]))
+
+
+def security_tree_manifest_problem(
+    snapshot: SecurityTreeSnapshot,
+    manifest: SecurityTreeManifest,
+    *,
+    label: str,
+) -> str | None:
+    actual = {
+        relative: (
+            kind,
+            identity[5] if kind == "file" else None,
+            digest,
+        )
+        for relative, kind, identity, digest in snapshot
+    }
+    expected = {
+        relative: (kind, size, digest)
+        for relative, kind, size, digest in manifest
+    }
+    if set(actual) != set(expected):
+        return f"{label} has missing or unexpected entries"
+    for relative, expected_entry in expected.items():
+        if actual[relative] != expected_entry:
+            return f"{label} entry {relative} differs from its code-owned expected bytes"
+    return None
+
+
+def capture_expected_security_tree_snapshot(
+    root: Path, manifest: SecurityTreeManifest, *, label: str
+) -> SecurityTreeSnapshot:
+    snapshot = capture_security_tree_snapshot(root, label=label)
+    problem = security_tree_manifest_problem(snapshot, manifest, label=label)
+    if problem:
+        raise ValueError(problem)
+    return snapshot
+
+
 def _stream_sha256(path: Path, *, max_bytes: int = MAX_EVIDENCE_BYTES) -> str:
     digest = hashlib.sha256()
     total = 0
@@ -400,7 +723,7 @@ def _stream_sha256(path: Path, *, max_bytes: int = MAX_EVIDENCE_BYTES) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _copy_evidence_streaming(source: Path, dest: Path, expected_digest: str) -> None:
+def _copy_evidence_streaming(source: Path, dest: Path, expected_digest: str) -> int:
     digest = hashlib.sha256()
     total = 0
     source_fd = _open_regular_nofollow(source, "bound evidence")
@@ -423,6 +746,7 @@ def _copy_evidence_streaming(source: Path, dest: Path, expected_digest: str) -> 
     restaged = _stream_sha256(dest)
     if restaged != expected_digest:
         raise ValueError("staged evidence digest changed after copy")
+    return total
 
 
 def _evidence_size_problem(evidence: Path) -> str | None:
@@ -438,6 +762,12 @@ def _evidence_size_problem(evidence: Path) -> str | None:
             "(code-owned limit for deposited CSV/JSON/text/image evidence)"
         )
     return None
+
+
+def _bound_evidence_path(evidence_raw: str, prompt_file: Path) -> Path:
+    """Anchor relative evidence without resolving away the final symlink boundary."""
+    evidence = Path(evidence_raw).expanduser()
+    return evidence if evidence.is_absolute() else prompt_file.parent / evidence
 
 
 def _provider_timeout_message(kind: str, timeout: int) -> str:
@@ -551,22 +881,31 @@ def _grok_version_snapshot(binary: str) -> tuple[str | None, str | None]:
         with tempfile.TemporaryDirectory(prefix="grok-version-") as runtime_dir:
             runtime_root = Path(runtime_dir)
             _stage_isolated_runtime(runtime_root, None)
-            completed = subprocess.run(
+            completed = _run_provider(
                 [binary, "--version"],
                 executable=binary,
-                check=False,
-                text=True,
-                capture_output=True,
+                cwd=str(runtime_root),
                 timeout=VERSION_TIMEOUT_SEC,
+                kind="version",
+                capture_output=True,
                 env=_child_env(runtime_root),
+                max_stream_bytes=MAX_VERSION_STREAM_BYTES,
+                max_combined_bytes=MAX_VERSION_COMBINED_BYTES,
             )
-    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError) as exc:
         return None, f"cannot attest Grok CLI version: {exc}"
-    version = (completed.stdout or "").strip()
-    if completed.returncode != 0 or version != SUPPORTED_GROK_BUILD:
+    if isinstance(completed, int):
+        return None, "cannot attest Grok CLI version through the bounded private runner"
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    version = SUPPORTED_GROK_BUILD if stdout in {
+        SUPPORTED_GROK_BUILD,
+        SUPPORTED_GROK_BUILD + "\n",
+    } else None
+    if completed.returncode != 0 or version is None or stderr != "":
         return None, (
             "Grok CLI version is not the exact approved build "
-            f"{SUPPORTED_GROK_BUILD}: {version or '<empty>'}"
+            f"{SUPPORTED_GROK_BUILD} with empty stderr"
         )
     return version, None
 
@@ -623,21 +962,117 @@ def _frozen_binary_problem(binary: str, expected_version: str) -> str | None:
     return None
 
 
+def _frozen_binary_snapshot(
+    binary: str,
+) -> tuple[tuple[int, int, int, int, int, str] | None, str | None]:
+    """Return the exact frozen executable identity used at the launch boundary."""
+    return _binary_file_snapshot(binary)
+
+
+LaunchBoundaryState = namedtuple(
+    "LaunchBoundaryState",
+    (
+        "staging",
+        "staging_snapshot",
+        "staging_manifest",
+        "private_home",
+        "private_home_snapshot",
+        "private_home_manifest",
+        "private_grok_home",
+        "private_grok_home_snapshot",
+        "private_grok_home_manifest",
+        "frozen_binary",
+        "frozen_binary_identity",
+        "runtime_socket_snapshot",
+        "seat",
+        "smoke",
+        "execution_input_binding",
+    ),
+)
+
+
+def _launch_boundary_problem(
+    state: LaunchBoundaryState, *, check_capabilities: bool = True
+) -> str | None:
+    """Revalidate every executable/config/input fact immediately around Popen."""
+    frozen_identity, frozen_problem = _frozen_binary_snapshot(state.frozen_binary)
+    if frozen_problem:
+        return f"frozen Grok executable cannot be revalidated: {frozen_problem}"
+    if frozen_identity != state.frozen_binary_identity:
+        return "frozen Grok executable changed after its immutable launch snapshot"
+    if not state.smoke:
+        current_binding = EXECUTION_INPUT_BINDINGS.get(state.seat)
+        if (
+            not state.execution_input_binding
+            or current_binding != state.execution_input_binding
+        ):
+            return "code-owned role input binding changed or disappeared at the provider boundary"
+        if check_capabilities:
+            for capability in REQUIRED_CAPABILITIES[state.seat]:
+                try:
+                    ok, reason = integrations.effective(
+                        "grok", "capability", capability, require_callable=True
+                    )
+                except Exception as exc:
+                    return f"runtime capability {capability!r} could not be revalidated: {exc}"
+                if not ok:
+                    return (
+                        f"runtime capability {capability!r} expired before provider launch: "
+                        f"{reason}"
+                    )
+    # Check private configuration before the socket and staged task inputs so
+    # the most launch-sensitive paths are the final reads before Popen.
+    for root, snapshot, manifest, label in (
+        (
+            state.private_home,
+            state.private_home_snapshot,
+            state.private_home_manifest,
+            "isolated HOME tree",
+        ),
+        (
+            state.private_grok_home,
+            state.private_grok_home_snapshot,
+            state.private_grok_home_manifest,
+            "isolated GROK_HOME tree",
+        ),
+    ):
+        tree_problem = security_tree_snapshot_problem(
+            root, snapshot, label=label, manifest=manifest
+        )
+        if tree_problem:
+            return tree_problem
+    socket_problem = runtime_socket_snapshot_problem(state.runtime_socket_snapshot)
+    if socket_problem:
+        return socket_problem
+    tree_problem = security_tree_snapshot_problem(
+        state.staging,
+        state.staging_snapshot,
+        label="isolated Grok staging tree",
+        manifest=state.staging_manifest,
+    )
+    if tree_problem:
+        return tree_problem
+    return None
+
+
 def _effective_config_problem(binary: str, staging: Path, env: dict[str, str]) -> str | None:
     try:
-        completed = subprocess.run(
+        completed = _run_provider(
             [binary, "inspect", "--json"],
             executable=binary,
             cwd=str(staging),
-            check=False,
-            text=True,
-            capture_output=True,
             timeout=INSPECT_TIMEOUT_SEC,
+            kind="inspect",
+            capture_output=True,
             env=env,
+            max_stream_bytes=MAX_INSPECT_STREAM_BYTES,
+            max_combined_bytes=MAX_INSPECT_COMBINED_BYTES,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except OSError as exc:
         return f"cannot verify isolated Grok effective configuration: {exc}"
-    if completed.returncode != 0:
+    if isinstance(completed, int):
+        return "isolated Grok effective-configuration inspection failed its bounded runner"
+    if completed.returncode != 0 or (completed.stderr or "") != "":
         return "isolated Grok effective-configuration inspection failed"
     try:
         data = json.loads(completed.stdout or "")
@@ -699,36 +1134,142 @@ def _effective_config_problem(binary: str, staging: Path, env: dict[str, str]) -
     return None
 
 
-def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, kind: str,
-                  capture_output: bool, env: dict[str, str]) -> subprocess.CompletedProcess[str] | int:
+def _run_provider(
+    cmd: list[str],
+    *,
+    executable: str,
+    cwd: str,
+    timeout: int,
+    kind: str,
+    capture_output: bool,
+    env: dict[str, str],
+    runtime_socket_snapshot: RuntimeSocketSnapshot | None = None,
+    launch_boundary_state: LaunchBoundaryState | None = None,
+    max_stream_bytes: int | None = None,
+    max_combined_bytes: int | None = None,
+) -> subprocess.CompletedProcess[str] | int:
     if not capture_output:
         print(f"PARK: Grok CLI {kind} requires bounded captured output", file=sys.stderr)
         return 2
+    if max_stream_bytes is None:
+        max_stream_bytes = MAX_PROVIDER_STREAM_BYTES
+    if max_combined_bytes is None:
+        max_combined_bytes = MAX_PROVIDER_COMBINED_BYTES
+    if max_stream_bytes < 1 or max_combined_bytes < max_stream_bytes:
+        print(f"PARK: Grok CLI {kind} received invalid output bounds", file=sys.stderr)
+        return 2
     process = None
+    process_group_id = None
     selector = None
+    group_stopped = False
 
-    def stop_child() -> None:
-        if process is None or process.poll() is not None:
-            return
-        process.terminate()
+    def kill_direct_bounded() -> bool:
+        if process is None:
+            return True
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        except OSError:
+            return False
+        try:
+            process.wait(timeout=PROVIDER_TERMINATE_GRACE_SEC)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return True
+
+    def leader_exited_without_reap() -> bool:
+        """Observe child exit status while retaining its PID against reuse."""
+        if process is None or not all(
+            hasattr(os, name) for name in ("waitid", "P_PID", "WEXITED", "WNOHANG", "WNOWAIT")
+        ):
+            return False
+        try:
+            return os.waitid(
+                os.P_PID,
+                process.pid,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            ) is not None
+        except (ChildProcessError, OSError):
+            return False
+
+    def stop_group() -> bool:
+        nonlocal group_stopped
+        if group_stopped:
+            return True
+        if process is None or process_group_id is None:
+            return True
+        # Never signal this numeric PGID again after the leader is reaped: its PID
+        # could be reused for an unrelated process group. Mark this attempt final,
+        # signal the still-reserved private group, then reap the leader exactly once.
+        group_stopped = True
+        term_reached_group = False
+        try:
+            os.killpg(process_group_id, signal.SIGTERM)
+            term_reached_group = True
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            # Darwin may report EPERM for a private group whose only remaining
+            # member is the exited, unreaped leader. WNOWAIT proves that state
+            # without releasing the PID; then reap once and never signal again.
+            if leader_exited_without_reap():
+                try:
+                    process.wait(timeout=PROVIDER_TERMINATE_GRACE_SEC)
+                except (OSError, subprocess.TimeoutExpired):
+                    return False
+                return True
+            kill_direct_bounded()
+            return False
+        except OSError:
+            kill_direct_bounded()
+            return False
+        if term_reached_group:
+            try:
+                # Deliver KILL before wait()/reap so descendants cannot outlive a
+                # normal return, timeout, output overflow, or postcondition park.
+                os.killpg(process_group_id, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                kill_direct_bounded()
+                return False
         try:
             process.wait(timeout=PROVIDER_TERMINATE_GRACE_SEC)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+            return kill_direct_bounded()
+        except OSError:
+            return False
+        return True
+
+    def boundary_problem(*, check_capabilities: bool) -> str | None:
+        if launch_boundary_state is not None:
+            return _launch_boundary_problem(
+                launch_boundary_state, check_capabilities=check_capabilities
+            )
+        if runtime_socket_snapshot is not None:
+            return runtime_socket_snapshot_problem(runtime_socket_snapshot)
+        return None
 
     try:
+        preflight_problem = boundary_problem(check_capabilities=True)
+        if preflight_problem:
+            print(f"PARK: {preflight_problem}; provider was not started", file=sys.stderr)
+            return 2
         process = subprocess.Popen(
             cmd,
             executable=executable,
             cwd=cwd,
             text=False,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            start_new_session=True,
         )
+        process_group_id = process.pid
         if process.stdout is None or process.stderr is None:
-            stop_child()
+            stop_group()
             print(f"PARK: Grok CLI {kind} did not expose bounded output pipes", file=sys.stderr)
             return 2
         selector = selectors.DefaultSelector()
@@ -740,7 +1281,7 @@ def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, ki
         while selector.get_map():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                stop_child()
+                stop_group()
                 print(_provider_timeout_message(kind, timeout), file=sys.stderr)
                 return 2
             for key, _events in selector.select(remaining):
@@ -756,10 +1297,10 @@ def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, ki
                 stream_total = len(buffers[stream_name]) + len(chunk)
                 combined_total = sum(len(value) for value in buffers.values()) + len(chunk)
                 if (
-                    stream_total > MAX_PROVIDER_STREAM_BYTES
-                    or combined_total > MAX_PROVIDER_COMBINED_BYTES
+                    stream_total > max_stream_bytes
+                    or combined_total > max_combined_bytes
                 ):
-                    stop_child()
+                    stop_group()
                     print(
                         f"PARK: Grok CLI {kind} exceeded the bounded output limit; "
                         "buffered provider output was not released",
@@ -769,14 +1310,23 @@ def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, ki
                 buffers[stream_name].extend(chunk)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            stop_child()
+            stop_group()
             print(_provider_timeout_message(kind, timeout), file=sys.stderr)
             return 2
-        try:
-            returncode = process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            stop_child()
-            print(_provider_timeout_message(kind, timeout), file=sys.stderr)
+        if not stop_group():
+            print(
+                f"PARK: Grok CLI {kind} process group could not be terminated cleanly; "
+                "buffered provider output was not released",
+                file=sys.stderr,
+            )
+            return 2
+        returncode = process.returncode
+        if returncode is None:
+            print(
+                f"PARK: Grok CLI {kind} leader was not reaped after group cleanup; "
+                "buffered provider output was not released",
+                file=sys.stderr,
+            )
             return 2
         try:
             stdout = bytes(buffers["stdout"]).decode("utf-8")
@@ -787,9 +1337,19 @@ def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, ki
                 file=sys.stderr,
             )
             return 2
+        # Fresh callable capability is an activation fact: require it immediately
+        # before Popen, but do not make a valid long run fail merely because the
+        # intentionally short-lived attestation expires while the provider works.
+        postflight_problem = boundary_problem(check_capabilities=False)
+        if postflight_problem:
+            print(
+                f"PARK: {postflight_problem}; buffered provider output was not released",
+                file=sys.stderr,
+            )
+            return 2
         return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
     except OSError as exc:
-        stop_child()
+        stop_group()
         print(f"PARK: Grok CLI {kind} could not start: {exc}", file=sys.stderr)
         return 2
     finally:
@@ -799,7 +1359,7 @@ def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, ki
             for stream in (process.stdout, process.stderr):
                 if stream is not None and not stream.closed:
                     stream.close()
-            stop_child()
+            stop_group()
 
 
 def _sandbox_apply_problem(stdout: str, stderr: str, sandbox_profile: str) -> str | None:
@@ -818,6 +1378,30 @@ def _sandbox_apply_problem(stdout: str, stderr: str, sandbox_profile: str) -> st
             "Standing-role execution stays parked rather than falling back to "
             "workspace/read-only/off or an unenforced profile."
         )
+    return None
+
+
+def _normal_output_problem(seat: str, stdout: str, stderr: str) -> str | None:
+    """Validate a completed standing-role result before releasing provider bytes."""
+    if stderr != "":
+        return "normal execution returned stderr; buffered provider output was not released"
+    if not isinstance(stdout, str) or not stdout.strip():
+        return "normal execution returned no non-empty result"
+    if any(
+        (ord(char) < 0x20 and char not in {"\n", "\t"})
+        or ord(char) == 0x7F
+        or 0x80 <= ord(char) <= 0x9F
+        for char in stdout
+    ):
+        return "normal execution returned non-canonical terminal control characters"
+    first_line = stdout.split("\n", 1)[0]
+    if seat == "grok-bot-review-d":
+        if first_line not in {"ship", "fix-list", "blocked"}:
+            return (
+                "Review D result must begin with exact ship, fix-list, or blocked verdict"
+            )
+    elif first_line in {"ship", "fix-list", "blocked"}:
+        return "non-review standing role must not return a Review D verdict token"
     return None
 
 
@@ -876,12 +1460,19 @@ def _profile_snapshot(
     role_name = _role_name_for_agent(agent)
     if role_name is None:
         return None, f"required Grok agent profile {agent!r} is not a standing read-only seat"
-    tool_problem = sync_profiles.standing_tools_problem(
-        role_name, sync_profiles.grok_tools_from_profile(actual)
+    try:
+        role_description = (
+            sync_profiles._load_canonical_json("roles.json")["roles"][role_name]["description"]
+        )
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        return None, f"cannot validate installed profile {profile}: {exc}"
+    profile_schema_problem = sync_profiles.standing_profile_problem(
+        role_name, actual, role_description
     )
-    if tool_problem:
+    if profile_schema_problem:
         return None, (
-            f"installed profile {profile} fails the standing Grok tool allowlist: {tool_problem}"
+            f"installed profile {profile} fails the exact standing Grok frontmatter: "
+            f"{profile_schema_problem}"
         )
     try:
         expected = sync_profiles.expected().get(profile.name)
@@ -974,9 +1565,7 @@ def _prompt_problem(
     digest = fields.get("evidence-sha256")
     if not evidence_raw or not digest or not digest.startswith("sha256:"):
         return "prompt must bind evidence-path and evidence-sha256"
-    evidence = Path(evidence_raw).expanduser()
-    if not evidence.is_absolute():
-        evidence = (prompt_file.parent / evidence).resolve()
+    evidence = _bound_evidence_path(evidence_raw, prompt_file)
     size_problem = _evidence_size_problem(evidence)
     if size_problem:
         return size_problem
@@ -1032,18 +1621,27 @@ def _canonical_evidence_prompt(fields: dict[str, str], evidence_path: str) -> st
     return "\n".join(lines) + "\n"
 
 
-def _write_sandbox_profile(staging: Path, sandbox_profile: str) -> Path:
+def _write_sandbox_profile(
+    staging: Path,
+    sandbox_profile: str,
+    socket_snapshot: RuntimeSocketSnapshot,
+) -> tuple[Path, bytes]:
     grok_dir = staging / ".grok"
     grok_dir.mkdir(parents=True, exist_ok=False)
     profile = grok_dir / "sandbox.toml"
-    profile.write_text(_sandbox_profile_text(sandbox_profile), encoding="utf-8")
-    return profile
+    expected = _sandbox_profile_text(
+        sandbox_profile, socket_snapshot=socket_snapshot
+    ).encode("utf-8")
+    profile.write_bytes(expected)
+    return profile, expected
 
 
 def _stage_workspace(
     seat: str, prompt_bytes: bytes, prompt_origin: Path, staging: Path
-) -> Path:
+) -> tuple[Path, bytes, tuple[int, str] | None]:
     staged_prompt = staging / PROMPT_STAGED_NAME
+    expected_prompt = prompt_bytes
+    expected_evidence = None
     if seat == "grok-bot-review-d":
         staged_prompt.write_bytes(prompt_bytes)
     else:
@@ -1055,24 +1653,33 @@ def _stage_workspace(
         fields = _parse_evidence_fields(raw, allowed_fields)
         if isinstance(fields, str):
             raise ValueError(fields)
-        source_evidence = Path(fields["evidence-path"]).expanduser()
-        if not source_evidence.is_absolute():
-            source_evidence = (prompt_origin.parent / source_evidence).resolve()
+        source_evidence = _bound_evidence_path(fields["evidence-path"], prompt_origin)
         size_problem = _evidence_size_problem(source_evidence)
         if size_problem:
             raise ValueError(size_problem)
         staged_evidence = staging / EVIDENCE_STAGED_NAME
-        _copy_evidence_streaming(source_evidence, staged_evidence, fields["evidence-sha256"])
-        staged_prompt.write_text(
-            _canonical_evidence_prompt(fields, EVIDENCE_STAGED_NAME),
-            encoding="utf-8",
+        evidence_size = _copy_evidence_streaming(
+            source_evidence, staged_evidence, fields["evidence-sha256"]
         )
-        if str(source_evidence) in staged_prompt.read_text(encoding="utf-8"):
+        expected_evidence = (
+            evidence_size,
+            fields["evidence-sha256"].removeprefix("sha256:"),
+        )
+        expected_prompt = _canonical_evidence_prompt(
+            fields, EVIDENCE_STAGED_NAME
+        ).encode("utf-8")
+        staged_prompt.write_bytes(expected_prompt)
+        if str(source_evidence) in expected_prompt.decode("utf-8"):
             raise ValueError("staged prompt still contains the source evidence path")
-    problem = _prompt_problem(seat, staged_prompt, bind_changed_paths=False)
+    problem = _prompt_problem(
+        seat,
+        staged_prompt,
+        bind_changed_paths=False,
+        raw_snapshot=expected_prompt,
+    )
     if problem:
         raise ValueError(problem)
-    return staged_prompt
+    return staged_prompt, expected_prompt, expected_evidence
 
 
 def _template_problem(recipe: dict) -> str | None:
@@ -1237,7 +1844,7 @@ class LaunchPlan:
             "binary": self.binary,
             "binary_version": self.binary_version,
             "binary_sha256": self.binary_identity[-1] if self.binary_identity else None,
-            "profile": str(self.profile) if self.profile else None,
+            "profile": STAGED_AGENT_PLACEHOLDER if self.profile else None,
             "argv": inspect_argv,
             "ready": self.ready,
             "problems": list(self.problems),
@@ -1270,6 +1877,9 @@ def prepare_launch_plan(
     auth_bytes: bytes | None = None
     execution_input_binding = EXECUTION_INPUT_BINDINGS[seat]
 
+    if provider.get("enabled", True) is not True:
+        problems.append("provider enabled must be exact true")
+
     if not smoke:
         if execution_input_binding is None:
             problems.append(
@@ -1284,10 +1894,16 @@ def prepare_launch_plan(
                 problems.append("provider is not a CLI seat")
             if provider.get("model") != "grok-4.6" or route.get("model") != "grok-4.6":
                 problems.append("provider and route must pin exact model grok-4.6")
+            if route.get("provider") != seat:
+                problems.append(f"provider route provider must be exact {seat!r}")
             if route.get("host") != "grok-cli" or route.get("harness") != "grok":
                 problems.append("provider route is not the Grok CLI harness")
-            if not provider.get("wired"):
-                problems.append("provider wired is not true")
+            if route.get("invocation_id") != AGENTS[seat]:
+                problems.append(
+                    f"provider route invocation_id must be exact {AGENTS[seat]!r}"
+                )
+            if provider.get("wired") is not True:
+                problems.append("provider wired must be exact true")
             if route.get("route_state") != "live_verified":
                 problems.append(f"route {route_id!r} is not live_verified")
             prompt_bytes, prompt_problem = _prompt_snapshot(seat, prompt_file, cwd)
@@ -1418,12 +2034,23 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
             )
             if binary_copy_problem:
                 raise ValueError(binary_copy_problem)
-            _write_sandbox_profile(staging, plan.sandbox_profile)
+            socket_snapshot = capture_runtime_socket_snapshot()
+            _sandbox_path, sandbox_bytes = _write_sandbox_profile(
+                staging, plan.sandbox_profile, socket_snapshot
+            )
             staged_profile = staging / f"{plan.agent}.md"
             staged_profile.write_bytes(plan.profile_bytes)
             os.chmod(staged_profile, 0o600)
-            if staged_profile.read_bytes() != plan.profile_bytes:
+            if _read_regular_nofollow(
+                staged_profile,
+                max_bytes=MAX_PROFILE_BYTES,
+                label="staged Grok agent profile",
+            ) != plan.profile_bytes:
                 raise ValueError("staged Grok agent profile differs from validated snapshot")
+            expected_staging_files: dict[str, bytes | tuple[int, str]] = {
+                ".grok/sandbox.toml": sandbox_bytes,
+                staged_profile.name: plan.profile_bytes,
+            }
             if smoke:
                 cmd = _smoke_argv(
                     plan.recipe,
@@ -1432,9 +2059,12 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
                     sandbox_profile=plan.sandbox_profile,
                 )
             else:
-                staged_prompt = _stage_workspace(
+                staged_prompt, expected_prompt, expected_evidence = _stage_workspace(
                     plan.seat, plan.prompt_bytes, prompt_file, staging
                 )
+                expected_staging_files[PROMPT_STAGED_NAME] = expected_prompt
+                if expected_evidence is not None:
+                    expected_staging_files[EVIDENCE_STAGED_NAME] = expected_evidence
                 cmd = _executed_argv(
                     plan.recipe,
                     staging=staging,
@@ -1442,6 +2072,11 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
                     agent_profile=staged_profile,
                     sandbox_profile=plan.sandbox_profile,
                 )
+            staging_manifest = build_security_tree_manifest(expected_staging_files)
+            private_home_manifest = build_security_tree_manifest({})
+            private_grok_home_manifest = build_security_tree_manifest(
+                {"auth.json": plan.auth_bytes}
+            )
         except (OSError, UnicodeError, ValueError, KeyError) as exc:
             print(f"PARK: cannot stage minimum-necessary Grok workspace: {exc}", file=sys.stderr)
             return 2
@@ -1455,6 +2090,53 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
         if binary_problem:
             print(f"PARK: {binary_problem}", file=sys.stderr)
             return 2
+        socket_problem = runtime_socket_snapshot_problem(socket_snapshot)
+        if socket_problem:
+            print(f"PARK: {socket_problem}; isolated inspection was not started", file=sys.stderr)
+            return 2
+        frozen_identity, frozen_snapshot_problem = _frozen_binary_snapshot(
+            str(frozen_binary)
+        )
+        if frozen_snapshot_problem or frozen_identity is None:
+            print(
+                "PARK: frozen Grok executable cannot be snapshotted before isolated "
+                f"inspection: {frozen_snapshot_problem or 'missing identity'}",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            launch_boundary_state = LaunchBoundaryState(
+                staging=staging,
+                staging_snapshot=capture_expected_security_tree_snapshot(
+                    staging,
+                    staging_manifest,
+                    label="isolated Grok staging tree",
+                ),
+                staging_manifest=staging_manifest,
+                private_home=private_runtime / "home",
+                private_home_snapshot=capture_expected_security_tree_snapshot(
+                    private_runtime / "home",
+                    private_home_manifest,
+                    label="isolated HOME tree",
+                ),
+                private_home_manifest=private_home_manifest,
+                private_grok_home=private_runtime / "grok-home",
+                private_grok_home_snapshot=capture_expected_security_tree_snapshot(
+                    private_runtime / "grok-home",
+                    private_grok_home_manifest,
+                    label="isolated GROK_HOME tree",
+                ),
+                private_grok_home_manifest=private_grok_home_manifest,
+                frozen_binary=str(frozen_binary),
+                frozen_binary_identity=frozen_identity,
+                runtime_socket_snapshot=socket_snapshot,
+                seat=plan.seat,
+                smoke=smoke,
+                execution_input_binding=plan.execution_input_binding,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"PARK: cannot snapshot isolated launch inputs: {exc}", file=sys.stderr)
+            return 2
         config_problem = _effective_config_problem(str(frozen_binary), staging, child_env)
         inspect_auth_problem = _staged_auth_problem(private_runtime, plan.auth_bytes)
         if inspect_auth_problem:
@@ -1463,15 +2145,12 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
         if config_problem:
             print(f"PARK: {config_problem}", file=sys.stderr)
             return 2
-        binary_problem = _frozen_binary_problem(str(frozen_binary), plan.binary_version)
-        if binary_problem:
-            print(f"PARK: {binary_problem}", file=sys.stderr)
-            return 2
         timeout = SMOKE_TIMEOUT_SEC if smoke else EXECUTE_TIMEOUT_SEC
         completed = _run_provider(
             cmd, executable=str(frozen_binary), cwd=str(staging), timeout=timeout,
             kind="smoke" if smoke else "execute",
             capture_output=True, env=child_env,
+            launch_boundary_state=launch_boundary_state,
         )
         if isinstance(completed, int):
             auth_problem = _staged_auth_problem(private_runtime, plan.auth_bytes)
@@ -1489,17 +2168,33 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
             print(f"PARK: {sandbox_problem}", file=sys.stderr)
             return 2
         if smoke:
-            last_line = (completed.stdout or "").rstrip().splitlines()[-1:]
-            if completed.returncode != 0 or last_line != ["cli-agent-path-ok"]:
-                print("PARK: Grok CLI smoke did not return exact cli-agent-path-ok", file=sys.stderr)
+            smoke_stdout = completed.stdout or ""
+            smoke_stderr = completed.stderr or ""
+            if (
+                completed.returncode != 0
+                or smoke_stdout not in {"cli-agent-path-ok", "cli-agent-path-ok\n"}
+                or smoke_stderr != ""
+            ):
+                print(
+                    "PARK: Grok CLI smoke did not return only exact cli-agent-path-ok "
+                    "with optional final newline and empty stderr",
+                    file=sys.stderr,
+                )
                 return 2
-        elif completed.returncode != 0:
-            print(
-                f"PARK: Grok CLI execute exited with status {completed.returncode}; "
-                "buffered provider output was not released",
-                file=sys.stderr,
+        else:
+            if completed.returncode != 0:
+                print(
+                    f"PARK: Grok CLI execute exited with status {completed.returncode}; "
+                    "buffered provider output was not released",
+                    file=sys.stderr,
+                )
+                return 2
+            output_problem = _normal_output_problem(
+                plan.seat, completed.stdout or "", completed.stderr or ""
             )
-            return 2
+            if output_problem:
+                print(f"PARK: {output_problem}", file=sys.stderr)
+                return 2
         if completed.stdout:
             print(completed.stdout, end="")
         if completed.stderr:

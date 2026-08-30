@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
@@ -511,6 +512,247 @@ class FableEvalLabelTests(unittest.TestCase):
         self.assertIn("Opus 4.8", line)
         self.assertIn("1 of 1", line)
 
+    def test_config_models_require_absent_or_exact_true_enabled(self):
+        class Args:
+            fable_model = None
+            opus_model = None
+            grader_model = None
+
+        configured = {"providers": {
+            "fable-5": {"model": "fable-5", "enabled": True},
+            "opus-5": {"model": "opus-5", "enabled": "true"},
+            "opus-4.8": {"model": "opus-4.8", "enabled": True},
+        }}
+        with mock.patch.object(self.fe, "_safe_providers", return_value=configured):
+            models = self.fe.resolve_models(Args())
+        self.assertEqual(models["fable"], "claude-fable-5")
+        self.assertEqual(models["opus"], "claude-opus-4-8")
+        self.assertEqual(models["grader"], "claude-opus-4-8")
+
+    def test_disabled_or_malformed_fable_config_fails_closed(self):
+        class Args:
+            fable_model = None
+            opus_model = "active-opus"
+            grader_model = "active-grader"
+
+        for enabled in (False, "false", "true", 0, 1, None, [], {}):
+            with self.subTest(enabled=enabled):
+                configured = {"providers": {
+                    "fable-5": {"model": "must-not-run", "enabled": enabled},
+                }}
+                with mock.patch.object(self.fe, "_safe_providers", return_value=configured):
+                    with self.assertRaisesRegex(SystemExit, "no enabled provider.*--fable-model"):
+                        self.fe.resolve_models(Args())
+
+    def test_unreadable_or_empty_provider_config_never_resurrects_fallback_models(self):
+        class Args:
+            fable_model = None
+            opus_model = None
+            grader_model = None
+
+        for configured in ({}, {"providers": {}}):
+            with self.subTest(configured=configured), mock.patch.object(
+                self.fe, "_safe_providers", return_value=configured
+            ):
+                with self.assertRaisesRegex(SystemExit, "no enabled provider"):
+                    self.fe.resolve_models(Args())
+
+        with mock.patch.object(
+            self.fe.mborch, "load_config", side_effect=SystemExit("malformed")
+        ):
+            with self.assertRaisesRegex(
+                self.fe.ProviderConfigError, "providers.json is unreadable"
+            ):
+                self.fe._safe_providers()
+
+    def test_explicit_models_can_bypass_unreadable_provider_config(self):
+        class Args:
+            fable_model = "fable-5"
+            opus_model = "opus-5"
+            grader_model = None
+
+        with mock.patch.object(
+            self.fe,
+            "_safe_providers",
+            side_effect=self.fe.ProviderConfigError("unreadable"),
+        ):
+            models = self.fe.resolve_models(Args())
+        self.assertEqual(models["fable"], "claude-fable-5")
+        self.assertEqual(models["opus"], "claude-opus-5")
+        self.assertEqual(models["grader"], "claude-opus-5")
+
+    def test_explicit_fable_model_override_may_select_disabled_config_model(self):
+        class Args:
+            fable_model = "fable-5"
+            opus_model = "opus-5"
+            grader_model = "opus-4.8"
+
+        configured = {"providers": {
+            "fable-5": {"model": "disabled-fable", "enabled": False},
+            "opus-5": {"model": "disabled-opus", "enabled": False},
+        }}
+        with mock.patch.object(self.fe, "_safe_providers", return_value=configured):
+            models = self.fe.resolve_models(Args())
+        self.assertEqual(models, {
+            "fable": "claude-fable-5",
+            "opus": "claude-opus-5",
+            "grader": "claude-opus-4-8",
+        })
+
+    def test_model_aliases_cannot_collapse_or_swap_trial_arms(self):
+        class SameAliasArgs:
+            fable_model = "claude-fable-5"
+            opus_model = "fable-5"
+            grader_model = "opus-5"
+
+        with self.assertRaisesRegex(SystemExit, "opus arm.*canonical Opus"):
+            self.fe.resolve_models(SameAliasArgs())
+
+        class FableGraderAliasArgs:
+            fable_model = "claude-fable-5"
+            opus_model = "opus-5"
+            grader_model = "fable-5"
+
+        with self.assertRaisesRegex(SystemExit, "NON-Fable"):
+            self.fe.resolve_models(FableGraderAliasArgs())
+
+    def test_explicit_model_ids_reject_blank_or_unknown_values(self):
+        for value, pattern in (("   ", "non-empty"), ("not-in-registry", "unknown")):
+            class Args:
+                fable_model = value
+                opus_model = "opus-5"
+                grader_model = "opus-5"
+            with self.subTest(value=value), self.assertRaisesRegex(SystemExit, pattern):
+                self.fe.resolve_models(Args())
+
+    def test_teamclaude_template_requires_exact_model_and_prompt_slots(self):
+        invalid = (
+            "run,--,-p,{prompt}",
+            "run,--,--model,{model}",
+            "run,--,-p,{prompt},--model,{model},{model}",
+            "run,--,-p,prefix-{prompt},--model,{model}",
+            "run,--,-p,{unknown},--model,{model},{prompt}",
+        )
+        for template in invalid:
+            with self.subTest(template=template), mock.patch.object(
+                self.fe, "TEAMCLAUDE_ARGV", template
+            ), mock.patch.object(self.fe, "_run_bounded_teamclaude") as run:
+                with self.assertRaisesRegex(self.fe.TeamclaudeError, "TEAMCLAUDE_ARGV"):
+                    self.fe.run_via_teamclaude("claude-opus-5", "test prompt")
+                run.assert_not_called()
+
+    def test_teamclaude_status_zero_requires_clean_nonempty_bounded_stdout(self):
+        outcomes = (
+            ("", "", "empty stdout"),
+            ("answer", "warning", "emitted stderr"),
+            ("x" * (self.fe.MAX_PROVIDER_OUTPUT_BYTES + 1), "", "bounded output"),
+        )
+        for stdout, stderr, pattern in outcomes:
+            proc = self.fe.subprocess.CompletedProcess(
+                ["teamclaude"], 0, stdout=stdout, stderr=stderr
+            )
+            with self.subTest(pattern=pattern), mock.patch.object(
+                self.fe, "_run_bounded_teamclaude", return_value=proc
+            ):
+                with self.assertRaisesRegex(self.fe.TeamclaudeError, pattern):
+                    self.fe.run_via_teamclaude("claude-opus-5", "test prompt")
+
+    def test_teamclaude_renders_selected_model_and_prompt_once(self):
+        proc = self.fe.subprocess.CompletedProcess(
+            ["teamclaude"], 0, stdout="answer\n", stderr=""
+        )
+        with mock.patch.object(
+            self.fe, "_run_bounded_teamclaude", return_value=proc
+        ) as run:
+            output = self.fe.run_via_teamclaude("claude-opus-5", "prompt,with,commas")
+        self.assertEqual(output, "answer")
+        argv = run.call_args.args[0]
+        self.assertEqual(argv.count("claude-opus-5"), 1)
+        self.assertEqual(argv.count("prompt,with,commas"), 1)
+
+    def test_teamclaude_runner_streams_output_bound_and_kills_timeout_descendants(self):
+        with mock.patch.object(self.fe, "TEAMCLAUDE_BIN", sys.executable), \
+                mock.patch.object(self.fe, "TEAMCLAUDE_ARGV", "-c,{prompt},{model}"):
+            overflow = (
+                "import sys; sys.stdout.write('x' * "
+                f"{self.fe.MAX_PROVIDER_OUTPUT_BYTES + 1})"
+            )
+            with self.assertRaisesRegex(self.fe.TeamclaudeError, "bounded output"):
+                self.fe.run_via_teamclaude("unused", overflow, timeout=3)
+
+            with tempfile.TemporaryDirectory() as td:
+                pid_path = Path(td) / "child.pid"
+                script = (
+                    "import subprocess,sys,time; "
+                    "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                    "open(sys.argv[1],'w').write(str(p.pid)); time.sleep(60)"
+                )
+                with self.assertRaisesRegex(self.fe.TeamclaudeError, "timed out"):
+                    self.fe.run_via_teamclaude(str(pid_path), script, timeout=0.5)
+                self.assertTrue(pid_path.exists())
+                child_pid = int(pid_path.read_text())
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    try:
+                        os.kill(child_pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail("teamclaude timeout descendant survived process-group cleanup")
+
+    def test_trial_suite_requires_exact_complete_unique_axes_before_calls(self):
+        valid = [
+            {"id": ident, "axis": ident, "prompt": "p", "rubric": "r", "answer_key": "a"}
+            for ident in ("coding", "content", "architecture")
+        ]
+        self.assertEqual(self.fe.validate_trial_suite(valid), valid)
+        bad_suites = (
+            valid[:2],
+            [valid[0], valid[0], valid[2]],
+            [dict(valid[0], rubric=""), valid[1], valid[2]],
+            [dict(valid[0], id="unknown"), valid[1], valid[2]],
+        )
+        for suite in bad_suites:
+            with self.subTest(suite=suite), self.assertRaises(SystemExit):
+                self.fe.validate_trial_suite(suite)
+
+    def test_grader_scores_require_finite_in_range_consistent_subscores(self):
+        valid = {
+            "length": 1, "facts": 2, "no_fabrication": 2,
+            "formatting": 2, "voice": 3, "total": 10, "notes": "ok",
+        }
+        self.assertEqual(self.fe.parse_grader_score(json.dumps(valid))["total"], 10)
+        invalid = []
+        for value in ("nan", "inf", True, float("nan"), float("inf"), -1, 11):
+            invalid.append(dict(valid, total=value))
+        invalid.extend((
+            dict(valid, total=0),
+            dict(valid, voice=999, total=10),
+            {key: value for key, value in valid.items() if key != "total"},
+        ))
+        for row in invalid:
+            with self.subTest(row=row), self.assertRaises(self.fe.TeamclaudeError):
+                self.fe.parse_grader_score(json.dumps(row))
+
+    def test_content_grader_cannot_rewrite_preverified_mechanical_scores(self):
+        candidate = "short"
+        mech = self.fe.mechanical_content(candidate)
+        forged = dict(mech["subscores"], voice=0, notes="forged")
+        forged["length"] = 1
+        forged["total"] = sum(
+            forged[key] for key in (
+                "length", "facts", "no_fabrication", "formatting", "voice"
+            )
+        )
+        with mock.patch.object(
+            self.fe, "run_via_teamclaude", return_value=json.dumps(forged)
+        ), self.assertRaisesRegex(self.fe.TeamclaudeError, "pre-verified mechanical"):
+            self.fe.grade_content(
+                candidate, {"rubric": "r", "answer_key": "a"},
+                {"grader": "claude-opus-5"}, dry_run=False, timeout=1,
+            )
+
 
 rr = load_mod("resolve_route", HERE / "resolve-route.py")
 doc = load_mod("doctor_mod", HERE / "doctor.py")
@@ -522,6 +764,83 @@ def providers():
 
 def connectors():
     return json.loads((REPO / "config" / "connectors.json").read_text())
+
+
+class ProviderQuotaBindingTests(unittest.TestCase):
+    def test_runtime_provider_seats_parks_on_missing_unknown_or_cross_family_backing(self):
+        rows = [
+            {"seat": "codex-plan", "subscription": "codex-200", "family": "openai",
+             "billing": "included", "tier": "available", "pct": 10},
+            {"seat": "grok-heavy", "subscription": "grok-heavy", "family": "xai",
+             "billing": "included", "tier": "available", "pct": 10},
+        ]
+        for backing in (None, "", "missing-plan", "codex-200"):
+            with self.subTest(backing=backing):
+                provs = providers()
+                provs["providers"]["grok-build"]["backed_by"] = backing
+                self.assertEqual(rr.provider_seats("grok-build", provs, rows), [])
+        self.assertEqual(
+            [row["seat"] for row in rr.provider_seats("grok-build", providers(), rows)],
+            ["grok-heavy"],
+        )
+
+    def test_runtime_usage_seat_cannot_escape_its_backing(self):
+        provs = providers()
+        provs["providers"]["grok-build"]["usage_seat"] = "codex-plan"
+        rows = [{
+            "seat": "codex-plan", "subscription": "codex-200", "family": "openai",
+            "billing": "included", "tier": "available", "pct": 10,
+        }]
+        self.assertEqual(rr.provider_seats("grok-build", provs, rows), [])
+
+    def test_explicit_empty_usage_seat_cannot_expand_to_entire_backing_pool(self):
+        provs = providers()
+        provs["providers"]["codex-sol"]["usage_seat"] = ""
+        rows = [
+            {"seat": "codex-sol", "subscription": "codex-200", "family": "openai",
+             "billing": "included", "tier": "spent"},
+            {"seat": "codex-plan", "subscription": "codex-200", "family": "openai",
+             "billing": "included", "tier": "available"},
+        ]
+        self.assertEqual(rr.provider_seats("codex-sol", provs, rows), [])
+
+    def test_last_resort_coder_uses_bidirectional_backing_not_provider_string(self):
+        provs = providers()["providers"]
+        provs["grok-build"]["backed_by"] = "codex-200"
+        self.assertIsNone(
+            rr.last_resort_coder(provs, live(), "codex-200", lambda _pid: True)
+        )
+
+    def test_live_reviewer_selects_only_from_its_validated_backing(self):
+        provs = providers()
+        provs["providers"]["opus-5"]["backed_by"] = "claude-fable-capable-seats"
+        rows = [
+            {"seat": "claude-pro-a", "subscription": "claude-pro-25-a",
+             "family": "anthropic", "billing": "included", "tier": "available",
+             "fable": False, "intake": False, "window_kinds": ["weekly"]},
+            {"seat": "claude-max", "subscription": "claude-max-200",
+             "family": "anthropic", "billing": "included", "tier": "available",
+             "fable": True, "intake": False, "window_kinds": ["weekly"]},
+        ]
+        reviewers = rr.live_reviewers(provs, rows, {}, live())
+        opus = next(row for row in reviewers if row["provider"] == "opus-5")
+        self.assertEqual(opus["seat"], "claude-max")
+
+    def test_dispatch_never_synthesizes_api_capacity_without_an_eligible_seat(self):
+        provs = providers()
+        review_e = provs["providers"]["review-e"]
+        review_e["dispatch_eligible"] = True
+        review_e["kind"] = "api"
+        with mock.patch.object(rr, "provider_dispatch_configured", return_value=True), \
+                mock.patch.object(rr, "provider_can_dispatch", return_value=True), \
+                mock.patch.object(rr, "provider_seats", return_value=[]):
+            statuses = rr.dispatch_statuses(
+                {"providers": {"review-e": review_e}}, [], live(),
+                {"dispatcher": {"fallback_order": ["review-e"]}},
+            )
+        self.assertTrue(statuses["review-e"]["qualified"])
+        self.assertFalse(statuses["review-e"]["usable"])
+        self.assertIsNone(statuses["review-e"]["seat"])
 
 
 class ReviewEGateTests(unittest.TestCase):
@@ -604,6 +923,219 @@ class OperationalLiveRouteTests(unittest.TestCase):
         self.assertFalse(mr.route_is_live(registry, "review-e-fireworks"))
         self.assertFalse(mr.route_is_live(registry, "missing-route"))
         self.assertTrue(mr.route_is_live(registry, "grok-4.6-build", as_of=date(2026, 8, 28)))
+
+    def test_provider_enabled_is_absent_or_exact_true_across_runtime_gates(self):
+        registry = live()
+        provs = providers()
+        build = provs["providers"]["grok-build"]
+        build.pop("enabled", None)
+        self.assertTrue(mr.provider_route_is_live(registry, build))
+        self.assertTrue(rr.provider_can_code(build, registry))
+        self.assertTrue(rr.provider_dispatch_configured("grok-build", build, registry))
+
+        build["enabled"] = "false"
+        self.assertFalse(mr.provider_route_is_live(registry, build))
+        self.assertFalse(rr.provider_can_code(build, registry))
+        self.assertFalse(rr.provider_dispatch_configured("grok-build", build, registry))
+
+        terra = provs["providers"]["codex-terra"]
+        self.assertTrue(rr.provider_can_mcp_bulk(terra, registry))
+        terra["enabled"] = "false"
+        self.assertFalse(rr.provider_can_mcp_bulk(terra, registry))
+
+        opus = provs["providers"]["opus-5"]
+        opus["enabled"] = "false"
+        self.assertNotIn("opus-5", mr.live_review_providers(registry, provs))
+        errors = mr.validate(registry, providers=provs)
+        self.assertTrue(any("enabled must be a boolean" in error for error in errors))
+
+    def test_provider_wired_is_absent_or_exact_true_for_live_activation(self):
+        registry = live()
+        for wired in (False, "false"):
+            with self.subTest(wired=wired):
+                provs = providers()
+                sol = provs["providers"]["codex-sol"]
+                sol["wired"] = wired
+                self.assertFalse(mr.provider_route_is_live(registry, sol))
+                self.assertFalse(mr.provider_can_review(registry, sol))
+                decision = mr.resolve(
+                    registry, "code_review", providers=provs,
+                    as_of=date(2026, 8, 30),
+                )
+                self.assertNotIn(
+                    "gpt-5.6-sol-codex", [row["route"] for row in decision["routes"]]
+                )
+                if wired == "false":
+                    self.assertFalse(decision["ok"], decision)
+
+        review_e = providers()
+        review_e["providers"]["review-e"]["wired"] = False
+        with mock.patch.object(mr, "route_is_live", return_value=True):
+            self.assertFalse(mr.provider_can_review(
+                registry, review_e["providers"]["review-e"]
+            ))
+            self.assertNotIn("review-e", mr.live_review_providers(registry, review_e))
+
+    def test_operational_resolve_rejects_disabled_or_identity_spoofed_binding(self):
+        registry = live()
+        for enabled in (False, "false"):
+            with self.subTest(enabled=enabled):
+                provs = providers()
+                provs["providers"]["codex-sol"]["enabled"] = enabled
+                decision = mr.resolve(
+                    registry, "code_review", providers=provs,
+                    as_of=date(2026, 8, 30),
+                )
+                self.assertFalse(decision["ok"], decision)
+                self.assertEqual(decision["routes"], [])
+                self.assertTrue(decision["provider_activation_checked"])
+
+        provs = providers()
+        for provider in provs["providers"].values():
+            if isinstance(provider, dict):
+                provider["enabled"] = False
+        spoof = provs["providers"]["local-llm-example"]
+        spoof["enabled"] = True
+        spoof["route"] = "gpt-5.6-sol-codex"
+        decision = mr.resolve(
+            registry, "code_review", providers=provs,
+            as_of=date(2026, 8, 30),
+        )
+        self.assertFalse(decision["ok"], decision)
+        self.assertEqual(decision["routes"], [])
+        self.assertIn("provider activation config is invalid", decision["reason"])
+
+    def test_catalog_only_resolve_marks_provider_activation_unchecked(self):
+        decision = mr.resolve(live(), "code_review", as_of=date(2026, 8, 30))
+        self.assertTrue(decision["ok"], decision)
+        self.assertFalse(decision["provider_activation_checked"])
+        self.assertIn("catalog-only", decision["reason"])
+
+    def test_operational_resolve_rejects_missing_or_malformed_provider_map(self):
+        for provs in ({}, {"providers": []}, {"providers": {}}, []):
+            with self.subTest(providers=provs):
+                decision = mr.resolve(
+                    live(), "code_review", providers=provs,
+                    as_of=date(2026, 8, 30),
+                )
+                self.assertFalse(decision["ok"], decision)
+                self.assertEqual(decision["routes"], [])
+                self.assertIn("non-empty providers object", decision["reason"])
+
+    def test_operational_resolve_requires_provider_role_layers_not_only_live_route(self):
+        provs = providers()
+        opus = provs["providers"]["opus-5"]
+        opus["review_eligible"] = False
+        opus["functions"] = [fn for fn in opus["functions"] if fn != "review"]
+        opus["capabilities"] = [cap for cap in opus["capabilities"] if cap != "review"]
+        provs["review_order"] = [pid for pid in provs["review_order"] if pid != "opus-5"]
+        decision = mr.resolve(
+            live(), "code_review", providers=provs, as_of=date(2026, 8, 30)
+        )
+        self.assertNotIn(
+            "opus-5-teamclaude", [row["route"] for row in decision["routes"]]
+        )
+        self.assertTrue(decision["provider_activation_checked"])
+
+    def test_operational_implementation_requires_provider_implement_or_ide_function(self):
+        provs = providers()
+        opus = provs["providers"]["opus-5"]
+        self.assertIn("code", opus["capabilities"])
+        self.assertFalse({"implement", "ide"}.intersection(opus["functions"]))
+        decision = mr.resolve(
+            live(), "implementation", providers=provs, as_of=date(2026, 8, 30)
+        )
+        self.assertNotIn(
+            "opus-5-teamclaude", [row["route"] for row in decision["routes"]]
+        )
+
+    def test_operational_prior_binding_ignores_disabled_or_malformed_provider(self):
+        for enabled in (False, "false"):
+            with self.subTest(enabled=enabled), mock.patch.object(
+                mr,
+                "_load_structured_repo_json",
+                return_value={"providers": {"candidate": {
+                    "route": "gpt-5.6-sol-codex", "enabled": enabled,
+                }}},
+            ):
+                self.assertIsNone(
+                    mr._provider_binding_for_route("gpt-5.6-sol-codex")
+                )
+
+    def test_operational_prior_binding_accepts_unique_enabled_unwired_provider(self):
+        with mock.patch.object(
+            mr,
+            "_load_structured_repo_json",
+            return_value={"providers": {"review-e": {
+                "route": "review-e-fireworks", "enabled": True, "wired": False,
+            }}},
+        ):
+            binding = mr._provider_binding_for_route("review-e-fireworks")
+        self.assertIsNotNone(binding)
+        self.assertEqual(binding[0], "review-e")
+
+    def test_each_standing_grok_route_requires_exact_provider_identity(self):
+        provs = providers()
+        standing = (
+            ("grok-bot-review-d", "grok-cli-review-d"),
+            ("grok-bot-heat-map", "grok-cli-heat-map"),
+            ("grok-bot-marketplace-intelligence", "grok-cli-marketplace-intelligence"),
+        )
+        for pid, route_id in standing:
+            for value in (None, "", "grok-build"):
+                with self.subTest(provider=pid, value=value):
+                    registry = live()
+                    registry["routes"][route_id]["provider"] = value
+                    errors = mr.validate(
+                        registry, providers=provs, as_of=date(2026, 8, 30)
+                    )
+                    self.assertTrue(any(
+                        pid in error and "route provider must be exact" in error
+                        for error in errors
+                    ), errors)
+
+    def test_review_eligibility_is_exact_and_requires_all_review_capability_layers(self):
+        registry = live()
+        provs = providers()
+        opus = provs["providers"]["opus-5"]
+        self.assertTrue(mr.provider_can_review(registry, opus))
+
+        opus["review_eligible"] = "false"
+        self.assertFalse(mr.provider_can_review(registry, opus))
+        self.assertNotIn("opus-5", mr.live_review_providers(registry, provs))
+        errors = mr.validate(registry, providers=provs)
+        self.assertTrue(any("review_eligible must be a boolean" in error for error in errors))
+
+        rows = [{
+            "seat": "claude-max", "subscription": "claude-max-200",
+            "tier": "available", "billing": "included", "family": "anthropic",
+            "fable": True, "intake": False, "window_kinds": ["rolling"],
+            "runway_seconds": 10000,
+        }]
+        self.assertNotIn(
+            "opus-5",
+            [item["provider"] for item in rr.live_reviewers(provs, rows, {}, registry)],
+        )
+
+        for layer in ("functions", "capabilities"):
+            with self.subTest(layer=layer):
+                changed = providers()
+                provider = changed["providers"]["opus-5"]
+                provider[layer] = [item for item in provider[layer] if item != "review"]
+                self.assertFalse(mr.provider_can_review(registry, provider))
+                self.assertTrue(any(
+                    f"review in provider {layer}" in error
+                    for error in mr.validate(registry, providers=changed)
+                ))
+
+        changed_registry = copy.deepcopy(registry)
+        changed_registry["routes"][opus["route"]]["capabilities"].remove("review")
+        fresh_opus = providers()["providers"]["opus-5"]
+        self.assertFalse(mr.provider_can_review(changed_registry, fresh_opus))
+        self.assertTrue(any(
+            "review on bound route" in error
+            for error in mr.validate(changed_registry, providers=providers())
+        ))
 
 
 class LastResortCodingTests(unittest.TestCase):
@@ -1720,6 +2252,30 @@ class DispatcherAuthorityTests(unittest.TestCase):
         errors = self._check(entry)
         self.assertTrue(any("unqualified provider 'cursor-grok'" in e for e in errors), errors)
 
+    def test_all_entrypoint_references_require_enabled_provider(self):
+        for case in ("default", "fallback", "surface", "profile"):
+            with self.subTest(case=case):
+                entry = self._entry()
+                provs = providers()["providers"]
+                if case == "surface":
+                    surface_name = next(iter(entry["entry_surfaces"]))
+                    pid = entry["entry_surfaces"][surface_name]["providers"][0]
+                else:
+                    pid = "opus-5"
+                provs[pid]["enabled"] = False
+                if case == "default":
+                    entry["dispatcher"]["default_provider"] = pid
+                elif case == "fallback":
+                    entry["dispatcher"]["fallback_order"] = [pid]
+                    entry["dispatcher"]["default_provider"] = pid
+                elif case == "profile":
+                    entry["profiles"]["default"]["preferred_dispatcher"] = pid
+                errors = self._check(entry, provs)
+                self.assertTrue(
+                    any(pid in error and "not enabled with exact true" in error for error in errors),
+                    errors,
+                )
+
     def test_profile_provider_must_be_dispatch_eligible(self):
         entry = json.loads((REPO / "config" / "entrypoints.json").read_text())
         entry["profiles"]["default"]["preferred_dispatcher"] = "cursor-grok"
@@ -1752,6 +2308,9 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             {"seat": "claude-pro-a", "subscription": "claude-pro-25-a", "tier": tier("claude-pro-a"),
              "billing": "included", "family": "anthropic", "fable": False, "intake": False,
              "window_kinds": ["rolling"]},
+            {"seat": "review-e", "subscription": None, "tier": tier("review-e"),
+             "billing": "metered", "family": "open-weight", "intake": False,
+             "window_kinds": ["none"]},
         ]
 
     def _entry(self):
@@ -1839,6 +2398,17 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertTrue(got["satisfied"], got)
         self.assertTrue(got["intake_relay"])
         self.assertNotEqual(got["effective"], "cursor-grok")
+
+    def test_disabled_or_malformed_non_dispatch_intake_cannot_relay(self):
+        for enabled in (False, "false", 0, 1, None):
+            with self.subTest(enabled=enabled):
+                provs = providers()
+                provs["providers"]["cursor-grok"]["enabled"] = enabled
+                got = rr.select_dispatcher(
+                    self._entry(), provs, self._rows(), live(), requested="cursor-grok"
+                )
+                self.assertFalse(got["satisfied"], got)
+                self.assertFalse(got.get("intake_relay", False), got)
 
     def test_only_declared_non_dispatch_entry_surface_may_relay(self):
         for pid in ("review-e", "grok-bot-heat-map", "local-llm-example"):

@@ -446,6 +446,32 @@ class MissingAndFallbackTests(unittest.TestCase):
         )
         self.assertNotIn("note", independent)
 
+    def test_unavailable_standing_input_is_never_direct_shellable(self):
+        recipes = json.loads((REPO / "config" / "seat-exec.json").read_text())["recipes"]
+        ctx = {
+            "brief_path": "<brief.md>",
+            "worktree": "w",
+            "branch": "br",
+            "repo": ".",
+            "output_path": "o",
+            "preview_url": "u",
+            "agent_profile": "<validated-agent-profile>",
+            "sandbox_profile": "<ephemeral-sandbox-profile>",
+        }
+        plan = run_brief.plan_for_seat(
+            "grok-bot-review-d",
+            recipes,
+            ctx,
+            "review-d-input",
+            available=False,
+            input_seat=True,
+        )
+        self.assertFalse(plan["available"])
+        self.assertTrue(plan["input_seat"])
+        self.assertFalse(plan["shellable"])
+        self.assertIsNone(plan["would_run"])
+        self.assertIn("bin/grok-agent.py", plan["reason"])
+
     def test_reviewer_disagreement_and_fix_loop_retraction(self):
         route = observe.event_from_route_decision(
             _decision(), run_id="run-rev", ts="2026-08-29T00:00:00+00:00",

@@ -73,7 +73,7 @@ Not a meta-agent, no polling for makework. The gates in this file plus the refil
 |-------|--------|
 | Expired `shopifypreview.com` | Review D returns `blocked: need new Share Preview`. No Admin. |
 | Preview/live-audit host not on allowlist | `blocked`. Owner edits `config/connectors.json` if intentional, then runs doctor/tests and re-renders the instructions. |
-| Live-audit host is configured but has no CLI run/screenshots/verdict evidence | Mark it `unverified`, not tested/working. Run one config-rendered safe packet only after browser/pixels are live; preserve evidence before upgrading the claim. |
+| Live-audit host is configured but has no CLI run/screenshots/verdict evidence | Mark it `unverified`, not tested/working. Packet rendering is preparation only. Normal execution remains unsupported until the code-owned pixel-input binding exists; only after that binding, the live route/profile gates, and browser/pixels all pass may one safe packet run. Preserve evidence before upgrading the claim. |
 | Brief missing required field | No dispatch. Ask for the field only — do not invent `done_when`. |
 | `must_read` path missing | Stop. Report missing path. Do not hallucinate file contents. |
 | Snapshot for GSC/keywords older than brief allows | MCP seat re-fetches only if the brief says refresh; else flag stale. |

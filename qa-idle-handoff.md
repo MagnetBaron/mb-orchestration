@@ -4,7 +4,7 @@
 
 GitHub hands **one** QA job to the first **idle** M4 mini labeled `self-hosted`, `macOS`, `qa`. Minis do not talk to each other. There is no RAM/CPU cluster broker.
 
-This is the shipped piece of `FUTURE.md` items 4–5. Control Mini vs worker Mini split is still deferred.
+This is the shipped exception listed in `FUTURE.md` under **Shipped**. Control Mini vs worker Mini split is still deferred.
 
 ## When Dispatch uses it
 

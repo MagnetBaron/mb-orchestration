@@ -31,7 +31,8 @@ REAL_BINARY_RECHECK_PROBLEM = target._binary_recheck_problem
 REAL_COPY_ATTESTED_BINARY = target._copy_attested_binary
 REAL_AUTH_SNAPSHOT = target._auth_snapshot
 REAL_EFFECTIVE_CONFIG_PROBLEM = target._effective_config_problem
-REAL_RESOLVE_RUNTIME_SOCKET_DENIES = target.resolve_runtime_socket_denies
+REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT = target.capture_runtime_socket_snapshot
+REAL_CAPTURE_EXPECTED_SECURITY_TREE_SNAPSHOT = target.capture_expected_security_tree_snapshot
 TEST_BINARY_IDENTITY = (1, 2, 3, 4, 0o100755, "a" * 64)
 
 
@@ -54,10 +55,12 @@ class GrokAgentTests(unittest.TestCase):
                 ),
             ),
             mock.patch.object(target, "_frozen_binary_problem", return_value=None),
+            mock.patch.object(
+                target, "_frozen_binary_snapshot", return_value=(TEST_BINARY_IDENTITY, None)
+            ),
             mock.patch.object(target, "_auth_snapshot", return_value=(b'{"access_token":"test"}', None)),
             mock.patch.object(target, "_effective_config_problem", return_value=None),
-            mock.patch.object(target, "auto_runtime_socket_deny_incompatible", return_value=False),
-            mock.patch.object(target, "resolve_runtime_socket_denies", return_value=[]),
+            mock.patch.object(target, "capture_runtime_socket_snapshot", return_value=()),
         ]
         for patcher in patchers:
             patcher.start()
@@ -67,18 +70,29 @@ class GrokAgentTests(unittest.TestCase):
         good = subprocess.CompletedProcess(
             [], 0, stdout="grok 1.0.13 (5e9a58528b76)\n", stderr=""
         )
-        with mock.patch.object(target.subprocess, "run", return_value=good) as run:
+        with mock.patch.object(target, "_run_provider", return_value=good) as run:
             version, problem = REAL_GROK_VERSION_SNAPSHOT("/tmp/grok")
         self.assertEqual(version, "grok 1.0.13 (5e9a58528b76)")
         self.assertIsNone(problem)
         self.assertEqual(run.call_args.kwargs["executable"], "/tmp/grok")
+        self.assertEqual(run.call_args.kwargs["kind"], "version")
+        self.assertEqual(
+            run.call_args.kwargs["max_stream_bytes"], target.MAX_VERSION_STREAM_BYTES
+        )
         lookalike = subprocess.CompletedProcess(
             [], 0, stdout="cli-agent-path-ok\n", stderr=""
         )
-        with mock.patch.object(target.subprocess, "run", return_value=lookalike):
+        with mock.patch.object(target, "_run_provider", return_value=lookalike):
             version, problem = REAL_GROK_VERSION_SNAPSHOT("/tmp/grok")
         self.assertIsNone(version)
         self.assertIn("exact approved build", problem)
+        warning = subprocess.CompletedProcess(
+            [], 0, stdout=target.SUPPORTED_GROK_BUILD + "\n", stderr="warning\n"
+        )
+        with mock.patch.object(target, "_run_provider", return_value=warning):
+            version, problem = REAL_GROK_VERSION_SNAPSHOT("/tmp/grok")
+        self.assertIsNone(version)
+        self.assertIn("empty stderr", problem)
 
     def test_binary_snapshot_resolves_and_hash_binds_exact_executable(self):
         with tempfile.TemporaryDirectory() as td:
@@ -192,10 +206,22 @@ class GrokAgentTests(unittest.TestCase):
         completed = subprocess.CompletedProcess(
             [], 0, stdout=json.dumps(clean), stderr=""
         )
-        with mock.patch.object(target.subprocess, "run", return_value=completed):
+        with mock.patch.object(target, "_run_provider", return_value=completed) as run:
             self.assertIsNone(REAL_EFFECTIVE_CONFIG_PROBLEM(
                 "/tmp/grok", Path("/tmp/stage"), {}
             ))
+        self.assertEqual(run.call_args.kwargs["kind"], "inspect")
+        self.assertEqual(
+            run.call_args.kwargs["max_stream_bytes"], target.MAX_INSPECT_STREAM_BYTES
+        )
+        warned = subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps(clean), stderr="warning\n"
+        )
+        with mock.patch.object(target, "_run_provider", return_value=warned):
+            self.assertIn(
+                "inspection failed",
+                REAL_EFFECTIVE_CONFIG_PROBLEM("/tmp/grok", Path("/tmp/stage"), {}),
+            )
         cases = {
             "requirements": ("configSources", {"layers": [
                 {"path": "/etc/grok/requirements.toml", "role": "requirements"}
@@ -210,7 +236,7 @@ class GrokAgentTests(unittest.TestCase):
                 result = subprocess.CompletedProcess(
                     [], 0, stdout=json.dumps(tampered), stderr=""
                 )
-                with mock.patch.object(target.subprocess, "run", return_value=result):
+                with mock.patch.object(target, "_run_provider", return_value=result):
                     problem = REAL_EFFECTIVE_CONFIG_PROBLEM(
                         "/tmp/grok", Path("/tmp/stage"), {}
                     )
@@ -276,8 +302,24 @@ class GrokAgentTests(unittest.TestCase):
                 profile.name: tampered,
             }):
                 problem = target._profile_problem(profile, "mb-review-d")
-        self.assertIn("standing Grok tool allowlist", problem)
-        self.assertIn("must be exact", problem)
+        self.assertIn("exact standing Grok frontmatter", problem)
+
+    def test_launcher_rejects_skills_even_when_generated_profile_matches(self):
+        with tempfile.TemporaryDirectory() as td:
+            profile = Path(td) / "mb-review-d.md"
+            expected = target.sync_profiles.expected()[profile.name]
+            tampered = expected.replace(
+                "tools: Read, Grep, Glob\n---",
+                "tools: Read, Grep, Glob\nskills: [\"untrusted:skill\"]\n---",
+                1,
+            )
+            profile.write_text(tampered)
+            with mock.patch.object(target.sync_profiles, "expected", return_value={
+                profile.name: tampered,
+            }):
+                problem = target._profile_problem(profile, "mb-review-d")
+        self.assertIn("exact standing Grok frontmatter", problem)
+        self.assertIn("no skills, plugins, MCP", problem)
 
     def test_profile_must_byte_match_generated_policy(self):
         with tempfile.TemporaryDirectory() as td:
@@ -312,6 +354,25 @@ class GrokAgentTests(unittest.TestCase):
             self.assertIsNone(target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
             evidence.write_text("price\n999.00\n")
             self.assertIn("digest", target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
+
+    def test_relative_evidence_path_cannot_resolve_away_final_symlink(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / "sold.csv"
+            evidence.write_text("price\n12.00\n")
+            link = root / "evidence.csv"
+            link.symlink_to(evidence)
+            digest = "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+            prompt = root / "market.md"
+            prompt.write_text(
+                "role: marketplace-intelligence\nsource: owner-deposited\n"
+                "artifact-class: synthetic-eval\n"
+                f"evidence-path: {link.name}\nevidence-sha256: {digest}\n"
+            )
+            problem = target._prompt_problem(
+                "grok-bot-marketplace-intelligence", prompt
+            )
+        self.assertIn("regular non-symlink", problem)
 
     def test_evidence_prompt_rejects_duplicate_or_unknown_fields(self):
         with tempfile.TemporaryDirectory() as td:
@@ -360,6 +421,8 @@ class GrokAgentTests(unittest.TestCase):
         self.assertTrue(any("wired" in x for x in result["problems"]))
         self.assertTrue(any("live_verified" in x for x in result["problems"]))
         self.assertTrue(any("not installed" in x for x in result["problems"]))
+        self.assertEqual(result["profile"], target.STAGED_AGENT_PLACEHOLDER)
+        self.assertNotIn(td, json.dumps(result))
 
     def test_renderer_preserves_spaces_without_shell_interpolation(self):
         recipe = {
@@ -408,6 +471,100 @@ class GrokAgentTests(unittest.TestCase):
         self.assertTrue(any("approved" in x for x in result["problems"]))
         self.assertEqual(sum("required runtime capability" in x for x in result["problems"]), 2)
 
+    def test_normal_plan_requires_exact_enabled_and_wired_booleans(self):
+        providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        recipes = json.loads((HERE.parent / "config" / "seat-exec.json").read_text())["recipes"]
+        registry = json.loads((HERE.parent / "config" / "model-registry.json").read_text())
+        provider = providers["providers"]["grok-bot-review-d"]
+        provider["enabled"] = False
+        provider["wired"] = "false"
+        registry["routes"][provider["route"]]["route_state"] = "live_verified"
+        ctx = target.LaunchContext(providers, recipes, registry)
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            with mock.patch.dict(
+                target.EXECUTION_INPUT_BINDINGS,
+                {"grok-bot-review-d": "test-pixels"},
+            ), mock.patch.object(
+                target.integrations, "effective", return_value=(True, "fresh")
+            ):
+                plan = target.prepare_launch_plan(
+                    "grok-bot-review-d",
+                    HERE.parent,
+                    None,
+                    agents,
+                    ctx,
+                    smoke=False,
+                )
+        self.assertFalse(plan.ready)
+        self.assertIn("provider enabled must be exact true", plan.problems)
+        self.assertIn("provider wired must be exact true", plan.problems)
+
+    def test_launcher_itself_requires_exact_standing_route_invocation_identity(self):
+        providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        recipes = json.loads((HERE.parent / "config" / "seat-exec.json").read_text())["recipes"]
+        registry = json.loads((HERE.parent / "config" / "model-registry.json").read_text())
+        provider = providers["providers"]["grok-bot-review-d"]
+        provider["wired"] = True
+        route = registry["routes"][provider["route"]]
+        route["route_state"] = "live_verified"
+        route["invocation_id"] = "mb-unrelated-agent"
+        ctx = target.LaunchContext(providers, recipes, registry)
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            with mock.patch.dict(
+                target.EXECUTION_INPUT_BINDINGS,
+                {"grok-bot-review-d": "test-pixels"},
+            ), mock.patch.object(
+                target.integrations, "effective", return_value=(True, "fresh")
+            ), mock.patch.object(
+                target.model_registry, "validate", return_value=[]
+            ):
+                plan = target.prepare_launch_plan(
+                    "grok-bot-review-d", HERE.parent, None, agents, ctx, smoke=False
+                )
+        self.assertFalse(plan.ready)
+        self.assertIn(
+            "provider route invocation_id must be exact 'mb-review-d'", plan.problems
+        )
+
+    def test_launcher_itself_requires_exact_standing_route_provider_identity(self):
+        providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        recipes = json.loads((HERE.parent / "config" / "seat-exec.json").read_text())["recipes"]
+        registry = json.loads((HERE.parent / "config" / "model-registry.json").read_text())
+        provider = providers["providers"]["grok-bot-review-d"]
+        provider["wired"] = True
+        route = registry["routes"][provider["route"]]
+        route["route_state"] = "live_verified"
+        route["provider"] = None
+        ctx = target.LaunchContext(providers, recipes, registry)
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            with mock.patch.dict(
+                target.EXECUTION_INPUT_BINDINGS,
+                {"grok-bot-review-d": "test-pixels"},
+            ), mock.patch.object(
+                target.integrations, "effective", return_value=(True, "fresh")
+            ), mock.patch.object(
+                target.model_registry, "validate", return_value=[]
+            ):
+                plan = target.prepare_launch_plan(
+                    "grok-bot-review-d", HERE.parent, None, agents, ctx, smoke=False
+                )
+        self.assertFalse(plan.ready)
+        self.assertIn(
+            "provider route provider must be exact 'grok-bot-review-d'", plan.problems
+        )
+
     def test_wrong_profile_name_blocks_smoke_before_subprocess(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -422,6 +579,31 @@ class GrokAgentTests(unittest.TestCase):
                 ])
         self.assertEqual(rc, 2)
         run.assert_not_called()
+
+    def test_smoke_never_executes_disabled_or_malformed_enabled_provider(self):
+        baseline = {
+            name: json.loads((HERE.parent / "config" / name).read_text())
+            for name in ("seat-exec.json", "roles.json", "providers.json", "model-registry.json")
+        }
+        for value in (False, "false", 0, 1, None):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as td:
+                configs = copy.deepcopy(baseline)
+                configs["providers.json"]["providers"]["grok-bot-review-d"]["enabled"] = value
+                agents = Path(td) / "agents"
+                agents.mkdir()
+                profile = agents / "mb-review-d.md"
+                profile.write_text(target.sync_profiles.expected()[profile.name])
+                with mock.patch.object(
+                    target.mborch, "load_config", side_effect=lambda n, **_: configs[n]
+                ), mock.patch.object(
+                    target.shutil, "which", return_value="/usr/local/bin/grok"
+                ), mock.patch.object(target, "_run_provider") as run:
+                    rc = target.main([
+                        "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                        "--agent-dir", str(agents),
+                    ])
+            self.assertEqual(rc, 2)
+            run.assert_not_called()
 
     def test_smoke_rejects_cross_seat_agent_substitution(self):
         configs = {
@@ -505,6 +687,72 @@ class GrokAgentTests(unittest.TestCase):
                     "--agent-dir", str(agents),
                 ])
             self.assertEqual(rc, 2)
+
+            for name, stdout_value, stderr_value in (
+                ("stdout-prefix", "unexpected-prefix\ncli-agent-path-ok\n", ""),
+                ("stderr-warning", "cli-agent-path-ok\n", "warning-not-a-sandbox-error\n"),
+                ("double-newline", "cli-agent-path-ok\n\n", ""),
+                ("trailing-space", "cli-agent-path-ok \n", ""),
+            ):
+                with self.subTest(name=name):
+                    non_exact = subprocess.CompletedProcess(
+                        [], 0, stdout=stdout_value, stderr=stderr_value
+                    )
+                    stdout = io.StringIO()
+                    stderr = io.StringIO()
+                    with mock.patch.object(
+                        target.shutil, "which", return_value="/usr/local/bin/grok"
+                    ), mock.patch.object(
+                        target, "_run_provider", return_value=non_exact
+                    ), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                        rc = target.main([
+                            "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                            "--agent-dir", str(agents),
+                        ])
+                    self.assertEqual(rc, 2)
+                    self.assertNotIn("unexpected-prefix", stdout.getvalue() + stderr.getvalue())
+                    self.assertNotIn(
+                        "warning-not-a-sandbox-error", stdout.getvalue() + stderr.getvalue()
+                    )
+                    self.assertIn("only exact cli-agent-path-ok", stderr.getvalue())
+
+    def test_normal_output_requires_empty_stderr_and_review_d_verdict_schema(self):
+        self.assertIsNone(target._normal_output_problem(
+            "grok-bot-review-d", "ship\nvalidated pages: home\n", ""
+        ))
+        self.assertIsNone(target._normal_output_problem(
+            "grok-bot-marketplace-intelligence", "evidence unavailable\n", ""
+        ))
+        for seat in ("grok-bot-heat-map", "grok-bot-marketplace-intelligence"):
+            for verdict in ("ship", "fix-list", "blocked"):
+                with self.subTest(seat=seat, verdict=verdict):
+                    problem = target._normal_output_problem(
+                        seat, verdict + "\nnot a review result\n", ""
+                    )
+                    self.assertIn("must not return a Review D verdict", problem)
+        for seat, prefix in (
+            ("grok-bot-review-d", "ship\n"),
+            ("grok-bot-heat-map", "analysis\n"),
+            ("grok-bot-marketplace-intelligence", "evidence\n"),
+        ):
+            for control in ("\x00", "\x1b[31m", "\x7f", "\x85"):
+                with self.subTest(seat=seat, control=repr(control)):
+                    problem = target._normal_output_problem(
+                        seat, prefix + control + "payload\n", ""
+                    )
+                    self.assertIn("terminal control characters", problem)
+        for name, stdout, stderr, expected in (
+            ("empty", "", "", "no non-empty result"),
+            ("whitespace", " \n", "", "no non-empty result"),
+            ("stderr", "ship\n", "warning\n", "returned stderr"),
+            ("malformed-verdict", "looks good\n", "", "must begin with exact"),
+            ("verdict-not-first", "details\nship\n", "", "must begin with exact"),
+        ):
+            with self.subTest(name=name):
+                problem = target._normal_output_problem(
+                    "grok-bot-review-d", stdout, stderr
+                )
+                self.assertIn(expected, problem)
 
     def test_provider_output_is_withheld_until_auth_and_sandbox_postconditions_pass(self):
         with tempfile.TemporaryDirectory() as td:
@@ -616,6 +864,316 @@ class GrokAgentTests(unittest.TestCase):
             self.assertLess(time.monotonic() - started, 2)
             self.assertIn("timed out", stderr.getvalue())
 
+    def test_provider_timeout_kills_spawned_descendants(self):
+        with tempfile.TemporaryDirectory() as td:
+            marker = Path(td) / "descendant-survived"
+            child = (
+                "import pathlib,time; time.sleep(0.4); "
+                f"pathlib.Path({str(marker)!r}).write_text('escaped')"
+            )
+            parent = (
+                "import subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+                "time.sleep(5)"
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = target._run_provider(
+                    [sys.executable, "-c", parent],
+                    executable=sys.executable,
+                    cwd=td,
+                    timeout=0.1,
+                    kind="smoke",
+                    capture_output=True,
+                    env=dict(os.environ),
+                )
+            self.assertEqual(result, 2)
+            time.sleep(0.6)
+            self.assertFalse(marker.exists())
+            self.assertIn("timed out", stderr.getvalue())
+
+    def test_provider_natural_leader_exit_still_kills_spawned_descendants(self):
+        with tempfile.TemporaryDirectory() as td:
+            marker = Path(td) / "descendant-survived-natural-exit"
+            child = (
+                "import pathlib,time; time.sleep(0.4); "
+                f"pathlib.Path({str(marker)!r}).write_text('escaped')"
+            )
+            parent = (
+                "import subprocess,sys; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
+                "stderr=subprocess.DEVNULL)"
+            )
+            completed = target._run_provider(
+                [sys.executable, "-c", parent],
+                executable=sys.executable,
+                cwd=td,
+                timeout=5,
+                kind="smoke",
+                capture_output=True,
+                env=dict(os.environ),
+            )
+            self.assertIsInstance(completed, subprocess.CompletedProcess)
+            self.assertEqual(completed.returncode, 0)
+            time.sleep(0.6)
+            self.assertFalse(marker.exists())
+
+    def test_provider_group_is_never_signaled_after_leader_is_reaped(self):
+        real_popen = subprocess.Popen
+        real_killpg = os.killpg
+        holder = {}
+        signal_states = []
+
+        def tracked_popen(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            holder["process"] = process
+            return process
+
+        def tracked_killpg(pgid, sig):
+            signal_states.append((pgid, sig, holder["process"].returncode))
+            return real_killpg(pgid, sig)
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(
+            target.subprocess, "Popen", side_effect=tracked_popen
+        ), mock.patch.object(target.os, "killpg", side_effect=tracked_killpg):
+            completed = target._run_provider(
+                [sys.executable, "-c", "import os; os.write(1, b'ok\\n')"],
+                executable=sys.executable,
+                cwd=td,
+                timeout=5,
+                kind="smoke",
+                capture_output=True,
+                env=dict(os.environ),
+            )
+        self.assertIsInstance(completed, subprocess.CompletedProcess)
+        self.assertEqual(completed.returncode, 0)
+        self.assertTrue(signal_states)
+        self.assertTrue(all(returncode is None for _pgid, _sig, returncode in signal_states))
+
+    def test_provider_stdin_is_always_devnull(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = target._run_provider(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; print('stdin-empty' if sys.stdin.read() == '' else 'stdin-leaked')",
+                ],
+                executable=sys.executable,
+                cwd=td,
+                timeout=5,
+                kind="smoke",
+                capture_output=True,
+                env=dict(os.environ),
+            )
+        self.assertIsInstance(result, subprocess.CompletedProcess)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "stdin-empty\n")
+
+    def test_inspect_mutation_of_same_name_sandbox_and_profile_parks_before_popen(self):
+        recipe = {
+            "bin": "grok",
+            "args_template": list(target.APPROVED_STANDING_TEMPLATE),
+        }
+        plan = target.LaunchPlan(
+            seat="grok-bot-review-d",
+            agent="mb-review-d",
+            recipe=recipe,
+            route_id="grok-cli-review-d",
+            route_state="unwired",
+            profile=Path("/installed/mb-review-d.md"),
+            binary="/validated/grok",
+            binary_version=target.SUPPORTED_GROK_BUILD,
+            binary_identity=TEST_BINARY_IDENTITY,
+            argv=[],
+            sandbox_profile="mb-standing-" + ("12" * 16),
+            ready=True,
+            problems=(),
+            profile_bytes=b"validated-agent-profile\n",
+            auth_bytes=b'{"access_token":"test"}',
+        )
+
+        def mutate_during_inspect(_binary, staging, _env):
+            (staging / ".grok" / "sandbox.toml").write_text(
+                f"[profiles.{plan.sandbox_profile}]\nextends = \"off\"\n"
+            )
+            (staging / "mb-review-d.md").write_text("mutated-agent-profile\n")
+            return None
+
+        stderr = io.StringIO()
+        with mock.patch.object(
+            target, "_effective_config_problem", side_effect=mutate_during_inspect
+        ), mock.patch.object(target.subprocess, "Popen") as popen, \
+             contextlib.redirect_stderr(stderr):
+            rc = target._run_validated_plan(
+                plan, cwd=HERE.parent, prompt_file=None, smoke=True
+            )
+        self.assertEqual(rc, 2)
+        popen.assert_not_called()
+        self.assertIn("differs from its code-owned expected bytes", stderr.getvalue())
+
+    def test_prebaseline_mutation_cannot_be_blessed_as_expected_staging_bytes(self):
+        recipe = {
+            "bin": "grok",
+            "args_template": list(target.APPROVED_STANDING_TEMPLATE),
+        }
+        plan = target.LaunchPlan(
+            seat="grok-bot-review-d",
+            agent="mb-review-d",
+            recipe=recipe,
+            route_id="grok-cli-review-d",
+            route_state="unwired",
+            profile=Path("/installed/mb-review-d.md"),
+            binary="/validated/grok",
+            binary_version=target.SUPPORTED_GROK_BUILD,
+            binary_identity=TEST_BINARY_IDENTITY,
+            argv=[],
+            sandbox_profile="mb-standing-" + ("34" * 16),
+            ready=True,
+            problems=(),
+            profile_bytes=b"validated-agent-profile\n",
+            auth_bytes=b'{"access_token":"test"}',
+        )
+
+        def mutate_before_baseline(root, manifest, *, label):
+            if label == "isolated Grok staging tree":
+                (root / ".grok" / "sandbox.toml").write_text(
+                    f"[profiles.{plan.sandbox_profile}]\nextends = \"off\"\n"
+                )
+                (root / "mb-review-d.md").write_text("mutated-agent-profile\n")
+            return REAL_CAPTURE_EXPECTED_SECURITY_TREE_SNAPSHOT(
+                root, manifest, label=label
+            )
+
+        stderr = io.StringIO()
+        with mock.patch.object(
+            target,
+            "capture_expected_security_tree_snapshot",
+            side_effect=mutate_before_baseline,
+        ), mock.patch.object(target.subprocess, "Popen") as popen, \
+             contextlib.redirect_stderr(stderr):
+            rc = target._run_validated_plan(
+                plan, cwd=HERE.parent, prompt_file=None, smoke=True
+            )
+        self.assertEqual(rc, 2)
+        popen.assert_not_called()
+        self.assertIn("differs from its code-owned expected bytes", stderr.getvalue())
+
+    def test_expired_capability_at_launch_boundary_parks_before_popen(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            staging = root / "staging"
+            private_home = root / "home"
+            private_grok_home = root / "grok-home"
+            for path in (staging, private_home, private_grok_home):
+                path.mkdir()
+            empty_manifest = target.build_security_tree_manifest({})
+            state = target.LaunchBoundaryState(
+                staging=staging,
+                staging_snapshot=target.capture_security_tree_snapshot(
+                    staging, label="isolated Grok staging tree"
+                ),
+                staging_manifest=empty_manifest,
+                private_home=private_home,
+                private_home_snapshot=target.capture_security_tree_snapshot(
+                    private_home, label="isolated HOME tree"
+                ),
+                private_home_manifest=empty_manifest,
+                private_grok_home=private_grok_home,
+                private_grok_home_snapshot=target.capture_security_tree_snapshot(
+                    private_grok_home, label="isolated GROK_HOME tree"
+                ),
+                private_grok_home_manifest=empty_manifest,
+                frozen_binary="/private/frozen-grok",
+                frozen_binary_identity=TEST_BINARY_IDENTITY,
+                runtime_socket_snapshot=(),
+                seat="grok-bot-review-d",
+                smoke=False,
+                execution_input_binding="test-pixels",
+            )
+            stderr = io.StringIO()
+            with mock.patch.dict(
+                target.EXECUTION_INPUT_BINDINGS,
+                {"grok-bot-review-d": "test-pixels"},
+            ), mock.patch.object(
+                target.integrations,
+                "effective",
+                return_value=(False, "session attestation expired"),
+            ), mock.patch.object(target.subprocess, "Popen") as popen, \
+                 contextlib.redirect_stderr(stderr):
+                result = target._run_provider(
+                    [sys.executable, "-c", "print('must-not-run')"],
+                    executable=sys.executable,
+                    cwd=td,
+                    timeout=5,
+                    kind="execute",
+                    capture_output=True,
+                    env=dict(os.environ),
+                    launch_boundary_state=state,
+                )
+            self.assertEqual(result, 2)
+            popen.assert_not_called()
+            self.assertIn("expired before provider launch", stderr.getvalue())
+
+    def test_security_tree_change_during_provider_withholds_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            staging = root / "staging"
+            private_home = root / "home"
+            private_grok_home = root / "grok-home"
+            for path in (staging, private_home, private_grok_home):
+                path.mkdir()
+            policy = staging / "policy.txt"
+            policy.write_text("strict\n")
+            staging_manifest = target.build_security_tree_manifest(
+                {"policy.txt": b"strict\n"}
+            )
+            empty_manifest = target.build_security_tree_manifest({})
+            state = target.LaunchBoundaryState(
+                staging=staging,
+                staging_snapshot=target.capture_security_tree_snapshot(
+                    staging, label="isolated Grok staging tree"
+                ),
+                staging_manifest=staging_manifest,
+                private_home=private_home,
+                private_home_snapshot=target.capture_security_tree_snapshot(
+                    private_home, label="isolated HOME tree"
+                ),
+                private_home_manifest=empty_manifest,
+                private_grok_home=private_grok_home,
+                private_grok_home_snapshot=target.capture_security_tree_snapshot(
+                    private_grok_home, label="isolated GROK_HOME tree"
+                ),
+                private_grok_home_manifest=empty_manifest,
+                frozen_binary="/private/frozen-grok",
+                frozen_binary_identity=TEST_BINARY_IDENTITY,
+                runtime_socket_snapshot=(),
+                seat="grok-bot-review-d",
+                smoke=True,
+                execution_input_binding=None,
+            )
+            script = (
+                "from pathlib import Path; "
+                "Path('policy.txt').write_text('off\\n'); "
+                "print('provider-payload')"
+            )
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = target._run_provider(
+                    [sys.executable, "-c", script],
+                    executable=sys.executable,
+                    cwd=str(staging),
+                    timeout=5,
+                    kind="smoke",
+                    capture_output=True,
+                    env=dict(os.environ),
+                    launch_boundary_state=state,
+                )
+            self.assertEqual(result, 2)
+            self.assertIn("buffered provider output was not released", stderr.getvalue())
+            self.assertNotIn("provider-payload", stderr.getvalue())
+
     def test_missing_smoke_recipe_parks_without_subprocess(self):
         with mock.patch.object(target.mborch, "load_config", return_value={"recipes": {}}), \
              mock.patch.object(target, "_run_provider") as run:
@@ -684,6 +1242,42 @@ class GrokAgentTests(unittest.TestCase):
         self.assertFalse(step["available"])
         self.assertIsNone(step["execution_input_binding"])
         self.assertIn("code-owned pixel input transport is not implemented", step["why"])
+
+    def test_resolver_review_d_gate_matches_exact_launcher_identity_contract(self):
+        base_providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        base_registry = json.loads((HERE.parent / "config" / "model-registry.json").read_text())
+        base_providers["providers"]["grok-bot-review-d"]["wired"] = True
+        base_registry["routes"]["grok-cli-review-d"]["route_state"] = "live_verified"
+
+        mutations = [
+            ("enabled", lambda p, _r: p.update(enabled="false"), "enabled is not exact true"),
+            ("wired", lambda p, _r: p.update(wired="false"), "wired is not exact true"),
+            ("kind", lambda p, _r: p.update(kind="api"), "kind is not exact cli"),
+            ("provider-model", lambda p, _r: p.update(model="grok-ish"), "model is not exact grok-4.6"),
+            ("route-provider", lambda _p, r: r.update(provider="other"), "bound route is not the exact"),
+            ("route-model", lambda _p, r: r.update(model="grok-ish"), "bound route is not the exact"),
+            ("route-host", lambda _p, r: r.update(host="grok-app"), "bound route is not the exact"),
+            ("route-harness", lambda _p, r: r.update(harness="http"), "bound route is not the exact"),
+            ("route-invocation", lambda _p, r: r.update(invocation_id="mb-unrelated-agent"), "mb-review-d"),
+        ]
+        for label, mutate, reason in mutations:
+            with self.subTest(label=label):
+                providers = copy.deepcopy(base_providers)
+                registry = copy.deepcopy(base_registry)
+                provider = providers["providers"]["grok-bot-review-d"]
+                route = registry["routes"]["grok-cli-review-d"]
+                mutate(provider, route)
+                with mock.patch.dict(
+                    route_target.EXECUTION_INPUT_BINDINGS,
+                    {"grok-bot-review-d": "test-pixels"},
+                ), mock.patch.object(
+                    route_target.modelreg, "provider_route_is_live", return_value=True
+                ), mock.patch.object(
+                    route_target.integrations, "effective", return_value=(True, "observed")
+                ):
+                    step = route_target.review_d_input_step(providers, registry)
+                self.assertFalse(step["available"])
+                self.assertIn(reason, step["why"])
 
     def test_launcher_rejects_mutable_capability_weakening(self):
         configs = {
@@ -825,7 +1419,7 @@ class GrokAgentTests(unittest.TestCase):
             agents.mkdir()
             profile = agents / "mb-review-d.md"
             profile.write_text(target.sync_profiles.expected()[profile.name])
-            completed = subprocess.CompletedProcess([], 0, stdout="ok\n", stderr="")
+            completed = subprocess.CompletedProcess([], 0, stdout="ship\n", stderr="")
             captured = {}
 
             def fake_run(cmd, **kwargs):
@@ -848,7 +1442,21 @@ class GrokAgentTests(unittest.TestCase):
                     "--prompt-file", str(source_prompt),
                     "--agent-dir", str(agents), "--cwd", str(HERE.parent),
                 ])
+                completed = subprocess.CompletedProcess(
+                    [], 0, stdout="ship\nvalidated\x1b]0;forged-title\x07\n", stderr=""
+                )
+                held_stdout = io.StringIO()
+                held_stderr = io.StringIO()
+                with contextlib.redirect_stdout(held_stdout), contextlib.redirect_stderr(held_stderr):
+                    control_rc = target.main([
+                        "--seat", "grok-bot-review-d", "--execute",
+                        "--prompt-file", str(source_prompt),
+                        "--agent-dir", str(agents), "--cwd", str(HERE.parent),
+                    ])
         self.assertEqual(rc, 0)
+        self.assertEqual(control_rc, 2)
+        self.assertNotIn("forged-title", held_stdout.getvalue() + held_stderr.getvalue())
+        self.assertIn("terminal control characters", held_stderr.getvalue())
         cmd = captured["cmd"]
         staged_cwd = cmd[cmd.index("--cwd") + 1]
         staged_prompt = Path(cmd[cmd.index("--prompt-file") + 1])
@@ -1007,10 +1615,12 @@ class GrokAgentTests(unittest.TestCase):
 
     def test_sandbox_profile_skips_symlink_runtime_socket_auto_deny(self):
         name = "mb-standing-" + ("ab" * 16)
-        with mock.patch.object(target, "auto_runtime_socket_deny_incompatible", return_value=True), \
-             mock.patch.object(target, "resolve_runtime_socket_denies",
-                               return_value=["/tmp/resolved-docker.sock"]):
-            text = target._sandbox_profile_text(name, platform="darwin")
+        text = target._sandbox_profile_text(
+            name,
+            platform="darwin",
+            incompatible=True,
+            denies=["/tmp/resolved-docker.sock"],
+        )
         self.assertIn(f"[profiles.{name}]", text)
         self.assertIn('extends = "strict"', text)
         self.assertIn("restrict_network = false", text)
@@ -1019,9 +1629,9 @@ class GrokAgentTests(unittest.TestCase):
 
     def test_sandbox_profile_keeps_inherited_network_when_sockets_are_plain(self):
         name = "mb-standing-" + ("cd" * 16)
-        with mock.patch.object(target, "auto_runtime_socket_deny_incompatible", return_value=False), \
-             mock.patch.object(target, "resolve_runtime_socket_denies", return_value=[]):
-            text = target._sandbox_profile_text(name, platform="darwin", denies=[], incompatible=False)
+        text = target._sandbox_profile_text(
+            name, platform="darwin", denies=[], incompatible=False
+        )
         self.assertIn('extends = "strict"', text)
         self.assertNotIn("restrict_network = false", text)
         self.assertNotIn("deny =", text)
@@ -1037,16 +1647,120 @@ class GrokAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             fake = Path(td) / "runtime.sock"
             fake.symlink_to(Path(td) / "missing-target")
-            with mock.patch.object(target, "_runtime_socket_candidates", return_value=[fake]):
-                with self.assertRaisesRegex(ValueError, "no safe"):
-                    REAL_RESOLVE_RUNTIME_SOCKET_DENIES()
+            with self.assertRaisesRegex(ValueError, "no safe"):
+                REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT([fake])
 
     def test_uninspectable_runtime_socket_parks(self):
         fake = Path("/private/uninspectable-runtime.sock")
-        with mock.patch.object(target, "_runtime_socket_candidates", return_value=[fake]), \
-             mock.patch.object(target.os, "lstat", side_effect=PermissionError("denied")):
+        with mock.patch.object(target.os, "lstat", side_effect=PermissionError("denied")):
             with self.assertRaisesRegex(ValueError, "cannot be inspected"):
-                REAL_RESOLVE_RUNTIME_SOCKET_DENIES()
+                REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT([fake])
+
+    def test_socket_snapshot_parks_if_symlink_disappears_or_reappears_changed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            first_target = root / "first.sock"
+            second_target = root / "second.sock"
+            first_target.write_text("first")
+            second_target.write_text("second")
+            endpoint = root / "docker.sock"
+            endpoint.symlink_to(first_target)
+            snapshot = REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT([endpoint])
+            profile_text = target._sandbox_profile_text(
+                "mb-standing-" + ("22" * 16),
+                platform="darwin",
+                socket_snapshot=snapshot,
+            )
+            self.assertIn("restrict_network = false", profile_text)
+            self.assertIn(str(first_target), profile_text)
+
+            with mock.patch.object(
+                target,
+                "capture_runtime_socket_snapshot",
+                side_effect=REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT,
+            ):
+                endpoint.unlink()
+                self.assertIn("state changed", target.runtime_socket_snapshot_problem(snapshot))
+                endpoint.symlink_to(second_target)
+                self.assertIn("state changed", target.runtime_socket_snapshot_problem(snapshot))
+
+                stderr = io.StringIO()
+                with mock.patch.object(target.subprocess, "Popen") as popen, \
+                     contextlib.redirect_stderr(stderr):
+                    result = target._run_provider(
+                        [sys.executable, "-c", "print('must-not-run')"],
+                        executable=sys.executable,
+                        cwd=td,
+                        timeout=5,
+                        kind="smoke",
+                        capture_output=True,
+                        env=dict(os.environ),
+                        runtime_socket_snapshot=snapshot,
+                    )
+                self.assertEqual(result, 2)
+                popen.assert_not_called()
+                self.assertIn("provider was not started", stderr.getvalue())
+
+    def test_socket_snapshot_includes_and_rechecks_intermediate_symlink_components(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            first = root / "first"
+            second = root / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "docker.sock").write_text("first")
+            (second / "docker.sock").write_text("second")
+            switch = root / "runtime"
+            switch.symlink_to(first, target_is_directory=True)
+            candidate = switch / "docker.sock"
+            snapshot = REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT([candidate])
+            components = snapshot[0][5]
+            self.assertTrue(
+                any(path == str(switch) and link == str(first) for path, _identity, link in components)
+            )
+            switch.unlink()
+            switch.symlink_to(second, target_is_directory=True)
+            with mock.patch.object(
+                target,
+                "capture_runtime_socket_snapshot",
+                side_effect=REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT,
+            ):
+                self.assertIn("state changed", target.runtime_socket_snapshot_problem(snapshot))
+
+    def test_socket_snapshot_ignores_unrelated_ancestor_sibling_churn(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime_dir = Path(td) / "runtime"
+            runtime_dir.mkdir()
+            candidate = runtime_dir / "docker.sock"
+            candidate.write_text("stable")
+            snapshot = REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT([candidate])
+            (runtime_dir / "unrelated.pid").write_text("1")
+            with mock.patch.object(
+                target,
+                "capture_runtime_socket_snapshot",
+                side_effect=REAL_CAPTURE_RUNTIME_SOCKET_SNAPSHOT,
+            ):
+                self.assertIsNone(target.runtime_socket_snapshot_problem(snapshot))
+
+    def test_socket_snapshot_change_during_provider_withholds_output(self):
+        changed = (("/tmp/new-runtime.sock", None, False, None, None, ()),)
+        stderr = io.StringIO()
+        with tempfile.TemporaryDirectory() as td, mock.patch.object(
+            target, "capture_runtime_socket_snapshot", side_effect=[(), changed]
+        ), contextlib.redirect_stderr(stderr):
+            result = target._run_provider(
+                [sys.executable, "-c", "print('provider-payload')"],
+                executable=sys.executable,
+                cwd=td,
+                timeout=5,
+                kind="smoke",
+                capture_output=True,
+                env=dict(os.environ),
+                runtime_socket_snapshot=(),
+            )
+        self.assertEqual(result, 2)
+        self.assertIn("buffered provider output was not released", stderr.getvalue())
+        self.assertNotIn("provider-payload", stderr.getvalue())
 
     def test_all_resolved_socket_targets_are_denied(self):
         name = "mb-standing-" + ("11" * 16)
@@ -1233,7 +1947,7 @@ class GrokAgentTests(unittest.TestCase):
                 captured["staged_prompt"] = Path(
                     cmd[cmd.index("--prompt-file") + 1]
                 ).read_text()
-                return subprocess.CompletedProcess([], 0, stdout="ok\n", stderr="")
+                return subprocess.CompletedProcess([], 0, stdout="ship\n", stderr="")
 
             with mock.patch.object(target.mborch, "load_config", side_effect=load), \
                  mock.patch.object(target.model_registry, "validate", return_value=[]), \

@@ -181,7 +181,9 @@ def c_rotation_status():
     d = json.loads(r.stdout)
     rot = d.get("rotation")
     ok = (r.returncode == 0 and isinstance(rot, dict)
-          and isinstance(rot.get("available"), bool)
+          and isinstance(rot.get("transport_present"), bool)
+          and rot.get("available") in (True, False, None)
+          and rot.get("readiness") in ("not evaluated", "blocked")
           and isinstance(rot.get("status"), str) and bool(rot["status"]))
     avail = rot.get("available") if isinstance(rot, dict) else None
     return ok, f"rc={r.returncode}, rotation reported (available={avail}), no-error={r.returncode == 0}"
@@ -279,7 +281,8 @@ def c_unit_tests():
     e = run([PY, "bin/test_sync_commands.py"])
     f = run([PY, "bin/test_grok_agent.py"])
     g = run([PY, "bin/test_sync_grok_agents.py"])
-    ok = all(x.returncode == 0 for x in (a, b, c, d, e, f, g))
+    h = run([PY, "bin/test_subscription_calculator.py"])
+    ok = all(x.returncode == 0 for x in (a, b, c, d, e, f, g, h))
     detail = "generate=" + (a.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " registry=" + (b.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " observability=" + (c.stderr.strip().splitlines() or ["ok"])[-1]
@@ -287,6 +290,7 @@ def c_unit_tests():
     detail += " sync=" + (e.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " grok-agent=" + (f.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " grok-sync=" + (g.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " subscriptions=" + (h.stderr.strip().splitlines() or ["ok"])[-1]
     return ok, detail
 
 
@@ -321,9 +325,23 @@ def c_run_brief():
         parked = (c.returncode == 0 and not restricted["handoff"]["allowed"]
                   and not restricted["handoff"]["requires_user_permission"]
                   and restricted["transition"]["to"] == "parked")
-        ok = dry and closed and side_effect_free and parked
+        d = run(
+            [PY, "bin/run-brief.py", "--dry-run", "--class", "repo-code",
+             "--scale", "routine", "--pixels", "--json", "--no-record-observability"],
+            env={"MB_DATA_DIR": tmp},
+        )
+        pixel_plan = json.loads(d.stdout) if d.returncode == 0 else {}
+        input_steps = [p for p in pixel_plan.get("implement", []) if p.get("input_seat")]
+        input_park = (
+            len(input_steps) == 1
+            and input_steps[0].get("available") is False
+            and input_steps[0].get("shellable") is False
+            and input_steps[0].get("would_run") is None
+            and "{sandbox_profile}" not in d.stdout
+        )
+        ok = dry and closed and side_effect_free and parked and input_park
         return ok, (f"dry-run plan={dry}, fail-closed={closed}, side-effect-free={side_effect_free}, "
-                    f"restricted-parks-without-prompt={parked}")
+                    f"restricted-parks-without-prompt={parked}, input-seat-no-argv={input_park}")
 
 
 def c_skills():

@@ -1,6 +1,6 @@
 # Cursor Ultra usage (bundled with SuperGrok Heavy)
 
-This is the allocation map for **Cursor Ultra** as it sits next to SuperGrok Heavy. Two different companies’ meters. Do not treat “Grok in Cursor” as the same bucket as `grok` CLI / Grok Bot.
+This is the allocation map for **Cursor Ultra** as it sits next to SuperGrok Heavy. Two different companies’ meters. Do not treat “Grok in Cursor” as the same bucket as `grok` CLI; the legacy Grok Bot app routes are retired.
 
 Cursor Models size is “generous,” not a published dollar figure. Other Models on Ultra is **$400 / billing month** (reset date in `config/usage-windows.json`, `cursor-other-400`). A `$` seat has no `%` cap, so when the $400 is spent the owner marks it in `usage-ledger.json` with `spent_until` = next billing reset (copied from the Cursor dashboard). Agents route off `usage-status`, not a live dashboard glance.
 
@@ -55,7 +55,7 @@ Claude Fable/Opus/Sonnet, GPT-5.6 Sol/Terra/Luna in the Cursor picker, Gemini, R
 | Tab | Unlimited on Ultra |
 | Grok Build CLI | SuperGrok Heavy |
 | grok.com | SuperGrok Heavy |
-| Grok Bot | Bot / Heavy weekly meter |
+| Legacy Grok Bot.app (retired; do not use) | Historical Bot / Heavy weekly meter |
 | Codex CLI | ChatGPT Pro $200 |
 | teamclaude | Claude seats |
 
@@ -65,4 +65,4 @@ Claude Fable/Opus/Sonnet, GPT-5.6 Sol/Terra/Luna in the Cursor picker, Gemini, R
 - Treating Cursor Grok as the $400
 - Treating Cursor Sol as Codex Sol
 - Hoarding Composer while idling Grok 4.6 in the same pool
-- Grok Bot.app open on the worker Mini
+- Opening or signing into the retired Grok Bot.app on the worker Mini

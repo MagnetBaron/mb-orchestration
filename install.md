@@ -3,8 +3,9 @@
 ## 0. Get the repos onto the machine
 
 ```bash
-git clone https://github.com/MagnetBaron/mb-orchestration.git
-git clone https://github.com/MagnetBaron/teamclaude.git
+mkdir -p "$HOME/git"
+git clone https://github.com/MagnetBaron/mb-orchestration.git "$HOME/git/mb-orchestration"
+git clone https://github.com/MagnetBaron/teamclaude.git "$HOME/git/teamclaude"
 ```
 
 Open **mb-orchestration** as the workspace. Every CLI reads the shared per-run routing contract. Pass
@@ -14,10 +15,10 @@ dispatcher and records fallback, authors, review scopes, and handoff gate.
 ## 1. Validate the setup first
 
 ```bash
-cd mb-orchestration
+cd "$HOME/git/mb-orchestration"
 python3 bin/doctor.py        # config integrity + prose hygiene
 python3 bin/smoketest.py     # walk the whole path
-python3 bin/detect-agents.py # which providers are live on THIS machine
+python3 bin/detect-agents.py # transport/config inventory; not executable readiness
 python3 bin/model-registry.py inventory
 ```
 
@@ -58,6 +59,19 @@ Packet rendering is preparation only: render allowlist, preview, and live-audit 
 Review D and Heat Map hard-park before prompt/evidence reads until their respective code-owned input
 bindings exist; browser/Clarity observation, profile sync, and role tests are additional promotion
 gates. Delivery details: `visual-qa-cli.md`.
+
+From the canonical `$HOME/git/mb-orchestration` checkout, one command generates and installs all
+three validated profiles while distributing the `/orca` command and native skill. Each target uses
+an atomic file replacement, then the script verifies the full set; rerun after any interrupted/partial
+attempt. `bin/sync-grok-agents.py` verifies checkout/origin provenance, reads the canonical
+role/provider config instead of ambient `MB_CONFIG_DIR`, and forbids extra profile frontmatter,
+skills, plugins, and MCP declarations. The check form verifies byte-for-byte installed state without
+writing:
+
+```bash
+./sync-commands.sh
+./sync-commands.sh --check
+```
 
 ## 5. Google MCP
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""detect-agents — auto-detect installed CLI agents and discover unregistered ones.
+"""detect-agents — inventory local transports and discover unregistered CLIs.
 
 Makes the provider registry self-checking and modular:
   * For every provider in config/providers.json, run its `detect` spec and report
-    present / absent / manual — so a machine with a different toolset sees exactly
-    which seats are live without editing prose.
+    transport/credential presence separately from configured route state. Presence
+    never certifies that a provider or standing role is executable.
   * Scan PATH for KNOWN agent binaries that are NOT yet registered, so a new CLI
     agent is surfaced ("register it") instead of silently ignored.
   * `--register-template <cmd>` prints a ready-to-paste providers.json entry.
 
-Detection is informational: absent seats are normal (a portable setup rarely has
-every provider). Exit is always 0 unless config is unreadable. No network calls.
+Detection is informational: absent transports are normal (a portable setup rarely
+has every provider). Exit is always 0 unless config is unreadable. No network calls.
 """
 from __future__ import annotations
 import argparse, json, os, shutil, subprocess, sys
@@ -36,9 +36,17 @@ KNOWN_AGENT_BINARIES = {
     "qwen": "Qwen Code CLI",
 }
 
-
+STANDING_GROK_SEATS = {
+    "grok-bot-review-d",
+    "grok-bot-heat-map",
+    "grok-bot-marketplace-intelligence",
+}
 def load_providers():
     return mborch.load_config("providers.json", required=True)
+
+
+def load_model_registry():
+    return mborch.load_config("model-registry.json", required=True)
 
 
 def npm_global_has(pkg: str) -> bool:
@@ -53,40 +61,130 @@ def npm_global_has(pkg: str) -> bool:
         return False
 
 
-def detect_one(pid: str, p: dict) -> dict:
+def _exact_flag(data: dict, key: str, *, default: bool) -> tuple[bool, str | None]:
+    raw = data.get(key, default)
+    if not isinstance(raw, bool):
+        return False, f"{key} must be an exact JSON boolean"
+    return raw is True, None
+
+
+def _route_state(p: dict, registry: dict) -> tuple[str | None, str | None, str | None]:
+    route_id = p.get("route")
+    if route_id is None:
+        return None, None, None
+    if not isinstance(route_id, str) or not route_id:
+        return None, None, "route must be a non-empty string"
+    route = (registry.get("routes") or {}).get(route_id)
+    if not isinstance(route, dict):
+        return route_id, None, f"route {route_id!r} is absent from model-registry.json"
+    state = route.get("route_state")
+    if not isinstance(state, str) or not state:
+        return route_id, None, f"route {route_id!r} has no valid route_state"
+    return route_id, state, None
+
+
+def _standing_readiness(
+    *,
+    enabled: bool,
+    wired: bool,
+    transport_present: bool | None,
+    route_id: str | None,
+    route_state: str | None,
+) -> tuple[bool | None, str, list[str]]:
+    """Return only provable negative readiness; never infer a positive from PATH."""
+    limitations = []
+    if not enabled:
+        limitations.append("provider enabled is not exact true")
+    if not wired:
+        limitations.append("provider wired is not exact true")
+    if transport_present is not True:
+        limitations.append("CLI transport is not present")
+    if route_state != "live_verified":
+        limitations.append(
+            f"catalog route {route_id or '<missing>'} is {route_state or '<missing>'}, "
+            "not live_verified"
+        )
+    limitations.append(
+        "detect-agents does not validate the installed named profile, code-owned input "
+        "binding, fresh callable capabilities, or bin/grok-agent.py launch preflight"
+    )
+    blocked = any((not enabled, not wired, transport_present is not True,
+                   route_state != "live_verified"))
+    return (False if blocked else None,
+            "blocked" if blocked else "not evaluated",
+            limitations)
+
+
+def detect_one(pid: str, p: dict, registry: dict | None = None) -> dict:
+    registry = registry or {}
     det = p.get("detect") or {}
     method = det.get("method")
-    enabled = p.get("enabled", True)
+    enabled, enabled_problem = _exact_flag(p, "enabled", default=True)
+    wired, wired_problem = _exact_flag(p, "wired", default=True)
+    route_id, route_state, route_problem = _route_state(p, registry)
+    config_problems = [
+        problem for problem in (enabled_problem, wired_problem, route_problem) if problem
+    ]
     result = {"provider": pid, "label": p.get("label"), "family": p.get("family"),
-              "level": p.get("level"), "method": method, "enabled": enabled}
+              "level": p.get("level"), "method": method, "enabled": enabled,
+              "wired": wired, "route": route_id, "route_state": route_state,
+              "detect_note": det.get("note") if isinstance(det.get("note"), str) else None,
+              "detection_scope": "transport_presence_only",
+              "config_problems": config_problems}
+    transport_present: bool | None = None
     if not enabled:
-        result["status"] = "disabled (template)"
-        return result
-    if method == "command" or method == "local":
+        result["status"] = ("disabled (template)" if not enabled_problem else
+                            "invalid config (enabled is not an exact JSON boolean)")
+    elif method == "command" or method == "local":
         cmd = det.get("cmd")
         path = shutil.which(cmd) if cmd else None
-        result["status"] = f"present ({path})" if path else "absent"
-        result["present"] = bool(path)
+        transport_present = bool(path)
+        result["status"] = (f"transport present ({path}); role readiness not evaluated"
+                            if path else "transport absent")
     elif method == "npm":
         pkg = det.get("pkg", "")
         ok = npm_global_has(pkg)
-        result["status"] = f"present (npm -g {pkg})" if ok else f"absent (npm -g {pkg})"
-        result["present"] = ok
+        transport_present = ok
+        result["status"] = (f"transport present (npm -g {pkg}); role readiness not evaluated"
+                            if ok else f"transport absent (npm -g {pkg})")
     elif method == "api":
         env = det.get("env", "")
         ok = bool(os.environ.get(env))
-        result["status"] = f"env {env} set" if ok else f"env {env} unset (unwired)"
-        result["present"] = ok
+        transport_present = ok
+        result["detection_scope"] = "credential_presence_only"
+        result["status"] = (f"credential signal env {env} set; readiness not evaluated"
+                            if ok else f"credential signal env {env} unset")
     elif method == "app":
+        result["detection_scope"] = "manual_transport_inventory"
         result["status"] = "app-only (manual; no CLI/API — see grokbot-connection.md)"
-        result["present"] = None
     elif method == "capability":
         grant = det.get("grant", "?")
+        result["detection_scope"] = "subscription_grant_inventory"
         result["status"] = f"subscription grant '{grant}' — run bin/detect-capability.py"
-        result["present"] = None
     else:
+        result["detection_scope"] = "unknown"
         result["status"] = f"unknown detect method {method!r}"
-        result["present"] = None
+    # `present` is retained as a compatibility alias. Its name and value describe
+    # only the detected transport/credential signal, never executable readiness.
+    result["transport_present"] = transport_present
+    result["present"] = transport_present
+    result["executable_ready"] = None
+    result["readiness"] = "not evaluated"
+    result["readiness_limitations"] = [
+        "detect-agents reports presence and configured state; resolve-route and the "
+        "provider-specific launcher enforce executable readiness"
+    ]
+    if pid in STANDING_GROK_SEATS:
+        ready, readiness, limitations = _standing_readiness(
+            enabled=enabled,
+            wired=wired,
+            transport_present=transport_present,
+            route_id=route_id,
+            route_state=route_state,
+        )
+        result["executable_ready"] = ready
+        result["readiness"] = readiness
+        result["readiness_limitations"] = limitations
     return result
 
 
@@ -112,16 +210,19 @@ def register_template(cmd: str) -> str:
         f"{cmd}-seat": {
             "label": label, "level": "terra", "family": "open-weight", "kind": "cli",
             "model": None, "functions": ["implement"], "review_eligible": False,
-            "enabled": True, "backed_by": None,
+            "enabled": False, "wired": False,
             "detect": {"method": "command", "cmd": cmd},
-            "notes": f"Registered {label}. Adjust level/family/functions, then run bin/doctor.py."
+            "notes": (
+                f"INERT template for {label}. Add a validated backed_by subscription, set an "
+                "exact route/capability contract, then deliberately enable/wire it."
+            )
         }
     }
     return json.dumps(entry, indent=2)
 
 
 def detect_rotation() -> dict:
-    """Report whether multi-seat Claude ROTATION is available. teamclaude rotates the several
+    """Report TeamClaude transport presence without inventing live rotation readiness. teamclaude rotates the several
     Claude seats and tracks per-model caps; WITHOUT it there is no rotation — a single Claude
     account serves, and a real 429 on it parks the Anthropic pipe (dispatch + Opus review) until
     its 5h window resets, with no failover. Absence is a DEGRADED MODE, not an error: teamclaude
@@ -129,11 +230,20 @@ def detect_rotation() -> dict:
     stays informational and never fails doctor/smoketest. See EDGE-CASES.md §'teamclaude absent'."""
     tc = shutil.which("teamclaude")
     if tc:
-        return {"tool": "teamclaude", "available": True, "path": tc,
-                "status": "available (multi-seat Claude rotation live)"}
-    return {"tool": "teamclaude", "available": False, "path": None,
-            "status": ("unavailable (single-account; no rotation — a real 429 parks the seat "
-                       "until its 5h window resets, no failover)")}
+        return {
+            "tool": "teamclaude", "transport_present": True, "available": None,
+            "readiness": "not evaluated", "path": tc,
+            "status": (
+                "transport present; authenticated/configured multi-seat rotation readiness "
+                "not evaluated"
+            ),
+        }
+    return {
+        "tool": "teamclaude", "transport_present": False, "available": False,
+        "readiness": "blocked", "path": None,
+        "status": ("transport absent (single-account; no rotation — a real 429 parks the seat "
+                   "until its 5h window resets, no failover)"),
+    }
 
 
 def main(argv=None):
@@ -149,7 +259,11 @@ def main(argv=None):
         print(register_template(args.register_template))
         return 0
 
-    rows = [detect_one(pid, p) for pid, p in providers_data.get("providers", {}).items()]
+    registry = load_model_registry()
+    rows = [
+        detect_one(pid, p, registry)
+        for pid, p in providers_data.get("providers", {}).items()
+    ]
     unregistered = discover_unregistered(providers_data)
     rotation = detect_rotation()
 
@@ -161,7 +275,19 @@ def main(argv=None):
     print("detect-agents  (config/providers.json)")
     print("-" * 72)
     for r in rows:
-        print(f"{r['provider']:<20} {str(r['method'] or '-'):<10} {r['status']}")
+        state = (
+            f"enabled={str(r['enabled']).lower()} wired={str(r['wired']).lower()} "
+            f"route={r['route'] or '-'}:{r['route_state'] or '-'}"
+        )
+        print(f"{r['provider']:<20} {str(r['method'] or '-'):<10} {r['status']} [{state}]")
+        if r.get("detect_note"):
+            print(f"  detect.note: {r['detect_note']}")
+        if r["provider"] in STANDING_GROK_SEATS:
+            print(f"  executable role readiness: {r['readiness']}")
+            for limitation in r["readiness_limitations"]:
+                print(f"    - {limitation}")
+        for problem in r.get("config_problems", []):
+            print(f"  config problem: {problem}")
     print("-" * 72)
     if unregistered:
         print("UNREGISTERED agent binaries found on PATH (modular add — register with")
@@ -173,7 +299,8 @@ def main(argv=None):
     print("-" * 72)
     print(f"rotation ({rotation['tool']}): {rotation['status']}")
     print("-" * 72)
-    print("absent seats are normal on a portable setup; resolve-route routes around them.")
+    print("absent transports are normal on a portable setup; resolve-route routes around them.")
+    print("transport presence never proves provider or standing-role executable readiness.")
     return 0
 
 

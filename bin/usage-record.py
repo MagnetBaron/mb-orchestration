@@ -9,17 +9,18 @@ current automatically.
 
   usage-record.py --snapshot                 capture current seat state (+ prune)
   usage-record.py --owner codex-sol=88 grok-heavy=40   record owner-noted % (→ ledger + history)
-  usage-record.py --from-teamclaude          run the teamclaude source (if enabled)
-  usage-record.py --from-ccusage             run the ccusage source (if enabled)
+  usage-record.py --from-teamclaude          probe teamclaude JSON (no ingestion adapter)
+  usage-record.py --from-ccusage             probe ccusage JSON (no ingestion adapter)
   usage-record.py --prune                    apply retention_days now
   usage-record.py --learn-windows            infer null anchors → data/observed-windows.json
   usage-record.py                            summarize the history store
 
-Sources never let an LLM or a probe/timeout mark a seat spent — only a real 429
-(record-429.sh) does that. This records observations for HISTORY/analytics.
+External commands are probe-only until a source-specific, schema-bound seat adapter
+is implemented. A successful parse persists zero history rows and never claims capture.
+Only a real 429 (record-429.sh) may mark a seat spent.
 """
 from __future__ import annotations
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, math, os, shutil, subprocess, sys, tempfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,24 @@ usage_status = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(usage_status)
 
 _WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def parse_owner_pairs(pairs, configured_seats):
+    parsed = []
+    for pair in pairs:
+        if "=" not in pair:
+            raise ValueError(f"--owner expects SEAT=PCT, got {pair!r}")
+        seat, raw_pct = pair.split("=", 1)
+        if seat not in configured_seats:
+            raise ValueError(f"--owner seat {seat!r} is not configured")
+        try:
+            pct = float(raw_pct)
+        except (TypeError, ValueError):
+            raise ValueError(f"--owner pct for {seat!r} must be a number from 0 to 100") from None
+        if not math.isfinite(pct) or not 0 <= pct <= 100:
+            raise ValueError(f"--owner pct for {seat!r} must be finite and between 0 and 100")
+        parsed.append((seat, pct))
+    return parsed
 
 
 def now_iso():
@@ -112,8 +131,9 @@ def write_ledger_pct(seat, pct):
 
 
 def run_source(name, monitoring):
-    src = monitoring.get("sources", {}).get(name, {})
-    if not src.get("enabled"):
+    sources = monitoring.get("sources") if isinstance(monitoring, dict) else None
+    src = sources.get(name) if isinstance(sources, dict) else None
+    if not isinstance(src, dict) or src.get("enabled") is not True:
         return None, f"source '{name}' not enabled in monitoring.json (wire it, then set enabled:true)"
     cmd = src.get("cmd")
     if not cmd:
@@ -123,9 +143,18 @@ def run_source(name, monitoring):
         return None, f"source '{name}' cmd '{exe}' not found on PATH (run on the machine that has it)"
     try:
         out = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=40)
+        if out.returncode != 0:
+            return None, (
+                f"probe '{cmd}' exited {out.returncode}; 0 history rows persisted"
+            )
         blob = out.stdout.strip()
         data = json.loads(blob) if blob.startswith(("{", "[")) else None
-        return data, f"ran '{cmd}' (parse {'ok' if data is not None else 'skipped — non-JSON'})"
+        if data is not None:
+            return data, (
+                f"probe ran '{cmd}' (JSON parse ok; 0 history rows persisted — "
+                "no schema-bound ingestion adapter)"
+            )
+        return None, f"probe ran '{cmd}' (non-JSON; 0 history rows persisted)"
     except Exception as exc:
         return None, f"source '{name}' failed: {exc}"
 
@@ -177,7 +206,10 @@ def summarize(monitoring):
     print(f"  records: {len(history)}  seats: {len(seats)}  retention_days: {monitoring.get('retention_days')}")
     if ts:
         print(f"  range: {ts[0]} … {ts[-1]}")
-    print(f"  sources enabled: {[k for k, v in monitoring.get('sources', {}).items() if v.get('enabled')]}")
+    print(
+        "  sources enabled: "
+        f"{[k for k, v in monitoring.get('sources', {}).items() if isinstance(v, dict) and v.get('enabled') is True]}"
+    )
 
 
 def main(argv=None):
@@ -196,11 +228,14 @@ def main(argv=None):
 
     if args.owner:
         recs, ts = [], now_iso()
-        for pair in args.owner:
-            if "=" not in pair:
-                sys.exit(f"usage-record: --owner expects SEAT=PCT, got {pair!r}")
-            seat, pct = pair.split("=", 1)
-            pct = float(pct)
+        configured_seats = (
+            mborch.load_config("usage-windows.json", required=True).get("seats") or {}
+        )
+        try:
+            owner_values = parse_owner_pairs(args.owner, configured_seats)
+        except ValueError as exc:
+            sys.exit(f"usage-record: {exc}")
+        for seat, pct in owner_values:
             write_ledger_pct(seat, pct)
             recs.append({"ts": ts, "source": "owner-manual", "seat": seat, "pct": pct})
         append_history(recs, monitoring)
@@ -208,7 +243,7 @@ def main(argv=None):
 
     for name, flag in (("teamclaude", args.from_teamclaude), ("ccusage", args.from_ccusage)):
         if flag:
-            data, msg = run_source(name, monitoring)
+            _data, msg = run_source(name, monitoring)
             did.append(f"source {name}: {msg}")
 
     if args.snapshot:

@@ -1,5 +1,5 @@
 {
-  "_note": "MONITORING + DRAIN-ECONOMICS POLICY. Controls the usage history store (bin/usage-record.py), orchestration-event observability (bin/observe.py; privacy-safe, never authority), retention (user-controlled, default 1 year), the reserve sizing defaults, the cost policy (maximize subscription tokens, minimize API $), the data sources to gather from, and window auto-learning. Nothing here is per-account layout — it is policy that scales to any number of subscriptions.",
+  "_note": "MONITORING + DRAIN-ECONOMICS POLICY. Controls the usage history store (bin/usage-record.py), orchestration-event observability (bin/observe.py; privacy-safe, never authority), retention (user-controlled, default 1 year), the reserve sizing defaults, the cost policy (maximize subscription tokens, minimize API $), probe-only external source commands, and window auto-learning. Nothing here is per-account layout — it is policy that scales to any number of subscriptions.",
   "schema_version": 1,
   "updated": "2026-08-27",
   "retention_days": 365,
@@ -32,8 +32,8 @@
   "sources": {
     "recorded-429": { "enabled": true, "note": "config/usage-ledger.json spent_until markers (authoritative exhaustion)" },
     "owner-manual": { "enabled": true, "note": "owner-entered % from provider dashboards: bin/usage-record.py --owner seat=pct" },
-    "teamclaude": { "enabled": false, "cmd": "teamclaude status --json", "note": "per-seat Claude usage; wire on the worker Mini (KarpelesLab/teamclaude)" },
-    "ccusage": { "enabled": false, "cmd": "ccusage --json", "note": "token cost/usage across CLIs (ryoppippi/ccusage)" }
+    "teamclaude": { "enabled": false, "cmd": "teamclaude status --json", "note": "Probe-only JSON parse on the worker Mini; persists zero history rows until a schema-bound seat adapter is implemented (KarpelesLab/teamclaude)." },
+    "ccusage": { "enabled": false, "cmd": "ccusage --json", "note": "Probe-only JSON parse; persists zero history rows until a schema-bound seat adapter is implemented (ryoppippi/ccusage)." }
   },
   "window_learning": {
     "enabled": true,

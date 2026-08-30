@@ -128,7 +128,14 @@ def seat_has_capability(seat: str, cap, providers_data: dict, connectors: dict, 
 
 
 def provider_levels(providers_data: dict) -> dict[str, str]:
-    """Build provider→level from providers.json, validating the level blocks."""
+    """Build the active provider→level map from providers.json.
+
+    Providers are enabled by default for backward compatibility.  Once an
+    ``enabled`` field is present it must, however, be a real JSON boolean; a
+    truthy string must never activate a provider.  Disabled providers remain in
+    the source registry as inventory, but cannot back a role or appear in the
+    generated capability-level/review configuration.
+    """
     levels = providers_data.get("capability_levels")
     if not isinstance(levels, dict) or tuple(levels) != LEVELS:
         raise ValueError("providers.json capability_levels must declare frontier, sole, terra, luna in that order")
@@ -139,6 +146,10 @@ def provider_levels(providers_data: dict) -> dict[str, str]:
     for pid, p in provs.items():
         if not isinstance(p, dict):
             raise ValueError(f"{pid}: provider entry must be an object")
+        if "enabled" in p and not isinstance(p["enabled"], bool):
+            raise ValueError(f"{pid}: enabled must be a boolean")
+        if p.get("enabled", True) is not True:
+            continue
         if p.get("family") in (None, "") or not isinstance(p.get("functions"), list) or not p["functions"]:
             raise ValueError(f"{pid}: provider needs a family and a non-empty functions list")
         lvl = p.get("level")
@@ -149,9 +160,11 @@ def provider_levels(providers_data: dict) -> dict[str, str]:
     if not isinstance(order, list) or not order or len(order) != len(set(order)):
         raise ValueError("providers.json review_order must be a unique non-empty list")
     if any(pid not in mapping for pid in order):
-        raise ValueError("providers.json review_order entries must be defined providers")
+        raise ValueError("providers.json review_order entries must be defined providers and enabled")
     # Forbidden models are the explicit providers.json map only (Opus 5 is not auto-banned).
     for pid, p in provs.items():
+        if pid not in mapping:
+            continue
         if mborch.model_is_forbidden(p.get("model"), providers_data.get("forbidden_models")):
             raise ValueError(f"{pid}: selects forbidden model {p.get('model')!r}")
     return mapping

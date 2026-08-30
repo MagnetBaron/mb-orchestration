@@ -18,8 +18,10 @@ app and its historical Slack routines are a different product and are not contro
 
 `config/seat-exec.json` is authoritative. Every standing role pins `grok-4.6`, the validated full
 path to a generated `mb-*.md` agent definition, a prompt file, no subagents, and plain output. `bin/doctor.py` rejects shortened model ids,
-wrong agents, reordered/extra flags, permission bypasses, or a non-CLI route. `bin/grok-agent.py`
-checks the executable, installed profile, provider/route state, and exact argv before execution.
+wrong agents, reordered/extra flags, permission bypasses, or a non-CLI route. For normal execution,
+`bin/grok-agent.py` checks the executable, installed profile, exact enabled/wired provider state,
+live route, binding, fresh capabilities, and exact argv. The fixed transport-only smoke intentionally
+does not claim or require normal provider/route/capability readiness.
 
 ## Evidence boundary
 

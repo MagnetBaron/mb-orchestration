@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -20,6 +22,25 @@ def live_config():
 
 
 class VisualQaConfigTests(unittest.TestCase):
+    def test_cli_packet_renderers_emit_one_canonical_trailing_newline(self):
+        cases = (
+            [
+                "--render", "visual-qa-ticket", "gadget-duke",
+                "--changed-path", "templates/index.liquid", "--page", "home",
+            ],
+            ["--render", "visual-qa-live-ticket", "magnet-baron", "--page", "home"],
+        )
+        config = live_config()
+        for argv in cases:
+            with self.subTest(argv=argv):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    self.assertEqual(connectors.main(argv), 0)
+                packet = stdout.getvalue()
+                self.assertTrue(packet.endswith("\n"))
+                self.assertFalse(packet.endswith("\n\n"))
+                self.assertEqual(connectors.reconstruct_review_d_packet(config, packet), packet)
+
     def test_transport_is_named_grok_cli_without_slack(self):
         config = live_config()
         self.assertNotIn("slack", config)
@@ -124,6 +145,8 @@ class VisualQaConfigTests(unittest.TestCase):
             "https://gadgetduke.com/%63heckout?preview_theme_id=151997775942",
             "https://gadgetduke.com/%2563heckout?preview_theme_id=151997775942",
             "https://gadgetduke.com/else/../checkout?preview_theme_id=151997775942",
+            "https://gadgetduke.com/checkout;anything?preview_theme_id=151997775942",
+            "https://gadgetduke.com/checkout%3Banything?preview_theme_id=151997775942",
             "https://gadgetduke.com/x/..%5Ccheckout?preview_theme_id=151997775942",
             "https://evil.example%5C.preview.shopifypreview.com/",
             "https://gadgetduke.com/products/simgym-demo?preview_theme_id=151997775942",

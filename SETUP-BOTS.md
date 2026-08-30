@@ -15,7 +15,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli
 
 - Confirm clones: `mb-orchestration`, `teamclaude` (MagnetBaron org).
 - Confirm `AGENTS.md` / `CLAUDE.md` at orchestration root so Codex/Cursor/Claude see them.
-- Do **not** leave Grok Bot.app running. If it is open, note it and quit after the human signs the Bot in (owner step).
+- Do **not** leave Grok Bot.app running. If it is open, note it and quit it; the legacy app routes are retired and no Bot sign-in is required.
 - Do **not** create Shopify staff/collaborator accounts.
 - Smoke: files present; document paths.
 
@@ -63,6 +63,6 @@ must_not_touch: Shopify Admin, theme publish, Grok Bot.app left running, four Cl
 
 output_path: a short report in the session (clone paths, clients that see the folders, owner-only leftover including MCP connector check)
 
-done_when: both repos openable; AGENTS.md loaded; `python3 bin/doctor.py` and `python3 bin/smoketest.py` green; Visual QA CLI path documented and fail-closed; MCP routing docs present; `bin/usage-status.py` runs and reports seat resets
+done_when: both repos openable; AGENTS.md loaded; `python3 bin/doctor.py` and `python3 bin/smoketest.py` green; from the canonical checkout `./sync-commands.sh` completes and `./sync-commands.sh --check` byte-matches every command/skill target plus all three installed Grok profiles; Visual QA CLI path documented and fail-closed; MCP routing docs present; `bin/usage-status.py` runs and reports seat resets
 
 effort: setup

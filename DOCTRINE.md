@@ -15,7 +15,7 @@ Unspent quota at reset is waste. Buckets are asymmetric (current providers in `c
 
 | Class | Capability level | Job |
 |-------|------------------|-----|
-| **Abundant volume** | terra | Grok Build/Bot — code, listings, non-Google research, standing Bot work |
+| **Abundant volume** | terra | Grok Build — code, listings, non-Google research; named standing CLI work only after its binding/live gates pass |
 | **MCP volume** | terra | GPT Terra — Google MCP fetches to `output_path` |
 | **Scarce judgment** | frontier / sole | Opus 5 (Anthropic gate) + Codex Sol — verify, land-gate, hard review; Fable = rare architecture/long-horizon escalation, same family, out of gating |
 | **Dispatcher** | varies (per-run) | Requested/profile intake provider when live and dispatch-qualified; otherwise best usable configured fallback. Exactly one effective dispatcher per run. |
@@ -140,9 +140,9 @@ Composition:
 - Default question: which **disjoint** lanes can run now?
 - Ceiling, not target. Prefer fewer deeper lanes when faster.
 - **1 lane = 1 worktree = 1 branch = named file scope** (dispatcher creates the worktree).
-- Claims cover **resources**, not just files: a Build branch and a Bot standing routine must not touch the same product range, campaign, or sheet — the real collision is one *resource*. Bot routines declare their surfaces; dispatch overlap-checks them like file scopes.
+- Claims cover **resources**, not just files: a Build branch and any activated standing CLI role must not touch the same product range, campaign, or sheet — the real collision is one *resource*. Activated standing roles declare their surfaces; dispatch overlap-checks them like file scopes.
 - Full test suite / main landing: **exactly one at a time**.
-- Review D is off-box; it does not count as a second implementer on the Mini.
+- Review D's transport is the local installed Grok CLI, its normal route is currently hard-parked, and it never counts as a second implementer on the Mini.
 - MCP volume (Terra) may run beside Grok when scopes and output paths do not collide.
 
 ## Refill law

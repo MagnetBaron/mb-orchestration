@@ -176,6 +176,8 @@ def _validate_navigation_url(c, store, url):
     decoded_path = decoded_parsed.path.lower()
     if "\\" in decoded_url:
         sys.exit(f"connectors: store {store!r} URL uses a denied browser path separator")
+    if ";" in decoded_path:
+        sys.exit(f"connectors: store {store!r} URL uses a denied path parameter separator")
     normalized_path = posixpath.normpath("/" + decoded_path.lstrip("/"))
     if host in {str(value).lower() for value in deny.get("hosts") or []}:
         sys.exit(f"connectors: store {store!r} URL uses a denied host")
@@ -497,12 +499,12 @@ def main(argv=None):
     if args.render == "visual-qa-ticket":
         if not args.store:
             sys.exit("connectors: visual-qa-ticket needs a store id (e.g. gadget-duke)")
-        print(render_ticket(c, args.store, args.changed_paths, args.pages))
+        sys.stdout.write(render_ticket(c, args.store, args.changed_paths, args.pages))
         return 0
     if args.render == "visual-qa-live-ticket":
         if not args.store:
             sys.exit("connectors: visual-qa-live-ticket needs a store id (e.g. magnet-baron)")
-        print(render_live_ticket(c, args.store, args.pages or None))
+        sys.stdout.write(render_live_ticket(c, args.store, args.pages or None))
         return 0
     if args.render == "clarity":
         print(render_clarity(c))

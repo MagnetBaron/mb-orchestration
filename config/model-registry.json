@@ -1476,7 +1476,7 @@
         "date": "2026-08-30",
         "route_state": "unwired",
         "kind": "direct_invocation",
-        "source": "grok 1.0.13 accepted --agent /Users/constantinegreanias/.grok/agents/mb-review-d.md with exact model grok-4.6 and returned cli-agent-path-ok; transport-only evidence does not supply a code-owned pixel-input binding or observed browser/pixel integration",
+        "source": "grok 1.0.13 accepted the validated mb-review-d agent-profile bytes with exact model grok-4.6 and returned cli-agent-path-ok; transport-only evidence does not supply a code-owned pixel-input binding or observed browser/pixel integration",
         "signal": "direct_invocation"
       }],
       "notes": "CLI transport smoke passed, but visual QA remains hard-parked until a code-owned pixel-input binding exists and browser/pixel capture is observed and role-tested. Slack evidence does not promote this route."

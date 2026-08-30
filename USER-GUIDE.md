@@ -101,23 +101,29 @@ python3 bin/subscription-calculator.py \
 
 | If last month you… | It recommends | Because |
 |--------------------|---------------|---------|
-| coded/listed ≥1 h/day, or ran a verified standing role | SuperGrok Heavy | abundant Grok CLI volume; capability proof remains separate |
+| coded/listed ≥1 h/day | SuperGrok Heavy | abundant Grok Build implementation volume |
 | needed any frontier review | 1× Claude Max | the Opus 5 gate (Fable optional, architecture only) |
 | did >10 reviews/week | +1–3 Claude Team-premium seats | teamclaude rotates review load so no seat caps mid-week |
 | coded heavily but reviewed lightly | +2 Claude Pro | cheap Opus overflow + rotation headroom (no Fable) |
 | did Google-MCP bulk, or any cross-family work | Codex $200 | GPT Terra for MCP volume; Sol supplies the OpenAI review family |
-| need cross-family but have **no** Codex | Fireworks Review E (~$20/mo) | an open-weight family to satisfy the gate |
+| need cross-family and pass `--no-codex` | no executable second family in the reference setup | `--third-party-safe-review` records eligibility for a future Review E route, but unwired Review E is neither recommended nor priced; Terra/MCP also remains unserved |
 | spent real time in an IDE | Cursor Ultra | first-party Grok pool + $400 last-resort bucket |
+
+`--storefront-pixels` and `--analytics` record future needs but do not independently add a Grok plan
+while Review D and Heat Map are hard-parked before inputs. Current Grok Heavy advice must be justified
+by the implementation-volume input; the calculator has no inferred standing-role-capability input.
 
 **Worked examples**
 
 - *Heavy shop owner* (4 h/day implement, 25 reviews/wk, MCP, pixels, analytics, IDE, team of 2):
   Grok Heavy + Claude Max + 1 Claude Team-premium + Codex $200 + Cursor Ultra ≈ **$1,025/mo**.
   This is close to the reference setup (which adds a second Team seat + 2 Pro seats for extra rotation).
-- *Solo Pro user, no Codex, some money work* (1 h/day, 3 reviews/wk, cross-family):
-  Grok Heavy + Claude Max + Codex $200 ≈ **$700/mo** — the calculator pushes you toward Codex precisely
-  because cross-family needs a second family. If you refuse Codex, it recommends Fireworks Review E instead.
-- *Light solo* (little review, no risk work): a single Claude Pro ($25) covers it.
+- *Solo user who explicitly excludes Codex, with sanitized review artifacts* (1 h/day, 3 reviews/wk,
+  `--cross-family --no-codex --third-party-safe-review`): the calculator lists Grok Heavy + Claude
+  Max ≈ **$500/mo** and explicitly reports cross-family review unserved. The sanitized-artifact flag
+  makes Review E a future setup candidate only; it does not activate or price the currently unwired
+  provider, model, recipe, or route.
+- *Light solo* (no supplied paid-plan need): the calculator returns an empty stack at **$0/mo**.
 
 Prices are indicative for **sizing**; verify current pricing/tiers before buying.
 
@@ -168,15 +174,23 @@ points, and habits:
 2. Set `config/entrypoints.json` — their entry surfaces, profiles, and fallback order.
 3. Set `config/connectors.json` — their MCP connectors, stores, analytics login, and Grok CLI role bindings.
 4. Fill the anchors they know in `config/usage-windows.json`.
-5. Run `python3 bin/doctor.py` (must be error-free) and `python3 bin/smoketest.py` (must be 13/13).
-6. `python3 bin/detect-agents.py` to see which agents are live; register any new CLI with
+5. Run `python3 bin/doctor.py` (must be error-free) and `python3 bin/smoketest.py` (must be 29/29).
+6. Run `python3 bin/detect-agents.py` for transport presence and the configured enabled/wired and
+   catalog route states. It also prints each standing role's `detect.note` and readiness limits; a
+   present command is not a live route or an executable role. Register a new CLI with
    `bin/detect-agents.py --register-template <cmd>` and paste the entry into `config/providers.json`.
+7. From the authoritative trusted-origin checkout, run `./sync-commands.sh` and then
+   `./sync-commands.sh --check` to generate, install, and byte-verify the three standing Grok
+   profiles. Their frontmatter permits only the canonical name, description, and read-tool list.
 
 Keep your own config outside the repo if you like: point **`MB_CONFIG_DIR`** at a folder holding your
 `subscriptions.json` / `entrypoints.json` / `usage-windows.json` / `monitoring.json`; the shared
 registry (providers, review-depth, roles, connectors) is inherited from the repo. Worked layers for a
 solo Pro user, a two-subscription setup, and a larger agency are in `config/examples/` — copy the one
-closest to you. **The reference `config/` is just one example of a complicated setup, not the target.**
+closest to you. Installed standing Grok profiles are the exception: `bin/sync-grok-agents.py`
+verifies the authoritative checkout/provenance, reads its canonical role/provider config, and
+ignores ambient `MB_CONFIG_DIR`. **The reference `config/` is just one example of a complicated
+setup, not the target.**
 
 No policy prose changes. The routing re-derives from their config. That is the durability guarantee:
 the system flexes with technology and subscription changes because those live in data, not in words.
@@ -209,16 +223,19 @@ quota first, included before metered, reserves last-but-usable).
   availability). `--demo` seeds sample data for a preview.
 - **History:** `python3 bin/usage-record.py --snapshot` captures the current state into
   `data/usage-history.jsonl`. Schedule it (e.g. hourly via cron/LaunchAgent) so the dashboard and the
-  plan-change advice have real data. Sources beyond your own notes (teamclaude, ccusage) wire in
-  `monitoring.json`; `--owner codex-sol=88` records a % you read off a provider dashboard.
+  plan-change advice have real data. `--owner codex-sol=88` records a % you read off a provider
+  dashboard. The optional teamclaude and ccusage commands in `monitoring.json` are probe-only:
+  even a successful JSON parse persists zero history rows until a schema-bound seat adapter exists.
 - **Learned windows:** `usage-record.py --learn-windows` infers reset anchors from observed resets, so
   your refresh windows stay current automatically (it never overrides an anchor you set by hand).
 - **Retention (your control):** `monitoring.json` → `retention_days` (default **365**) bounds how long
   history is kept; `usage-record.py --prune` (and every `--snapshot`) drops older records so the log
   never grows without limit. Set it to your comfort; `0` keeps everything (not recommended).
 - **Plan-change advice from real use:** `bin/subscription-calculator.py --from-history` compares what
-  you *pay for* against what you *used* — flagging under-used plans to drop and frequently-capped ones
-  to grow.
+  you *pay for* against timestamped records from the last **30 days**. Downgrade advice requires a
+  numeric sample for every configured seat on that subscription; missing seats remain unknown.
+  Repeated spent snapshots count as one exhaustion episode until a non-spent boundary is observed,
+  and a ≥95% peak is labeled near-cap evidence rather than a cap hit.
 
 ## 10b. Routing-quality observability (decision log, not task contents)
 

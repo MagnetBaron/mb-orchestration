@@ -11,13 +11,18 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 - `config/providers.json` — agents/providers, capability levels, families, detection
 - `config/model-registry.json` — model identity, routes, lifecycle, route state, per-role rankings
 - `config/subscriptions.json` — the plans you pay for (the one file a new user edits)
-- `config/connectors.json` — live MCP/analytics/store/Grok CLI bindings (no stale IDs in prose)
+- `config/connectors.json` — authorization ceilings and binding declarations; observed live state is a separate runtime gate
 - `config/entrypoints.json` — entry surfaces, user profiles, and per-run dispatcher fallback order
 - `config/handoff-policy.json` — preauthorized ordinary artifacts, standing review authorization, fail-closed restricted classes
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
 - `config/monitoring.json` — usage-history + observability retention/privacy (events never grant authority)
 - `bin/usage-status.py` · `bin/resolve-route.py` · `bin/model-registry.py` · `bin/drain-plan.py` · `bin/doctor.py` · `bin/detect-agents.py` · `bin/detect-capability.py` · `bin/usage-record.py` · `bin/observe.py` · `bin/dashboard.py` · `bin/smoketest.py`
-- Config layers by `$MB_CONFIG_DIR` then `config/` — the reference `config/` is ONE example; a user points `MB_CONFIG_DIR` at their own subscriptions/entrypoints/windows (`config/examples/` shows 1→N).
+- Most config layers resolve by `$MB_CONFIG_DIR` then `config/` — the reference `config/` is ONE
+  example; a user points `MB_CONFIG_DIR` at their own subscriptions/entrypoints/windows
+  (`config/examples/` shows 1→N). Canonical standing Grok profile distribution is the explicit
+  exception: `sync-commands.sh` invokes `bin/sync-grok-agents.py`, which verifies the authoritative
+  checkout and trusted origin, reads that checkout's `config/roles.json` and `config/providers.json`,
+  and ignores ambient `MB_CONFIG_DIR` overlays.
 
 > `USER-GUIDE.md` is for humans choosing plans. It is NOT operational and must never be loaded into an agent's context.
 
@@ -42,8 +47,11 @@ dispatcher exists **per run**, not globally for every user.
 ## Seats (roles are invariant; providers are config)
 
 Roles below are durable; the **current provider** for each is the binding in `config/providers.json`
-(`bin/detect-agents.py` = live here, `bin/resolve-route.py` to route, `bin/model-registry.py` for
-model/route identity). Capability levels frontier · sole · terra · luna are the routing tiers; providers at a level are replaceable. Only `live_verified` routes may resolve for active dispatch.
+(`bin/detect-agents.py` inventories transport presence and reports configured enabled/wired plus
+catalog route state; `bin/resolve-route.py` decides routability; `bin/model-registry.py` owns
+model/route identity). A detected command is not evidence that a provider or named role is
+executable. Capability levels frontier · sole · terra · luna are the routing tiers; providers at a
+level are replaceable. Only `live_verified` routes may resolve for active dispatch.
 
 | Role (invariant) | Level | Current provider(s) — see providers.json | Does not |
 |------|------|------|------|
@@ -60,6 +68,16 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 | **Review E** | frontier | independent-family slot — Fireworks today, local open-weight later *(unwired)* | Implement, dispatch, MCP, sole gate on a risk class, any diff with secrets/PII |
 | **IDE** | terra | Cursor Grok / Composer | Other Models until last |
 | **Last $** | terra | Cursor Other Models $400 | Default anything |
+
+The three standing Grok profiles are generated and installed only from the authoritative checkout
+by `./sync-commands.sh` through `bin/sync-grok-agents.py`. Their frontmatter must contain exactly the
+code-owned name, JSON-quoted description, and `Read, Grep, Glob` tools allowlist: no extra fields,
+skills, plugins, or MCP declarations. `bin/detect-agents.py` surfaces each provider's `detect.note`,
+exact enabled/wired state, and catalog route state, but leaves role readiness blocked or unevaluated;
+`bin/grok-agent.py` separately enforces profile bytes, input binding, fresh capabilities, and launch
+preflight. Normal standing-role output is released only after status 0, nonempty stdout, and empty
+stderr. Review D stdout must begin with an exact first line of `ship`, `fix-list`, or `blocked`.
+Heat Map and Marketplace Intelligence must not begin with any of those Review D verdict tokens.
 
 **Claude is five seats, not one.** Max + 2 Team-premium (Fable-capable) + 2 Pro (Opus overflow),
 rotated by teamclaude; `bin/resolve-route.py` counts **Fable available only while a Fable-capable seat

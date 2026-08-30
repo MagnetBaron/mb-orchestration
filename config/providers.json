@@ -6,7 +6,7 @@
   "capability_levels": {
     "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
     "sole": { "job": "Scarce judgment: diff review and MCP interpretation" },
-    "terra": { "job": "Volume: MCP bulk, implementation, and standing bot work" },
+    "terra": { "job": "Volume: MCP bulk and implementation; named standing CLI work only when its code-owned binding and live gates pass" },
     "luna": { "job": "Lightweight coordination tier (MCP/queue helper). Effective dispatcher is selected per run from requested intake/profile plus live usage; capability lives here, assignment lives in the decision trace." }
   },
   "families": {

@@ -100,7 +100,11 @@ def superseding_models():
     out = []
     for pid, p in prov.items():
         if p.get("supersedes"):
-            out.append({"new": pid, "old": p["supersedes"], "old_enabled": prov.get(p["supersedes"], {}).get("enabled", True)})
+            out.append({
+                "new": pid,
+                "old": p["supersedes"],
+                "old_enabled": prov.get(p["supersedes"], {}).get("enabled", True) is True,
+            })
     return out
 
 
