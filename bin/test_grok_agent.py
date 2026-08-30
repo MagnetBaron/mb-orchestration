@@ -99,6 +99,13 @@ class GrokAgentTests(unittest.TestCase):
             self.assertIn("non-restricted", target._prompt_problem(
                 "grok-bot-marketplace-intelligence", prompt
             ))
+            restricted_missing = base.replace(
+                "artifact-class: synthetic-eval", "artifact-class: credentials"
+            ).replace(str(evidence), str(root / "missing.csv"))
+            prompt.write_text(restricted_missing)
+            self.assertIn("non-restricted", target._prompt_problem(
+                "grok-bot-marketplace-intelligence", prompt
+            ))
 
     def test_inspect_fails_closed_for_unwired_routes_and_missing_profile(self):
         with tempfile.TemporaryDirectory() as td:

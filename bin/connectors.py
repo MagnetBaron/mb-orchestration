@@ -40,7 +40,12 @@ def render_allowlist(c):
             out.append(f"- Extra: {s['preview_extra']}")
         out.append(f"- Never: {', '.join(s.get('never', []))}")
         if s.get("review_d_preview_url"):
-            out.append(f"- Review D preview URL: {s['review_d_preview_url']}")
+            try:
+                _validate_preview_url(c, sid, s["review_d_preview_url"])
+            except SystemExit:
+                out.append("- Review D preview URL: invalid; ticket renderer will refuse it")
+            else:
+                out.append(f"- Review D preview URL: {s['review_d_preview_url']}")
     policy = c.get("grok_cli", {}).get("visual_qa", {})
     live = policy.get("modes", {}).get("live-storefront-audit", {})
     preview = policy.get("modes", {}).get("preview-review", {})
@@ -80,13 +85,18 @@ def _fully_unquote(value):
 def _validate_navigation_url(c, store, url):
     """Apply the common deny-before-navigation contract and return parsed URL data."""
     _store(c, store)
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        raise SystemExit(f"connectors: store {store!r} URL is malformed") from None
     host = (parsed.hostname or "").lower()
     if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
         sys.exit(f"connectors: store {store!r} URL must be credential-free HTTPS")
     deny = c.get("grok_cli", {}).get("visual_qa", {}).get("deny_before_navigation", {})
     decoded_url = _fully_unquote(url).lower()
     decoded_path = _fully_unquote(parsed.path).lower()
+    if "\\" in decoded_path:
+        sys.exit(f"connectors: store {store!r} URL uses a denied path separator")
     normalized_path = posixpath.normpath("/" + decoded_path.lstrip("/"))
     if host in {str(value).lower() for value in deny.get("hosts") or []}:
         sys.exit(f"connectors: store {store!r} URL uses a denied host")
