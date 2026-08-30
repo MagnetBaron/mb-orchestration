@@ -934,8 +934,9 @@ def main(argv=None):
     print(f"ROUTE  class={args.klass} scale={args.scale} risk={risk_flags or '-'}")
     print("-" * 72)
     if integration_session is not None:
-        print(f"integration session: runtime={integration_session['runtime']} "
-              f"canonical_ids={','.join(integration_session['canonical_ids'])}")
+        canonical_ids = integration_session["canonical_ids"]
+        rendered_ids = ",".join(canonical_ids) if canonical_ids else "[]"
+        print(f"integration session: runtime={integration_session['runtime']} canonical_ids={rendered_ids}")
     print(f"review depth: {level}")
     for r in reasons:
         print(f"  · {r}")

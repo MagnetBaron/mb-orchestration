@@ -148,6 +148,20 @@ class SchemaAndIdempotencyTests(unittest.TestCase):
         self.assertNotIn("private-local-alias", json.dumps(ev))
         self.assertEqual(observe.validate_event(ev), [])
 
+        zero = observe.event_from_route_decision(
+            _decision(integration_session={"runtime": "codex", "canonical_ids": []}),
+            run_id="run-session-zero", ts="2026-08-29T00:00:00+00:00",
+        )
+        self.assertEqual(zero["integration_session"], {"runtime": "codex", "canonical_ids": []})
+
+        scoped = observe.make_event(
+            "route_decision", run_id="run-scoped-runtime", ts="2026-08-29T00:00:00+00:00",
+            integration_session={"runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"]},
+            unrelated={"runtime": "private@example.test"},
+        )
+        self.assertEqual(scoped["integration_session"]["runtime"], "grokbot-cursor")
+        self.assertEqual(scoped["unrelated"]["runtime"], "<redacted-email>")
+
 
 class AppendSafetyTests(unittest.TestCase):
     def test_concurrent_append(self):

@@ -25,6 +25,7 @@ CACHE_NAME = "integration-inventory.json"
 EVENTS_NAME = "integration-inventory-events.jsonl"
 HEALTH = frozenset({"verified", "unknown", "needs_auth", "blocked", "unavailable"})
 KINDS = frozenset({"mcp", "plugin", "app", "connector", "capability"})
+LOCK_RECYCLED_PID_MAX_AGE_SECONDS = 3600.0
 _PROCESS_INVENTORY = None
 _PROCESS_SESSION = None
 
@@ -200,8 +201,12 @@ def _validate_record(rec: dict, *, session=False) -> dict:
     if health not in HEALTH:
         raise InventoryError(f"integration record {observed}: invalid health")
     clean = {"runtime": runtime, "kind": kind, "observed_id": observed}
-    for key in ("registered", "suggested", "installed", "enabled", "configured", "blocked", "callable"):
+    for key in ("registered", "suggested", "enabled", "configured", "blocked", "callable"):
         clean[key] = bool(rec.get(key, False))
+    # Installed is tri-state only for MCP/app manifest evidence: None means the
+    # field is not applicable/observable, while explicit False is a denial.
+    installed = rec.get("installed", False)
+    clean["installed"] = None if installed is None and kind in {"mcp", "app"} else bool(installed)
     clean["health"] = health
     clean["source"] = "session" if session else "fixture"
     return clean
@@ -318,7 +323,8 @@ def _lock(path: Path, timeout: float) -> str:
                 age = time.time() - path.stat().st_mtime
                 dead_owner = owner is not None and not _pid_alive(owner["pid"])
                 malformed_stale = owner is None and age > max(30.0, timeout * 4)
-                if dead_owner or malformed_stale:
+                recycled_pid_stale = owner is not None and age > LOCK_RECYCLED_PID_MAX_AGE_SECONDS
+                if dead_owner or malformed_stale or recycled_pid_stale:
                     path.unlink()
                     continue
             except FileNotFoundError:
@@ -460,7 +466,7 @@ def session() -> dict | None:
 
 
 def session_provenance(overlay: dict | None = None) -> dict | None:
-    """Return a value-free summary of successful process-scoped integration evidence."""
+    """Return a value-free summary when an overlay was supplied, including zero proof."""
     overlay = session() if overlay is None else overlay
     if not overlay or not isinstance(overlay.get("runtime"), str):
         return None
@@ -473,8 +479,6 @@ def session_provenance(overlay: dict | None = None) -> dict | None:
         and effective(runtime, rec.get("kind"), rec["canonical_id"], require_callable=True,
                       inv=empty, overlay=overlay)[0]
     })
-    if not canonical_ids:
-        return None
     return {"runtime": runtime, "canonical_ids": canonical_ids}
 
 
@@ -509,7 +513,10 @@ def effective(runtime: str, kind: str, canonical_id: str, *, require_callable: b
         # A canonical MCP/app manifest proves configured presence, but not that a
         # package, auth, or transport is callable. Plugin manifests additionally
         # prove installation. Runtime routes always request callable proof below.
-        if kind not in {"mcp", "app"} and not rec.get("installed"):
+        if kind in {"mcp", "app"}:
+            if "installed" not in rec or rec.get("installed") is False:
+                continue
+        elif not rec.get("installed"):
             continue
         if rec.get("health") in {"needs_auth", "blocked", "unavailable"}:
             continue

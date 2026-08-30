@@ -51,28 +51,29 @@ def record(runtime="codex", kind="mcp", ident="github", **changes):
 class IntegrationInventoryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.data = Path(self.tmp.name) / "data"
         self.fixture = Path(self.tmp.name) / "observed.json"
         self.old_data = os.environ.get("MB_DATA_DIR")
         self.old_fixture = os.environ.get("MB_INTEGRATION_FIXTURE")
         self.old_source_root = os.environ.get("MB_INTEGRATION_SOURCE_ROOT")
+        self.addCleanup(self._restore_environment)
+        self.addCleanup(integrations.reset_process_cache)
         os.environ["MB_DATA_DIR"] = str(self.data)
         os.environ["MB_INTEGRATION_FIXTURE"] = str(self.fixture)
         self.write([record()])
         integrations.reset_process_cache()
 
-    def tearDown(self):
-        for key, value in (("MB_DATA_DIR", self.old_data), ("MB_INTEGRATION_FIXTURE", self.old_fixture)):
+    def _restore_environment(self):
+        for key, value in (
+            ("MB_DATA_DIR", self.old_data),
+            ("MB_INTEGRATION_FIXTURE", self.old_fixture),
+            ("MB_INTEGRATION_SOURCE_ROOT", self.old_source_root),
+        ):
             if value is None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        if self.old_source_root is None:
-            os.environ.pop("MB_INTEGRATION_SOURCE_ROOT", None)
-        else:
-            os.environ["MB_INTEGRATION_SOURCE_ROOT"] = self.old_source_root
-        integrations.reset_process_cache()
-        self.tmp.cleanup()
 
     def write(self, records):
         self.fixture.write_text(json.dumps({"records": records}))
@@ -203,19 +204,36 @@ class IntegrationInventoryTests(unittest.TestCase):
 
         failed = record(runtime="grokbot-cursor", kind="capability", ident="browser", callable=False)
         session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [failed]}))
-        self.assertIsNone(integrations.session_provenance(integrations.load_session(str(session_file))))
+        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
+            "runtime": "grokbot-cursor", "canonical_ids": [],
+        })
 
         unknown = record(runtime="grokbot-cursor", kind="capability", ident="not-registered")
         session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": [unknown]}))
-        self.assertIsNone(integrations.session_provenance(integrations.load_session(str(session_file))))
+        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
+            "runtime": "grokbot-cursor", "canonical_ids": [],
+        })
 
-    def test_pid_owned_lock_never_age_steals_live_owner_and_reclaims_dead_owner(self):
+        session_file.write_text(json.dumps({"runtime": "grokbot-cursor", "records": []}))
+        self.assertEqual(integrations.session_provenance(integrations.load_session(str(session_file))), {
+            "runtime": "grokbot-cursor", "canonical_ids": [],
+        })
+
+    def test_pid_owned_lock_protects_normal_live_owner_and_reclaims_recycled_or_dead(self):
         path = Path(self.tmp.name) / "owned.lock"
-        path.write_text(json.dumps({"pid": os.getpid(), "owner": "live", "created_at": "old"}))
-        os.utime(path, (1, 1))
+        path.write_text(json.dumps({"pid": os.getpid(), "owner": "live", "created_at": "recent"}))
+        recent = datetime.now(timezone.utc).timestamp() - 60
+        os.utime(path, (recent, recent))
         with self.assertRaisesRegex(integrations.InventoryError, "lock timeout"):
             integrations._lock(path, 0.05)
         self.assertTrue(path.exists())
+
+        recycled = datetime.now(timezone.utc).timestamp() - integrations.LOCK_RECYCLED_PID_MAX_AGE_SECONDS - 1
+        os.utime(path, (recycled, recycled))
+        token = integrations._lock(path, 0.1)
+        self.assertNotEqual(token, "live")
+        integrations._unlock(path, token)
+        self.assertFalse(path.exists())
 
         path.write_text(json.dumps({"pid": 2_000_000_000, "owner": "dead", "created_at": "now"}))
         token = integrations._lock(path, 0.1)
@@ -230,6 +248,18 @@ class IntegrationInventoryTests(unittest.TestCase):
         callable_now, _ = integrations.effective("codex", "mcp", "github", require_callable=True, inv=inv)
         self.assertTrue(configured)
         self.assertFalse(callable_now)
+
+        config = integrations.load_adapters()
+        manifest = integrations._record(config, "codex", "mcp", "github")
+        self.assertIsNone(manifest["installed"])
+        self.assertTrue(integrations.effective(
+            "codex", "mcp", "github", require_callable=False, inv={"records": [manifest]}
+        )[0])
+        explicitly_absent = dict(manifest, installed=False)
+        self.assertFalse(integrations.effective(
+            "codex", "mcp", "github", require_callable=False,
+            inv={"records": [explicitly_absent]},
+        )[0])
 
     def test_allowlisted_manifest_enabled_false_is_detected(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)
@@ -353,6 +383,26 @@ class IntegrationInventoryTests(unittest.TestCase):
         )
         self.assertEqual(human.returncode, 0, human.stderr)
         self.assertIn("integration session: runtime=codex canonical_ids=github", human.stdout)
+
+        session_file.write_text(json.dumps({"runtime": "codex", "records": []}))
+        empty = subprocess.run(
+            [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
+             "--intake-provider", "opus-5", "--integration-session", str(session_file),
+             "--json", "--no-record"],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+        self.assertEqual(json.loads(empty.stdout)["integration_session"], {
+            "runtime": "codex", "canonical_ids": [],
+        })
+        empty_human = subprocess.run(
+            [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
+             "--intake-provider", "opus-5", "--integration-session", str(session_file),
+             "--no-record"],
+            capture_output=True, text=True, cwd=ROOT, env=env,
+        )
+        self.assertEqual(empty_human.returncode, 0, empty_human.stderr)
+        self.assertIn("integration session: runtime=codex canonical_ids=[]", empty_human.stdout)
 
 
 class GrantBypassTests(unittest.TestCase):

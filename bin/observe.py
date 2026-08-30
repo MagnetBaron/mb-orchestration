@@ -99,7 +99,12 @@ _IDENTIFIER_KEYS = frozenset({
     "provider", "providers", "authors", "requested", "effective", "family",
     "independence_group", "review_scope", "seat", "class", "scale",
     "review_depth", "action", "status", "park_reason_code", "fallback_reason",
-    "role", "physical", "verdict", "schema_version", "runtime", "canonical_ids",
+    "role", "physical", "verdict", "schema_version",
+})
+
+_IDENTIFIER_PATHS = frozenset({
+    ("integration_session", "runtime"),
+    ("integration_session", "canonical_ids", "*"),
 })
 
 
@@ -292,20 +297,22 @@ def _drop_forbidden_key(key: str) -> bool:
     return False
 
 
-def sanitize(value, key=None):
+def sanitize(value, key=None, _path=()):
     """Drop forbidden keys and redact paths/secrets. Pure; does not infer identity."""
     if key is not None and _drop_forbidden_key(str(key)):
         return None
+    path = _path + ((str(key),) if key is not None else ())
     if isinstance(value, dict):
         out = {}
         for k, v in value.items():
             if _drop_forbidden_key(str(k)):
                 continue
-            out[str(k)] = sanitize(v, k)
+            out[str(k)] = sanitize(v, k, path)
         return out
     if isinstance(value, list):
-        return [sanitize(v) for v in value]
-    identifier = str(key) in _IDENTIFIER_KEYS if key is not None else False
+        return [sanitize(v, _path=path + ("*",)) for v in value]
+    identifier = ((str(key) in _IDENTIFIER_KEYS if key is not None else False)
+                  or path in _IDENTIFIER_PATHS)
     if isinstance(value, str):
         return sanitize_text(value, identifier=identifier)
     if isinstance(value, (int, float, bool)) or value is None:
