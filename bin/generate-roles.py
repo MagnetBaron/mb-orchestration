@@ -29,7 +29,7 @@ DEFAULTS = {
 }
 LEVELS = ("frontier", "sole", "terra", "luna")
 HOSTS = ("claude", "grok", "codex")
-REQUIRED_ROLES = {"review-d", "heat-map", "grok-build", "seo-research"}
+REQUIRED_ROLES = {"review-d", "heat-map", "marketplace-intelligence", "grok-build", "seo-research"}
 READ_ONLY_TOOLS = {
     "claude": frozenset({"Read", "Glob", "Grep", "WebSearch", "WebFetch"}),
     "grok": frozenset({"Read", "Glob", "Grep", "WebSearch", "WebFetch"}),

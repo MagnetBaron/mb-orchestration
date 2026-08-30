@@ -402,7 +402,7 @@
             "properties": {
               "bin": { "type": ["string", "null"] },
               "args_template": { "type": "array", "items": { "type": "string" } },
-              "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "none"] },
+              "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"] },
               "worktree": { "type": "boolean" },
               "never_metered_host": { "type": "boolean" },
               "separate_invocation_when_dispatcher": { "type": "boolean" }

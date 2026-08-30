@@ -2,12 +2,15 @@
 
 How **Grok Bot** (the xAI cloud teammate, Cursor-powered) plugs into this orchestration. Load with `visual-qa.md` / `visual-qa-slack.md` when wiring or debugging Review D. Distilled from a sourced research sweep (grok 4.6 high, 3 lanes) + a live setup pass.
 
-**Two named bots run on this now:** **Website Visual QA** (Review D — credential-free preview walks) and **Heat Map** (read-only Clarity heatmaps/replays — `analytics-clarity.md`). **Separate bot identities and separate auth**, sharing the one public `#visual-qa` channel. Slack routines fire on **public channels only** (private group DM won't trigger) and match by **CONTAINS**, not prefix. Both bots post under the **same Slack identity** (`constantine@` / "Sent using @Cursor"), so they cannot tell each other apart by author — **coexistence is content-based**: each acts only on its own token (`shopifypreview.com` + ticket shape vs a message *starting with* `clarity deep-dive:`), neither emits the other's token, both ignore quoted/threaded re-posts, and a message carrying BOTH tokens is refused by both. Full contract: `analytics-clarity.md` §group chat. Never collapse them into one bot — Visual QA's safety is that it never logs in, and Heat Map must.
+**Two named bots run on this now:** **Website Visual QA** (Review D — credential-free preview walks) and **Heat Map** (read-only Clarity heatmaps/replays — `analytics-clarity.md`). A third definition, **Marketplace Intelligence**, is committed but **not created, test-run, scheduled, wired, or live**; its contract is `marketplace-intelligence.md`. Distinct Bot identities keep prompts and routines narrow, but all Bots owned by one member share the same managed computer, browser sessions, files, and permissions. A separate Bot is not credential isolation.
+
+The two live Bots share the one public `#visual-qa` channel. Slack routines fire on **public channels only** (private group DM won't trigger) and match by **CONTAINS**, not prefix. Both post under the **same Slack identity** (`constantine@` / "Sent using @Cursor"), so they cannot tell each other apart by author — **coexistence is content-based**: each acts only on its own token (`shopifypreview.com` + ticket shape vs a message *starting with* `clarity deep-dive:`), neither emits the other's token, both ignore quoted/threaded re-posts, and a message carrying BOTH tokens is refused by both. Full contract: `analytics-clarity.md` §group chat. Marketplace Intelligence has no Slack listener in this change and must not be added to this coexistence rule until its one-time test passes.
 
 ## What Grok Bot is (and is not)
 - **Is:** an app-only teammate — **macOS + iOS**, plus a shared **cloud computer**. Built by/with **Cursor** (installer from `downloads.cursor.com`; sign-in is a **Cursor account**). Early beta.
 - **Is not:** the `grok` **Build CLI** (that's the Implement seat), not grok.com chat, not `api.x.ai`.
 - **No CLI / API / SDK / webhook / headless mode exists for Grok Bot** (xAI docs + Cursor-staff confirmed). You cannot drive or manage Grok Bot from a terminal. Anything that must be terminal-driven uses **Grok Build (`grok`)** or the **Cursor Cloud Agents API** — different products, not Grok Bot.
+- **No model picker:** Grok Bot does not expose a selectable model id. Its provider entries correctly use `model:null`; never shorten or invent a model id for an app Bot.
 
 ## Review D delivery = Grok Bot **app routine** (owner-managed)
 Decision (owner, this build): Review D (Website Visual QA) runs **in the Grok Bot app**, on Grok Bot's own meter — NOT as a Cursor Automation.
@@ -30,6 +33,7 @@ Grok Bot's custom-MCP OAuth uses a custom-scheme callback (observed `grokbot://m
 - **Owner:** the Grok Bot app, its plugins/OAuth, the routine, and publish gates. (No CLI reaches it.)
 - **Dispatch (the assigned dispatcher) or Grok Build:** post the `@Website Visual QA` ticket template to `#visual-qa` once a visitor `shopifypreview.com` URL exists.
 - **Claude:** manage the Cursor/Slack plumbing, dispatch/monitor tickets, keep these docs current. Cannot manage the Grok Bot app itself.
+- **Marketplace Intelligence:** Dispatch may hand it approved deposited evidence only after its route becomes `live_verified`. The owner must create and test it in the app first. It never browses eBay/Reverb without recorded express platform permission and never lists, bids, buys, messages, publishes, authenticates, implements, or returns a review verdict.
 
 ## Issues encountered & resolution (this build)
 | Issue | Status |

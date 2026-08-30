@@ -2,7 +2,7 @@
 
 Day-to-day contract for every CLI agent (Codex, Claude Code, Grok Build, Cursor, and any agent you
 register). Deep doctrine: `DOCTRINE.md`. Failures: `EDGE-CASES.md`. Domain files load by domain:
-`mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md` · `qa-idle-handoff.md`. Selective skill routers: `skills/README.md`, `skills/registry.json`.
+`mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md` · `marketplace-intelligence.md` · `qa-idle-handoff.md`. Selective skill routers: `skills/README.md`, `skills/registry.json`.
 
 **Account state is config, not prose.** Who exists, what plan backs them, which MCP lives where, and
 when a seat resets are read from `config/` by `bin/` scripts — never hardcoded here. When something
@@ -53,6 +53,7 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 5 | Row-dump fetch loops |
 | **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
 | **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
+| **Marketplace intelligence** | terra | Grok Bot Marketplace Intelligence *(unwired until app creation + test)* | Marketplace browsing without recorded permission; list/bid/buy/message/publish/auth; implement or review verdict |
 | **Gate 1 (Anthropic)** | frontier | Opus 5 (routed across Claude seats by teamclaude) | Default implementer |
 | **Gate 2 (OpenAI)** | sole | Codex Sol (under reserve line) | Cursor Sol (different meter) |
 | **Architecture / long-horizon** | frontier | Fable 5 *(rare escalation; same family as Opus; never a second family)* | Any gating verdict; daily coding |
@@ -146,6 +147,7 @@ When Sol is needed for **both** code review and MCP judgment the same week: code
 Resolver records requested intake, effective dispatcher, fallback reason, authors, review scopes, and handoff decision. Its steps:
 
 1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → Grok Bot; theme/layout → Build then Review D; product copy → MCP packet (if needed) then Grok write.
+   Marketplace sold-price/competitor research → `marketplace-intelligence.md`; the Marketplace Intelligence Bot may analyze supplied approved snapshots/API outputs only and remains parked while its route is unwired. Never substitute scheduled marketplace browsing for a missing authorized source.
 2. **Brief** every job (fields above) and **stamp `review:`** at the router's floor; ambiguous risk → park + ask owner. Do not invent seats.
 3. **Route reviews** with `bin/resolve-route.py` (which reads `bin/usage-status.py` and the model registry), never by guesswork.
 4. **Selective skills** → mobile/Dart/Flutter/iOS accessibility: `mobile-dev-router`; explicit Cloudflare platform work: `cloudflare-dev-router`; Obsidian vault/Bases/Canvas/CLI work: `knowledge-vault-router`; React specialty, generic MCP builder, or measured web-performance work: `engineering-dev-router`. Put only the matching router plus its exact `~/.agents/skills/<router>/SKILL.md` path in the brief. Unrelated dispatch, implementation, and review lanes get `skills: []`.
@@ -171,3 +173,4 @@ self-update merely because the canonical file changed.
 ## Hard bans
 
 - Fable/Sol/Opus as daily coder · author reviewing own artifact · dispatcher-only attestation of its own dispatch intent/risk · two frontier passes from the **same family** counted as cross-family · Cursor Other Models early · Opus/Sol as bulk MCP fetchers · Grok inventing Google metrics without connector/snapshot · two QA minis at once · Build+Bot on one change-set · inventing makework · Review E before confirmed exhaustion · counting Fable + Opus as two families · sending restricted artifacts across agents · asking repeatedly for permission to transfer ordinary configured repo artifacts · hardcoding live IDs/tiers/resets · parking while usable quota exists · metered capacity before included capacity · more than one effective dispatcher in one run · authority from a quality rank · mid-turn account swaps · resolving a route that is not `live_verified`.
+- Marketplace Bots browsing/scraping eBay or Reverb without recorded express platform permission · inferring sales from active listings, badges, search rank, keywords, estimates, or missing data · claiming an unwired Bot/routine was created, test-run, scheduled, or credential-isolated.

@@ -67,6 +67,33 @@ class FailClosedTests(unittest.TestCase):
         self.assertNotIn("glm-5.3-flash-unwired", ids)
         self.assertTrue(decision["ok"])
 
+    def test_marketplace_bot_is_cataloged_unwired_and_never_resolves(self):
+        registry = live()
+        route = registry["routes"]["grok-bot-marketplace-intelligence"]
+        self.assertEqual(route["route_state"], "unwired")
+        self.assertEqual(route["provider"], "grok-bot-marketplace-intelligence")
+        self.assertEqual(route["capabilities"], ["marketplace_intelligence"])
+        self.assertFalse(
+            mr.route_is_live(
+                registry, "grok-bot-marketplace-intelligence",
+                as_of=date(2026, 8, 28),
+            )
+        )
+        decision = mr.resolve(
+            registry, "marketplace_intelligence", as_of=date(2026, 8, 28),
+        )
+        self.assertFalse(decision["ok"])
+        self.assertEqual(decision["routes"], [])
+        self.assertIn("fail-closed", decision["reason"])
+
+    def test_grok_bot_marketplace_provider_has_no_selectable_model(self):
+        provs = json.loads((REPO / "config" / "providers.json").read_text())
+        provider = provs["providers"]["grok-bot-marketplace-intelligence"]
+        self.assertEqual(provider["kind"], "app")
+        self.assertIsNone(provider["model"])
+        self.assertFalse(provider["wired"])
+        self.assertFalse(provider["review_eligible"])
+
     def test_catalog_verified_never_resolves(self):
         decision = mr.resolve(live(), "implementation")
         ids = [r["route"] for r in decision["routes"]]

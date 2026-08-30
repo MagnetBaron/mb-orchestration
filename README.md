@@ -36,7 +36,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `skills/` | Progressive skill routers (four public gateways; 44 private leaves) |
 | `model-evals/` | Synthetic role-eval cases and admin runbook |
 | `docs/` | Evidence-backed audits (not operational) |
-| domain files | `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `visual-qa-slack.md` · `grokbot-connection.md` · `analytics-clarity.md` · `luna-close-loop.md` · `qa-idle-handoff.md` |
+| domain files | `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `visual-qa-slack.md` · `grokbot-connection.md` · `analytics-clarity.md` · `marketplace-intelligence.md` · `luna-close-loop.md` · `qa-idle-handoff.md` |
 | `install.md` · `SETUP-BOTS.md` · `FUTURE.md` | First wire-up, worker-machine handoff, deferred multi-Mini |
 
 ### `config/` — edit these, not prose
