@@ -595,11 +595,107 @@ def check_review_depth(depth):
                 err(f"review-depth class {cid}: {col}={spec.get(col)!r} not a valid level")
 
 
+def rendered_recipe_argv(recipe):
+    """Planner-facing argv for a seat-exec recipe: `bin` plus string args_template tokens."""
+    out = []
+    bin_ = recipe.get("bin") if isinstance(recipe, dict) else None
+    if bin_:
+        out.append(bin_)
+    args = recipe.get("args_template") if isinstance(recipe, dict) else None
+    if isinstance(args, list):
+        out.extend(a for a in args if isinstance(a, str))
+    return out
+
+
+DIRECT_CLAUDE_BIN = "claude"
+
+
+def wrapper_spec_error(host, spec):
+    """A seat-exec `wrappers` entry must fully describe the wrapper argv, or every recipe
+    on that host fails closed (an unverifiable wrapper is as bad as a missing one)."""
+    if not isinstance(spec, dict):
+        return f"seat-exec wrappers[{host!r}]: must be an object with bin, prefix, model_flag"
+    bin_, prefix, flag = spec.get("bin"), spec.get("prefix"), spec.get("model_flag")
+    if not (isinstance(bin_, str) and bin_):
+        return f"seat-exec wrappers[{host!r}]: bin must be a non-empty string"
+    if not (isinstance(prefix, list) and all(isinstance(t, str) for t in prefix)):
+        return f"seat-exec wrappers[{host!r}]: prefix must be a list of strings"
+    if not (isinstance(flag, str) and flag):
+        return f"seat-exec wrappers[{host!r}]: model_flag must be a non-empty string"
+    return None
+
+
+def wrapped_recipe_error(pid, recipe, route, wrappers):
+    """Fail closed on Anthropic invocation drift. The expected wrapper argv is DERIVED from
+    the provider's registry route `host` plus the seat-exec `wrappers` config, never hardcoded.
+    Returns an error string, or None when the recipe is clean:
+      - a recipe rendering the direct `claude` CLI errors whenever its route is absent,
+        unresolved, or not live_verified (direct Claude is auth_blocked);
+      - a route on a wrapper-managed host must render `<bin> <prefix...>` plus exactly one
+        model_flag token immediately followed by the route's exact invocation_id."""
+    argv = rendered_recipe_argv(recipe)
+    host = route.get("host") if isinstance(route, dict) else None
+    spec = (wrappers or {}).get(host) if host else None
+    if spec is None:
+        # Host is not wrapper-managed: only the auth-blocked direct Claude CLI fails closed here.
+        if not argv or argv[0] != DIRECT_CLAUDE_BIN:
+            return None
+        if not isinstance(route, dict):
+            return (
+                f"seat-exec recipe {pid!r}: renders the direct `claude` CLI but the provider "
+                "route is absent or unresolved — direct Claude is auth_blocked; fail closed "
+                "(route Anthropic seats through a wrapper host)"
+            )
+        state = route.get("route_state")
+        if state != "live_verified":
+            return (
+                f"seat-exec recipe {pid!r}: renders the direct `claude` CLI on a route with "
+                f"route_state={state!r} — direct Claude is auth_blocked; fail closed"
+            )
+        return None
+    bad_spec = wrapper_spec_error(host, spec)
+    if bad_spec:
+        return f"{bad_spec} — cannot verify recipe {pid!r}; fail closed"
+    want = [spec["bin"], *spec["prefix"]]
+    flag = spec["model_flag"]
+    inv = route.get("invocation_id")
+    if argv[: len(want)] != want:
+        shown = argv[: len(want)] if argv else ["<empty>"]
+        want_model = f"{flag} {inv}" if inv else f"{flag} <invocation_id>"
+        return (
+            f"seat-exec recipe {pid!r}: registry route host is {host!r} but the recipe "
+            f"renders a direct command starting {shown!r} — must be `{' '.join(want)}` "
+            f"with `{want_model}`; direct Claude is auth_blocked"
+        )
+    if not inv:
+        return (
+            f"seat-exec recipe {pid!r}: wrapper host {host!r} route has no invocation_id — "
+            "cannot pin the model; fail closed"
+        )
+    flag_idx = [i for i, tok in enumerate(argv) if tok == flag]
+    if len(flag_idx) != 1:
+        return (
+            f"seat-exec recipe {pid!r}: expected exactly one `{flag}` token, found "
+            f"{len(flag_idx)} — must be `{flag} {inv}` (exact registry invocation_id); "
+            "a duplicate or missing flag can silently select another model"
+        )
+    i = flag_idx[0]
+    if i + 1 >= len(argv) or argv[i + 1] != inv:
+        return (
+            f"seat-exec recipe {pid!r}: `{flag}` must be immediately followed by {inv!r} "
+            "(exact registry invocation_id); a wrong or dangling value can silently select "
+            "another model"
+        )
+    return None
+
 def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
     """seat-exec.json recipes must not drift from the registry: every recipe keys a known
     provider; the never_metered_host marker matches providers.json `billing` (the secrets/PII
-    executor guard, as data); and `bin` matches `kind` (CLI seats have a bin, app/api/local
-    seats do not). Consumed by bin/run-brief.py."""
+    executor guard, as data); `bin` matches `kind` (CLI seats have a bin, app/api/local
+    seats do not); and a route on a wrapper-managed host (seat-exec `wrappers`) must render
+    that wrapper's argv with the route's exact invocation_id — the direct `claude` CLI is
+    auth_blocked and fails closed on an absent/unresolved/non-live route. Consumed by
+    bin/run-brief.py."""
     if not seat_exec:
         return
     registry = registry if isinstance(registry, dict) else (load_json("model-registry.json") or {})
@@ -608,6 +704,12 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
         err("seat-exec.json: no recipes defined")
         return
     valid_reads = {"brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"}
+    routes = (registry or {}).get("routes") or {}
+    wrappers = seat_exec.get("wrappers") or {}
+    for host, spec in wrappers.items():
+        bad = wrapper_spec_error(host, spec)
+        if bad:
+            err(bad)
     for pid, r in recipes.items():
         if pid not in provider_ids:
             err(f"seat-exec recipe {pid!r}: not a known provider (config/providers.json)")
@@ -661,6 +763,11 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                     f"approved argv {approved_args!r}; got {args!r}. Unknown, duplicate, "
                     "positional, reordered, and permission-bypassing flags are forbidden"
                 )
+        route_id = p.get("route")
+        route = routes.get(route_id) if route_id else None
+        mismatch = wrapped_recipe_error(pid, r, route, wrappers)
+        if mismatch:
+            err(mismatch)
         flag = r.get("separate_invocation_when_dispatcher")
         if flag is not None and flag is not True and flag is not False:
             err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")

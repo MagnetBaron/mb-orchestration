@@ -506,6 +506,18 @@
       "required": ["schema_version", "recipes"],
       "properties": {
         "schema_version": { "const": 1 },
+        "wrappers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["bin", "prefix", "model_flag"],
+            "properties": {
+              "bin": { "type": "string", "minLength": 1 },
+              "prefix": { "type": "array", "items": { "type": "string" } },
+              "model_flag": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "recipes": {
           "type": "object", "minProperties": 1,
           "additionalProperties": {
