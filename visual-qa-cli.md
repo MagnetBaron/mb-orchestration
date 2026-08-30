@@ -4,6 +4,10 @@ Review D is now a named Grok CLI agent, not a Slack event routine. The stable pr
 `grok-bot-review-d` for compatibility, but the executable identity is `mb-review-d` and the exact
 model is `grok-4.6`. There is no `grok bot`, `grokbot`, or routine-management CLI command.
 
+The packet steps below define the future normal-execution contract. Today the code-owned pixel-input
+binding is absent, so normal execution parks before reading a packet. Only packet rendering and the
+transport-only `--smoke` path are active.
+
 ## Delivery path
 
 1. Render a prompt-file packet from `config/connectors.json`:
@@ -86,10 +90,11 @@ requires a byte-exact match. Arbitrary prompt prose is rejected.
 - Visual QA complete: an observed browser/pixel source captured the requested widths and the role
   returned evidence. A CLI smoke is never a pixel verdict.
 
-The current reference configuration intentionally parks Review D because the installed Grok CLI
-has no observed browser/screenshot integration. Do not promote it from `unwired` until a
-credential-free browser/pixel source is configured, observed callable, and role-tested at 390 and
-1280. WebFetch or HTML alone does not prove visual rendering.
+The current reference configuration intentionally parks Review D because it has no code-owned
+pixel-input binding and the installed Grok CLI has no observed browser/screenshot integration. Do
+not promote it from `unwired` until the binding authorizes a credential-free browser/pixel source
+and that source is configured, observed callable, and role-tested at 390 and 1280. WebFetch or HTML
+alone does not prove visual rendering.
 
 ## Fail-closed rules
 

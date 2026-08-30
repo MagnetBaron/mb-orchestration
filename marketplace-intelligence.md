@@ -5,9 +5,9 @@ operator. It analyzes approved deposited snapshots/exports and positively author
 The stable provider id remains `grok-bot-marketplace-intelligence`; the executable model is exactly
 `grok-4.6`.
 
-The route is `unwired` until the generated profile is installed and a recorded one-time role test
-passes. No Slack routine or Grok Bot app creation is required. CLI/profile presence alone grants no
-marketplace permission.
+The route is `unwired`, and normal execution is hard-parked until a code-owned approved-deposit
+manifest boundary exists. No Slack routine or Grok Bot app creation is required. CLI/profile
+presence alone grants no marketplace permission or transfer authorization.
 
 ## Source boundary
 
@@ -49,16 +49,15 @@ defined and comparable.
 
 ## Launch contract
 
-Place approved evidence in a regular non-symlink file. The prompt must declare `role:
-marketplace-intelligence`, `source: owner-deposited` or `authorized-api-output`, an ordinary
-`artifact-class` such as `public-docs` or `synthetic-eval`, `evidence-path`, and its exact
-`evidence-sha256`. Restricted or unknown artifact classes park. The launcher recomputes that digest and also requires a fresh
-`deposited-evidence` runtime attestation before launch. Then inspect:
+There is currently no supported normal-execution command. A prompt-declared `source`,
+`artifact-class`, path, or digest cannot prove that the referenced bytes are ordinary or approved;
+hashing proves identity, not transfer authority. The launcher therefore parks before reading the
+prompt or its declared evidence.
 
-```sh
-python3 bin/grok-agent.py --seat grok-bot-marketplace-intelligence \
-  --prompt-file /safe/path/marketplace.md --cwd /path/to/repo --json
-```
+Promotion requires a separate code-owned deposit/manifest boundary that authenticates the
+depositor and classifies the artifact under `config/handoff-policy.json` before opening any payload,
+then binds the authorized artifact to immutable provenance and a digest. Restricted, unknown,
+self-declared, swapped, or unmanifested inputs must remain unread and unstaged.
 
 After profile sync, a safe transport smoke is:
 
@@ -67,8 +66,9 @@ python3 bin/grok-agent.py --seat grok-bot-marketplace-intelligence --smoke --exe
 ```
 
 The smoke proves agent/model selection only. Promote `grok-cli-marketplace-intelligence` to
-`live_verified` and set `wired:true` only after a role test on synthetic or approved deposited
-evidence returns a provenance-complete, correctly separated report.
+`live_verified` and set `wired:true` only after the code-owned deposit boundary exists and a role
+test on manifest-authorized synthetic evidence returns a provenance-complete, correctly separated
+report.
 
 Never browse/scrape eBay or Reverb without recorded express platform permission; never list, bid,
 buy, message, publish, authenticate, administer, implement, or issue a review verdict.

@@ -1476,10 +1476,10 @@
         "date": "2026-08-30",
         "route_state": "unwired",
         "kind": "direct_invocation",
-        "source": "grok 1.0.13 accepted --agent /Users/constantinegreanias/.grok/agents/mb-review-d.md with exact model grok-4.6 and returned cli-agent-path-ok; no browser or pixel integration was observed",
+        "source": "grok 1.0.13 accepted --agent /Users/constantinegreanias/.grok/agents/mb-review-d.md with exact model grok-4.6 and returned cli-agent-path-ok; transport-only evidence does not supply a code-owned pixel-input binding or observed browser/pixel integration",
         "signal": "direct_invocation"
       }],
-      "notes": "CLI transport smoke passed, but visual QA remains unwired until browser and pixel capture are observed and role-tested. Slack evidence does not promote this route."
+      "notes": "CLI transport smoke passed, but visual QA remains hard-parked until a code-owned pixel-input binding exists and browser/pixel capture is observed and role-tested. Slack evidence does not promote this route."
     },
     "grok-cli-heat-map": {
       "model": "grok-4.6",
@@ -1497,9 +1497,9 @@
         "date": "2026-08-30",
         "route_state": "unwired",
         "kind": "none",
-        "source": "named CLI profile is defined but no signed-in Clarity or browser integration is observed"
+        "source": "named CLI profile is defined but no code-owned Clarity input binding or signed-in Clarity/browser integration is observed"
       }],
-      "notes": "Direct CLI transport only; remains parked until signed-in Clarity/browser access is observed and role-tested."
+      "notes": "Direct CLI transport only; remains hard-parked until a code-owned Clarity input binding exists and signed-in Clarity/browser access is observed and role-tested."
     },
     "grok-cli-marketplace-intelligence": {
       "model": "grok-4.6",
@@ -1517,9 +1517,9 @@
         "date": "2026-08-30",
         "route_state": "unwired",
         "kind": "none",
-        "source": "profile generation is defined; installed profile and one-time role test are required before promotion"
+        "source": "code-owned authorized-deposit manifest, installed profile, and one-time role test are all required before promotion"
       }],
-      "notes": "May analyze only deposited approved evidence after profile sync and role smoke; never browse marketplaces without recorded platform permission."
+      "notes": "Normal execution is hard-parked before prompt/evidence reads until a code-owned authorized-deposit manifest exists; profile sync and role smoke remain additional prerequisites. Never browse marketplaces without recorded platform permission."
     },
     "review-e-fireworks": {
       "model": "open-weight-review-e",
@@ -2409,7 +2409,7 @@
           "rank": 1,
           "route": "grok-cli-review-d",
           "confidence": "low",
-          "rationale": "Named CLI role is the intended transport but lacks observed browser and pixel capability.",
+          "rationale": "Named CLI role is the intended transport but lacks a code-owned pixel-input binding and observed browser/pixel capability.",
           "basis": "vendor_external_prior",
           "source": "https://docs.x.ai/developers/grok-4-6"
         }
@@ -2419,7 +2419,7 @@
           "priority": 1,
           "route": "grok-cli-review-d",
           "confidence": "low",
-          "rationale": "Unwired candidate only; routing must park until browser/pixel capability is observed and role-tested."
+          "rationale": "Unwired candidate only; routing must park until a code-owned pixel-input binding exists and browser/pixel capability is observed and role-tested."
         }
       ]
     },
@@ -2429,7 +2429,7 @@
           "rank": 1,
           "route": "grok-cli-marketplace-intelligence",
           "confidence": "low",
-          "rationale": "Narrow read-only CLI definition with source-specific evidence controls; profile sync and role evaluation remain required.",
+          "rationale": "Hard-parked read-only CLI candidate; code-owned authorized-deposit manifest, profile sync, and role evaluation remain required.",
           "basis": "vendor_external_prior",
           "source": "https://docs.x.ai/developers/grok-4-6"
         }
@@ -2439,7 +2439,7 @@
           "priority": 1,
           "route": "grok-cli-marketplace-intelligence",
           "confidence": "low",
-          "rationale": "Unwired candidate only. Resolution must park until profile sync and a recorded one-time test promote the route to live_verified."
+          "rationale": "Unwired candidate only. Resolution must park until a code-owned authorized-deposit manifest, profile sync, and a recorded role test permit promotion to live_verified."
         }
       ]
     },

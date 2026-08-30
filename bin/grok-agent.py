@@ -18,11 +18,13 @@ import os
 import platform
 import re
 import secrets
+import selectors
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,6 +32,7 @@ import mborch  # noqa: E402
 import integrations  # noqa: E402
 import connectors as connector_packets  # noqa: E402
 import handoff_policy  # noqa: E402
+from grok_role_bindings import EXECUTION_INPUT_BINDINGS  # noqa: E402
 
 _SYNC_SPEC = importlib.util.spec_from_file_location(
     "grok_agent_sync_profiles", Path(__file__).resolve().parent / "sync-grok-agents.py"
@@ -53,15 +56,6 @@ REQUIRED_CAPABILITIES = {
     "grok-bot-heat-map": ("browser", "clarity-auth"),
     "grok-bot-marketplace-intelligence": ("deposited-evidence",),
 }
-# Only marketplace evidence currently has a concrete, code-owned path into the
-# isolated CLI process. Browser/pixel and signed-in Clarity sources are not
-# injected by this launcher, so registry/inventory attestations alone must never
-# promote those role executions. Their transport-only smoke remains available.
-EXECUTION_INPUT_BINDINGS = {
-    "grok-bot-review-d": None,
-    "grok-bot-heat-map": None,
-    "grok-bot-marketplace-intelligence": "hash-bound-deposited-evidence",
-}
 SEATS = tuple(AGENTS)
 SANDBOX_PROFILE_PREFIX = "mb-standing-"
 SANDBOX_PROFILE_RE = re.compile(r"^mb-standing-[0-9a-f]{32}$")
@@ -81,6 +75,13 @@ SMOKE_TIMEOUT_SEC = 90
 EXECUTE_TIMEOUT_SEC = 300
 VERSION_TIMEOUT_SEC = 10
 INSPECT_TIMEOUT_SEC = 10
+# Provider output remains private until all postconditions pass. Keep the
+# buffered pre-verdict surface small and deterministic while stdout/stderr are
+# drained concurrently to avoid pipe deadlocks.
+MAX_PROVIDER_STREAM_BYTES = 1024 * 1024
+MAX_PROVIDER_COMBINED_BYTES = 2 * 1024 * 1024
+PROVIDER_OUTPUT_CHUNK_BYTES = 64 * 1024
+PROVIDER_TERMINATE_GRACE_SEC = 0.5
 SUPPORTED_GROK_VERSION = "1.0.13"
 # An isolated GROK_HOME intentionally has no updater-channel metadata, so the
 # exact binary reports no trailing channel label. The code-owned SHA-256 below
@@ -700,23 +701,105 @@ def _effective_config_problem(binary: str, staging: Path, env: dict[str, str]) -
 
 def _run_provider(cmd: list[str], *, executable: str, cwd: str, timeout: int, kind: str,
                   capture_output: bool, env: dict[str, str]) -> subprocess.CompletedProcess[str] | int:
+    if not capture_output:
+        print(f"PARK: Grok CLI {kind} requires bounded captured output", file=sys.stderr)
+        return 2
+    process = None
+    selector = None
+
+    def stop_child() -> None:
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=PROVIDER_TERMINATE_GRACE_SEC)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
     try:
-        return subprocess.run(
+        process = subprocess.Popen(
             cmd,
             executable=executable,
             cwd=cwd,
-            check=False,
-            text=True,
-            capture_output=capture_output,
-            timeout=timeout,
+            text=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
         )
-    except subprocess.TimeoutExpired:
-        print(_provider_timeout_message(kind, timeout), file=sys.stderr)
-        return 2
+        if process.stdout is None or process.stderr is None:
+            stop_child()
+            print(f"PARK: Grok CLI {kind} did not expose bounded output pipes", file=sys.stderr)
+            return 2
+        selector = selectors.DefaultSelector()
+        buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        for name, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, data=name)
+        deadline = time.monotonic() + timeout
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                stop_child()
+                print(_provider_timeout_message(kind, timeout), file=sys.stderr)
+                return 2
+            for key, _events in selector.select(remaining):
+                try:
+                    chunk = os.read(key.fileobj.fileno(), PROVIDER_OUTPUT_CHUNK_BYTES)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                    continue
+                stream_name = key.data
+                stream_total = len(buffers[stream_name]) + len(chunk)
+                combined_total = sum(len(value) for value in buffers.values()) + len(chunk)
+                if (
+                    stream_total > MAX_PROVIDER_STREAM_BYTES
+                    or combined_total > MAX_PROVIDER_COMBINED_BYTES
+                ):
+                    stop_child()
+                    print(
+                        f"PARK: Grok CLI {kind} exceeded the bounded output limit; "
+                        "buffered provider output was not released",
+                        file=sys.stderr,
+                    )
+                    return 2
+                buffers[stream_name].extend(chunk)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            stop_child()
+            print(_provider_timeout_message(kind, timeout), file=sys.stderr)
+            return 2
+        try:
+            returncode = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            stop_child()
+            print(_provider_timeout_message(kind, timeout), file=sys.stderr)
+            return 2
+        try:
+            stdout = bytes(buffers["stdout"]).decode("utf-8")
+            stderr = bytes(buffers["stderr"]).decode("utf-8")
+        except UnicodeError:
+            print(
+                f"PARK: Grok CLI {kind} returned non-UTF-8 output; buffered output was not released",
+                file=sys.stderr,
+            )
+            return 2
+        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
     except OSError as exc:
+        stop_child()
         print(f"PARK: Grok CLI {kind} could not start: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if selector is not None:
+            selector.close()
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+            stop_child()
 
 
 def _sandbox_apply_problem(stdout: str, stderr: str, sandbox_profile: str) -> str | None:
@@ -1193,30 +1276,31 @@ def prepare_launch_plan(
                 "code-owned role input transport is not implemented for this CLI seat; "
                 "registry or inventory attestations cannot promote it"
             )
-        registry_errors = model_registry.validate(registry, providers=ctx.providers_data)
-        if registry_errors:
-            problems.append("model registry is invalid: " + "; ".join(registry_errors))
-        if provider.get("kind") != "cli":
-            problems.append("provider is not a CLI seat")
-        if provider.get("model") != "grok-4.6" or route.get("model") != "grok-4.6":
-            problems.append("provider and route must pin exact model grok-4.6")
-        if route.get("host") != "grok-cli" or route.get("harness") != "grok":
-            problems.append("provider route is not the Grok CLI harness")
-        if not provider.get("wired"):
-            problems.append("provider wired is not true")
-        if route.get("route_state") != "live_verified":
-            problems.append(f"route {route_id!r} is not live_verified")
-        prompt_bytes, prompt_problem = _prompt_snapshot(seat, prompt_file, cwd)
-        if prompt_problem:
-            problems.append(prompt_problem)
-        for capability in REQUIRED_CAPABILITIES[seat]:
-            ok, reason = integrations.effective(
-                "grok", "capability", capability, require_callable=True
-            )
-            if not ok:
-                problems.append(
-                    f"required runtime capability {capability!r} is unavailable: {reason}"
+        else:
+            registry_errors = model_registry.validate(registry, providers=ctx.providers_data)
+            if registry_errors:
+                problems.append("model registry is invalid: " + "; ".join(registry_errors))
+            if provider.get("kind") != "cli":
+                problems.append("provider is not a CLI seat")
+            if provider.get("model") != "grok-4.6" or route.get("model") != "grok-4.6":
+                problems.append("provider and route must pin exact model grok-4.6")
+            if route.get("host") != "grok-cli" or route.get("harness") != "grok":
+                problems.append("provider route is not the Grok CLI harness")
+            if not provider.get("wired"):
+                problems.append("provider wired is not true")
+            if route.get("route_state") != "live_verified":
+                problems.append(f"route {route_id!r} is not live_verified")
+            prompt_bytes, prompt_problem = _prompt_snapshot(seat, prompt_file, cwd)
+            if prompt_problem:
+                problems.append(prompt_problem)
+            for capability in REQUIRED_CAPABILITIES[seat]:
+                ok, reason = integrations.effective(
+                    "grok", "capability", capability, require_callable=True
                 )
+                if not ok:
+                    problems.append(
+                        f"required runtime capability {capability!r} is unavailable: {reason}"
+                    )
 
     if agent != AGENTS[seat]:
         problems.append(f"recipe required_agent must be exact {AGENTS[seat]!r}")
@@ -1394,10 +1478,6 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
             if auth_problem:
                 print(f"PARK: {auth_problem}", file=sys.stderr)
             return completed
-        if completed.stdout:
-            print(completed.stdout, end="")
-        if completed.stderr:
-            print(completed.stderr, end="", file=sys.stderr)
         auth_problem = _staged_auth_problem(private_runtime, plan.auth_bytes)
         if auth_problem:
             print(f"PARK: {auth_problem}", file=sys.stderr)
@@ -1413,8 +1493,18 @@ def _run_validated_plan(plan: LaunchPlan, *, cwd: Path, prompt_file: Path | None
             if completed.returncode != 0 or last_line != ["cli-agent-path-ok"]:
                 print("PARK: Grok CLI smoke did not return exact cli-agent-path-ok", file=sys.stderr)
                 return 2
-            return 0
-        return completed.returncode
+        elif completed.returncode != 0:
+            print(
+                f"PARK: Grok CLI execute exited with status {completed.returncode}; "
+                "buffered provider output was not released",
+                file=sys.stderr,
+            )
+            return 2
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=sys.stderr)
+        return 0
 
 
 def main(argv=None) -> int:

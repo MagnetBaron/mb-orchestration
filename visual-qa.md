@@ -1,16 +1,17 @@
 # Review D — Website Visual QA
 
 Review D uses the named Grok CLI agent `mb-review-d` with exact selectable model `grok-4.6`.
-Dispatch passes a config-rendered prompt file directly to the CLI; no Slack channel, event trigger,
-cloud Bot routine, or invented `grok bot` command is part of the active path. See
-[visual-qa-cli.md](./visual-qa-cli.md).
+The config renderer can prepare the future prompt packet, but Dispatch must not pass that packet to
+the CLI yet: normal execution hard-parks before reading prompt data until a code-owned pixel-input
+binding exists. The transport-only smoke is the active CLI path; no Slack channel, event trigger,
+cloud Bot routine, or invented `grok bot` command is a fallback. See [visual-qa-cli.md](./visual-qa-cli.md).
 
 The reference route is currently `unwired`: the CLI/profile smoke is not a browser or screenshot
-proof. Until a credential-free browser/pixel source is observed and role-tested, Review D parks and
-cannot issue `ship` or `fix-list` from HTML/WebFetch alone.
-The launcher also has no code-owned pixel-input binding yet, so changing registry or inventory
-attestations cannot make normal Review D execution ready. That requires a separate implementation
-that injects hash-bound screenshots/browser observations into the isolated process.
+proof. Until a code-owned binding supplies credential-free browser/pixel input and that source is
+observed and role-tested, Review D parks and cannot issue `ship` or `fix-list` from HTML/WebFetch
+alone. Registry or inventory attestations cannot bypass the missing binding; readiness requires a
+separate implementation that injects hash-bound screenshots/browser observations into the isolated
+process.
 
 ## Allowlist and packet rendering
 
@@ -18,7 +19,8 @@ that injects hash-bound screenshots/browser observations into the isolated proce
 
 ```sh
 python3 bin/connectors.py --render visual-qa-allowlist
-python3 bin/connectors.py --render visual-qa-ticket gadget-duke
+python3 bin/connectors.py --render visual-qa-ticket gadget-duke \
+  --changed-path templates/index.liquid --page home
 python3 bin/connectors.py --render visual-qa-live-ticket magnet-baron
 python3 bin/connectors.py --render visual-qa-live-ticket gadget-duke
 ```

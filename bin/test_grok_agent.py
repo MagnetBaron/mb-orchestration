@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import copy
+import contextlib
 import importlib.util
 import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,6 +20,11 @@ HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("grok_agent_test_target", HERE / "grok-agent.py")
 target = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(target)
+route_spec = importlib.util.spec_from_file_location(
+    "grok_agent_route_test_target", HERE / "resolve-route.py"
+)
+route_target = importlib.util.module_from_spec(route_spec)
+route_spec.loader.exec_module(route_target)
 REAL_GROK_VERSION_SNAPSHOT = target._grok_version_snapshot
 REAL_BINARY_SNAPSHOT = target._binary_snapshot
 REAL_BINARY_RECHECK_PROBLEM = target._binary_recheck_problem
@@ -223,7 +231,7 @@ class GrokAgentTests(unittest.TestCase):
                 target.mborch, "load_config", side_effect=lambda n, **_: configs[n]
             ), mock.patch.object(target.shutil, "which") as which, mock.patch.object(
                 target, "_binary_snapshot"
-            ) as snapshot, mock.patch.object(target.subprocess, "run") as run:
+            ) as snapshot, mock.patch.object(target, "_run_provider") as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -341,7 +349,10 @@ class GrokAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             prompt = Path(td) / "brief.md"
             prompt.write_text("safe fixture")
-            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"):
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.dict(
+                     target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}
+                 ):
                 result = target.inspect(
                     "grok-bot-review-d", HERE.parent, prompt, Path(td) / "agents"
                 )
@@ -388,6 +399,9 @@ class GrokAgentTests(unittest.TestCase):
             }
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.dict(
+                     target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}
+                 ), \
                  mock.patch.object(target.integrations, "effective", return_value=(False, "not fresh")):
                 result = target.inspect("grok-bot-review-d", root, prompt, agents)
         self.assertFalse(result["ready"])
@@ -401,7 +415,7 @@ class GrokAgentTests(unittest.TestCase):
             agents.mkdir(parents=True)
             (agents / "mb-review-d.md").write_text("---\nname: wrong-agent\n---\n")
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run") as run:
+                 mock.patch.object(target, "_run_provider") as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents), "--cwd", str(HERE.parent),
@@ -423,7 +437,7 @@ class GrokAgentTests(unittest.TestCase):
             profile.write_text(target.sync_profiles.expected()[profile.name])
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run") as run:
+                 mock.patch.object(target, "_run_provider") as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -439,7 +453,7 @@ class GrokAgentTests(unittest.TestCase):
             binary_identity=TEST_BINARY_IDENTITY,
             argv=["grok"], sandbox_profile="mb-standing-" + ("a" * 32),
             ready=False, problems=("parked",),
-        )), mock.patch.object(target.subprocess, "run") as run:
+        )), mock.patch.object(target, "_run_provider") as run:
             rc = target.main([
                 "--seat", "grok-bot-review-d", "--execute",
                 "--prompt-file", str(HERE / "test_grok_agent.py"),
@@ -455,7 +469,7 @@ class GrokAgentTests(unittest.TestCase):
             profile.write_text(target.sync_profiles.expected()[profile.name])
             good = subprocess.CompletedProcess([], 0, stdout="cli-agent-path-ok\n", stderr="")
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run", return_value=good) as run:
+                 mock.patch.object(target, "_run_provider", return_value=good) as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents), "--cwd", str(HERE.parent),
@@ -485,16 +499,126 @@ class GrokAgentTests(unittest.TestCase):
 
             bad = subprocess.CompletedProcess([], 0, stdout="almost-ok\n", stderr="")
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run", return_value=bad):
+                 mock.patch.object(target, "_run_provider", return_value=bad):
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
                 ])
             self.assertEqual(rc, 2)
 
+    def test_provider_output_is_withheld_until_auth_and_sandbox_postconditions_pass(self):
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            completed = subprocess.CompletedProcess(
+                [], 0, stdout="ship\n", stderr="provider-detail\n"
+            )
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target, "_run_provider", return_value=completed), \
+                 mock.patch.object(
+                     target, "_staged_auth_problem", side_effect=[None, "auth changed"]
+                 ), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents),
+                ])
+            self.assertEqual(rc, 2)
+            self.assertNotIn("ship", stdout.getvalue() + stderr.getvalue())
+            self.assertNotIn("provider-detail", stdout.getvalue() + stderr.getvalue())
+            self.assertIn("auth changed", stderr.getvalue())
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target, "_run_provider", return_value=completed), \
+                 mock.patch.object(target, "_sandbox_apply_problem", return_value="sandbox failed"), \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents),
+                ])
+            self.assertEqual(rc, 2)
+            self.assertNotIn("ship", stdout.getvalue() + stderr.getvalue())
+            self.assertNotIn("provider-detail", stdout.getvalue() + stderr.getvalue())
+            self.assertIn("sandbox failed", stderr.getvalue())
+
+    def test_bounded_provider_runner_parks_and_terminates_on_output_limits(self):
+        cases = (
+            (
+                "per-stream",
+                "import os; os.write(1, b'a' * 101)",
+                100,
+                1000,
+            ),
+            (
+                "combined",
+                "import os; os.write(1, b'a' * 60); os.write(2, b'b' * 60)",
+                100,
+                100,
+            ),
+        )
+        with tempfile.TemporaryDirectory() as td:
+            for name, script, stream_limit, combined_limit in cases:
+                with self.subTest(name=name), mock.patch.object(
+                    target, "MAX_PROVIDER_STREAM_BYTES", stream_limit
+                ), mock.patch.object(
+                    target, "MAX_PROVIDER_COMBINED_BYTES", combined_limit
+                ):
+                    stderr = io.StringIO()
+                    with contextlib.redirect_stderr(stderr):
+                        result = target._run_provider(
+                            [sys.executable, "-c", script],
+                            executable=sys.executable,
+                            cwd=td,
+                            timeout=5,
+                            kind="smoke",
+                            capture_output=True,
+                            env=dict(os.environ),
+                        )
+                    self.assertEqual(result, 2)
+                    self.assertIn("exceeded the bounded output limit", stderr.getvalue())
+                    self.assertNotIn("a" * 20, stderr.getvalue())
+                    self.assertNotIn("b" * 20, stderr.getvalue())
+
+    def test_bounded_provider_runner_returns_small_utf8_and_kills_on_timeout(self):
+        with tempfile.TemporaryDirectory() as td:
+            completed = target._run_provider(
+                [sys.executable, "-c", "import os; os.write(1, b'ok\\n')"],
+                executable=sys.executable,
+                cwd=td,
+                timeout=5,
+                kind="smoke",
+                capture_output=True,
+                env=dict(os.environ),
+            )
+            self.assertIsInstance(completed, subprocess.CompletedProcess)
+            self.assertEqual(completed.returncode, 0)
+            self.assertEqual(completed.stdout, "ok\n")
+
+            stderr = io.StringIO()
+            started = time.monotonic()
+            with contextlib.redirect_stderr(stderr):
+                timed_out = target._run_provider(
+                    [sys.executable, "-c", "import time; time.sleep(5)"],
+                    executable=sys.executable,
+                    cwd=td,
+                    timeout=0.1,
+                    kind="smoke",
+                    capture_output=True,
+                    env=dict(os.environ),
+                )
+            self.assertEqual(timed_out, 2)
+            self.assertLess(time.monotonic() - started, 2)
+            self.assertIn("timed out", stderr.getvalue())
+
     def test_missing_smoke_recipe_parks_without_subprocess(self):
         with mock.patch.object(target.mborch, "load_config", return_value={"recipes": {}}), \
-             mock.patch.object(target.subprocess, "run") as run:
+             mock.patch.object(target, "_run_provider") as run:
             rc = target.main(["--seat", "grok-bot-review-d", "--smoke", "--execute"])
         self.assertEqual(rc, 2)
         run.assert_not_called()
@@ -545,6 +669,22 @@ class GrokAgentTests(unittest.TestCase):
         self.assertFalse(decision["routing_satisfied"])
         self.assertTrue(any(step.get("input_seat") for step in decision["implement"]))
 
+    def test_route_cannot_promote_review_d_without_shared_code_owned_pixel_input(self):
+        providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        registry = json.loads((HERE.parent / "config" / "model-registry.json").read_text())
+        providers["providers"]["grok-bot-review-d"]["wired"] = True
+        registry["routes"]["grok-cli-review-d"]["route_state"] = "live_verified"
+        with mock.patch.object(
+            route_target.modelreg, "provider_route_is_live", return_value=True
+        ), mock.patch.object(
+            route_target.integrations, "effective", return_value=(True, "observed")
+        ):
+            step = route_target.review_d_input_step(providers, registry)
+        self.assertIs(target.EXECUTION_INPUT_BINDINGS, route_target.EXECUTION_INPUT_BINDINGS)
+        self.assertFalse(step["available"])
+        self.assertIsNone(step["execution_input_binding"])
+        self.assertIn("code-owned pixel input transport is not implemented", step["why"])
+
     def test_launcher_rejects_mutable_capability_weakening(self):
         configs = {
             name: json.loads((HERE.parent / "config" / name).read_text())
@@ -566,6 +706,9 @@ class GrokAgentTests(unittest.TestCase):
             profile.write_text(target.sync_profiles.expected()[profile.name])
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.dict(
+                     target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}
+                 ), \
                  mock.patch.object(target.integrations, "effective", return_value=(True, "observed")) as effective:
                 result = target.inspect("grok-bot-review-d", root, prompt, agents)
         self.assertFalse(result["ready"])
@@ -583,6 +726,9 @@ class GrokAgentTests(unittest.TestCase):
         configs["model-registry.json"]["routes"]["grok-cli-review-d"]["route_state"] = "live_verified"
         with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
              mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+             mock.patch.dict(
+                 target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}
+             ), \
              mock.patch.object(target, "_profile_problem", return_value=None), \
              mock.patch.object(target, "_prompt_problem", return_value=None), \
              mock.patch.object(target.integrations, "effective", return_value=(True, "observed")):
@@ -620,6 +766,33 @@ class GrokAgentTests(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertIsNone(result["execution_input_binding"])
         self.assertTrue(any("input transport is not implemented" in x for x in result["problems"]))
+
+    def test_hard_parked_marketplace_does_not_read_prompt_or_declared_evidence(self):
+        configs = {
+            name: json.loads((HERE.parent / "config" / name).read_text())
+            for name in (
+                "providers.json", "seat-exec.json", "model-registry.json", "connectors.json"
+            )
+        }
+        seat = "grok-bot-marketplace-intelligence"
+        configs["providers.json"]["providers"][seat]["wired"] = True
+        configs["model-registry.json"]["routes"][
+            "grok-cli-marketplace-intelligence"
+        ]["route_state"] = "live_verified"
+        with mock.patch.object(
+            target.mborch, "load_config", side_effect=lambda name, **_: configs[name]
+        ), mock.patch.object(target, "_prompt_snapshot") as prompt_snapshot, \
+             mock.patch.object(target.integrations, "effective") as effective:
+            result = target.inspect(
+                seat, HERE.parent, Path("/untrusted/prompt-declaring-credentials.md"),
+                HERE.parent / "generated",
+            )
+        self.assertFalse(result["ready"])
+        self.assertIsNone(result["execution_input_binding"])
+        self.assertTrue(any("input transport is not implemented" in x for x in result["problems"]))
+        prompt_snapshot.assert_not_called()
+        effective.assert_not_called()
+        self.assertTrue(all(binding is None for binding in target.EXECUTION_INPUT_BINDINGS.values()))
 
     def test_preview_packet_with_real_path_is_accepted_and_arbitrary_text_is_not(self):
         with tempfile.TemporaryDirectory() as td:
@@ -669,7 +842,7 @@ class GrokAgentTests(unittest.TestCase):
                  mock.patch.object(target.model_registry, "validate", return_value=[]), \
                  mock.patch.object(target.integrations, "effective", return_value=(True, "observed")), \
                  mock.patch.dict(target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}), \
-                 mock.patch.object(target.subprocess, "run", side_effect=fake_run):
+                 mock.patch.object(target, "_run_provider", side_effect=fake_run):
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--execute",
                     "--prompt-file", str(source_prompt),
@@ -732,7 +905,11 @@ class GrokAgentTests(unittest.TestCase):
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.model_registry, "validate", return_value=[]), \
                  mock.patch.object(target.integrations, "effective", return_value=(True, "observed")), \
-                 mock.patch.object(target.subprocess, "run", side_effect=fake_run):
+                 mock.patch.dict(
+                     target.EXECUTION_INPUT_BINDINGS,
+                     {"grok-bot-marketplace-intelligence": "test-deposit-manifest"},
+                 ), \
+                 mock.patch.object(target, "_run_provider", side_effect=fake_run):
                 rc = target.main([
                     "--seat", "grok-bot-marketplace-intelligence", "--execute",
                     "--prompt-file", str(source_prompt),
@@ -820,7 +997,7 @@ class GrokAgentTests(unittest.TestCase):
             profile.write_text(target.sync_profiles.expected()[profile.name])
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run") as run:
+                 mock.patch.object(target, "_run_provider") as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -898,7 +1075,7 @@ class GrokAgentTests(unittest.TestCase):
                 ),
             )
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run", return_value=failed) as run:
+                 mock.patch.object(target, "_run_provider", return_value=failed) as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -914,11 +1091,8 @@ class GrokAgentTests(unittest.TestCase):
             profile = agents / "mb-review-d.md"
             profile.write_text(target.sync_profiles.expected()[profile.name])
 
-            def boom(*_args, **kwargs):
-                raise subprocess.TimeoutExpired(cmd=["grok"], timeout=kwargs.get("timeout"))
-
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
-                 mock.patch.object(target.subprocess, "run", side_effect=boom) as run:
+                 mock.patch.object(target, "_run_provider", return_value=2) as run:
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -955,7 +1129,11 @@ class GrokAgentTests(unittest.TestCase):
             with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
                  mock.patch.object(target.model_registry, "validate", return_value=[]), \
                  mock.patch.object(target.integrations, "effective", return_value=(True, "observed")), \
-                 mock.patch.object(target.subprocess, "run") as run:
+                 mock.patch.dict(
+                     target.EXECUTION_INPUT_BINDINGS,
+                     {"grok-bot-marketplace-intelligence": "test-deposit-manifest"},
+                 ), \
+                 mock.patch.object(target, "_run_provider") as run:
                 rc = target.main([
                     "--seat", "grok-bot-marketplace-intelligence", "--execute",
                     "--prompt-file", str(source_prompt),
@@ -984,7 +1162,7 @@ class GrokAgentTests(unittest.TestCase):
 
             with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
                  mock.patch.dict(os.environ, {"HOME": "/Users/fixture-home", "XAI_API_KEY": "secret"}, clear=False), \
-                 mock.patch.object(target.subprocess, "run", side_effect=fake_run):
+                 mock.patch.object(target, "_run_provider", side_effect=fake_run):
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--smoke", "--execute",
                     "--agent-dir", str(agents),
@@ -1061,7 +1239,7 @@ class GrokAgentTests(unittest.TestCase):
                  mock.patch.object(target.model_registry, "validate", return_value=[]), \
                  mock.patch.object(target.integrations, "effective", return_value=(True, "observed")), \
                  mock.patch.dict(target.EXECUTION_INPUT_BINDINGS, {"grok-bot-review-d": "test-pixels"}), \
-                 mock.patch.object(target.subprocess, "run", side_effect=fake_run):
+                 mock.patch.object(target, "_run_provider", side_effect=fake_run):
                 rc = target.main([
                     "--seat", "grok-bot-review-d", "--execute",
                     "--prompt-file", str(source_prompt),

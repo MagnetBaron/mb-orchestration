@@ -222,7 +222,8 @@ class ArtifactTests(unittest.TestCase):
             )
             text = outputs[path]
             self.assertIn("Read-only: yes", text)
-            self.assertIn("owner-supplied marketplace", text)
+            self.assertIn("code-owned authorized-deposit manifest", text)
+            self.assertIn("normal execution is parked", text)
             self.assertNotIn("tools: Read, Write", text)
         codex_path = next(p for p in outputs if p.name == "codex.toml")
         parsed = tomllib.loads(outputs[codex_path])
@@ -247,8 +248,9 @@ class ArtifactTests(unittest.TestCase):
         self.assertIn("approved deposited snapshots/exports", text)
         self.assertIn("Browser automation or scraping is never inferred", text)
         self.assertIn("route is `unwired`", text)
-        self.assertIn("CLI/profile presence alone grants no", text)
-        self.assertIn("marketplace permission", text)
+        self.assertIn("no supported normal-execution command", text)
+        self.assertIn("transfer authority", text)
+        self.assertIn("parks before reading", text)
         self.assertIn("Never browse/scrape eBay or Reverb", text)
 
     def test_seo_omits_codex_and_declares_named_mcp(self):

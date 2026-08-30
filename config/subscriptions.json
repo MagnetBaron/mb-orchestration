@@ -31,7 +31,7 @@
       ],
       "grants": {},
       "meter": "grok-heavy (weekly), see usage-windows.json",
-      "notes": "Abundant Grok CLI volume. Review D and Heat Map named-agent routes are parked until browser/Clarity capabilities are observed; Marketplace Intelligence remains unwired until profile sync and role test. Set the weekly anchor in usage-windows.json when known."
+      "notes": "Abundant Grok CLI volume. All three standing named-agent normal routes are hard-parked until their shared code-owned input bindings exist; observed browser/Clarity/deposit capability, profile sync, and role tests are additional gates. Transport-only smoke remains available. Set the weekly anchor in usage-windows.json when known."
     },
     "cursor-ultra": {
       "vendor": "Cursor",

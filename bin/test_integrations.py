@@ -13,6 +13,7 @@ import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -293,6 +294,37 @@ class IntegrationInventoryTests(unittest.TestCase):
         os.environ["MB_INTEGRATION_SESSION"] = json.dumps(self.session_document("codex", []))
         with self.assertRaisesRegex(integrations.InventoryError, "inline session JSON is forbidden"):
             integrations.load_session()
+
+    def test_session_file_rejects_symlink_fifo_and_concurrent_mutation(self):
+        path = Path(self.tmp.name) / "safe-session.json"
+        self.write_session(path, "codex", [record()])
+
+        symlink = Path(self.tmp.name) / "session-link.json"
+        symlink.symlink_to(path)
+        with self.assertRaisesRegex(integrations.InventoryError, "regular non-symlink"):
+            integrations.load_session(str(symlink))
+
+        fifo = Path(self.tmp.name) / "session.fifo"
+        os.mkfifo(fifo, 0o600)
+        with self.assertRaisesRegex(integrations.InventoryError, "regular non-symlink"):
+            integrations.load_session(str(fifo))
+
+        original_read = os.read
+        mutated = False
+
+        def mutate_during_read(fd, count):
+            nonlocal mutated
+            chunk = original_read(fd, count)
+            if not mutated:
+                mutated = True
+                path.write_bytes(path.read_bytes() + b" ")
+                path.chmod(0o600)
+            return chunk
+
+        self.write_session(path, "codex", [record()])
+        with mock.patch.object(integrations.os, "read", side_effect=mutate_during_read):
+            with self.assertRaisesRegex(integrations.InventoryError, "changed during"):
+                integrations.load_session(str(path))
 
     def test_manifest_denials_are_monotonic_over_positive_session_attestation(self):
         path = Path(self.tmp.name) / "positive-session.json"

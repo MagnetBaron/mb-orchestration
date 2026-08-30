@@ -64,26 +64,26 @@
       "label": "Grok CLI Agent — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "cli",
       "model": "grok-4.6", "functions": ["visual_qa"], "capabilities": ["visual_qa"],
       "prowess": { "visual_qa": 80 }, "billing": "included", "review_eligible": false,
-      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-review-d profile are required. Browser/pixel capability must be observed separately before this route can become live." },
+      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI/profile presence is transport-only. A shared code-owned pixel-input binding and observed browser/pixel capability are both required before promotion." },
       "route": "grok-cli-review-d",
-      "notes": "Direct named-agent CLI transport. Currently fail-closed because the installed CLI has no observed browser/pixel integration. Never Admin/publish/implement."
+      "notes": "Direct named-agent CLI transport. Normal execution is hard-parked because no code-owned pixel-input binding exists and no browser/pixel integration is observed. Never Admin/publish/implement."
     },
     "grok-bot-heat-map": {
       "label": "Grok CLI Agent — Heat Map (Clarity analytics)", "level": "terra", "family": "xai", "kind": "cli",
       "model": "grok-4.6", "functions": ["analytics"], "capabilities": ["analytics"],
       "prowess": { "analytics": 78 }, "billing": "included", "review_eligible": false,
-      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-heat-map profile are required. Signed-in Clarity/browser capability must be observed separately before this route can become live." },
+      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI/profile presence is transport-only. A shared code-owned Clarity input binding and observed signed-in Clarity/browser capability are both required before promotion." },
       "route": "grok-cli-heat-map",
-      "notes": "Direct named-agent CLI transport. Currently fail-closed because no signed-in Clarity/browser integration is observed. Feeds Dispatch; never a verdict."
+      "notes": "Direct named-agent CLI transport. Normal execution is hard-parked because no code-owned Clarity input binding exists and no signed-in Clarity/browser integration is observed. Feeds Dispatch; never a verdict."
     },
     "grok-bot-marketplace-intelligence": {
       "label": "Grok CLI Agent — Marketplace Intelligence", "level": "terra", "family": "xai", "kind": "cli",
       "model": "grok-4.6", "functions": ["marketplace_intelligence"], "capabilities": ["marketplace_intelligence"],
       "prowess": { "marketplace_intelligence": 70 }, "billing": "included", "review_eligible": false,
       "wired": false, "backed_by": "grok-heavy",
-      "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-marketplace-intelligence profile are required; the route remains unwired until a recorded one-time role test passes." },
+      "detect": { "method": "command", "cmd": "grok", "note": "CLI/profile presence is transport-only. A shared code-owned authorized-deposit manifest must exist before profile sync and a recorded role test can permit promotion." },
       "route": "grok-cli-marketplace-intelligence",
-      "notes": "Direct named-agent CLI analysis of owner-supplied marketplace snapshots and positively authorized API outputs. Unwired until the generated profile is installed and a recorded one-time role test passes. Never browse or scrape marketplace sites without recorded platform permission."
+      "notes": "Direct named-agent CLI analysis candidate. Normal execution is hard-parked before prompt/evidence reads until a code-owned authorized-deposit manifest authenticates and classifies the payload; then profile sync and a recorded role test are still required. Never browse or scrape marketplace sites without recorded platform permission."
     },
     "fable-5": {
       "label": "Fable 5 (architecture only — OUT of the gating order)", "level": "frontier", "family": "anthropic", "kind": "cli",

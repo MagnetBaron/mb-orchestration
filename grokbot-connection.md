@@ -6,9 +6,9 @@ installed Grok CLI and named profiles:
 
 | Provider id | CLI agent | Input | Current state |
 |---|---|---|---|
-| `grok-bot-review-d` | `mb-review-d` | validated preview/live packet | parked: browser/pixels absent |
-| `grok-bot-heat-map` | `mb-heat-map` | approved Clarity evidence | parked: signed-in Clarity/browser absent |
-| `grok-bot-marketplace-intelligence` | `mb-marketplace-intelligence` | approved deposited evidence | parked pending profile sync + role smoke |
+| `grok-bot-review-d` | `mb-review-d` | validated preview/live packet | parked: no code-owned pixel-input deposit |
+| `grok-bot-heat-map` | `mb-heat-map` | approved Clarity evidence | parked: no code-owned signed-in Clarity deposit |
+| `grok-bot-marketplace-intelligence` | `mb-marketplace-intelligence` | approved deposited evidence | parked: no code-owned authorized deposit manifest |
 
 `grok` 1.0.13 exposes `--agent`, `--prompt-file`, `--model`, and related top-level flags. It does not
 expose a `grok bot`, `grokbot`, Slack, or routine-management subcommand. The separate cloud Grok Bot
@@ -31,13 +31,16 @@ must never be reused to promote a new CLI route.
 
 The correct failure mode is a visible park:
 
-- Review D: no observed browser/pixel source.
-- Heat Map: no observed signed-in Clarity/browser source.
-- Marketplace Intelligence: no installed generated profile or one-time role receipt.
+- Review D: no code-owned browser/pixel input binding.
+- Heat Map: no code-owned signed-in Clarity input binding.
+- Marketplace Intelligence: prompt-declared paths, sources, classes, and hashes are not transfer
+  authorization; no code-owned approved-deposit manifest exists.
 
-Once a missing capability is installed by user action, refresh integration inventory, regenerate
-and sync roles, run the role-specific smoke, record evidence, and only then promote its new
-`grok-cli-*` route to `live_verified` and set `wired:true`.
+Before any normal role can be promoted, implement its code-owned input boundary. That boundary must
+authorize and classify the source before reading or staging its payload; a prompt cannot classify
+itself. Then refresh integration inventory, regenerate and sync roles, run the role-specific test,
+record evidence, and only then promote its new `grok-cli-*` route to `live_verified` and set
+`wired:true`. A transport-only smoke can run while normal execution remains parked.
 
 Legacy Slack history remains useful only as historical behavior evidence for the old app route. It
 is not an active delivery path, fallback, or current capability attestation.

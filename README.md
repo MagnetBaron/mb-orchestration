@@ -114,8 +114,10 @@ installed, enabled, configured, blocked/auth-health, and current-session callabl
 distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.
 
 Website Visual QA has two config-derived Grok CLI packet modes:
-visitor-preview review and read-only live-storefront audit. Render prompt packets with `bin/connectors.py --render visual-qa-ticket
-<store>` and `bin/connectors.py --render visual-qa-live-ticket <store>`. The live mode observes only
+visitor-preview review and read-only live-storefront audit. Render prompt packets with
+`bin/connectors.py --render visual-qa-ticket <store> --changed-path <repo-relative-path> --page
+<home|collection|pdp|cart>` and `bin/connectors.py --render visual-qa-live-ticket <store>`. The live mode observes only
 an exact configured public host and cannot log in, add to cart, submit, purchase, publish, or mutate.
-See `visual-qa.md` and `visual-qa-cli.md`; missing browser/pixel evidence must park rather than become a
-visual verdict.
+Packet rendering is preparation only: normal Review D execution currently parks before reading the
+packet. See `visual-qa.md` and `visual-qa-cli.md`; a missing code-owned input binding or missing
+browser/pixel evidence must park rather than become a visual verdict.

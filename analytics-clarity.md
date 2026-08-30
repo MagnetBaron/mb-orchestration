@@ -24,21 +24,22 @@ cookies never enter the repo or a prompt file.
 
 ## Launch contract
 
-Create a prompt naming a regular non-symlink export with `role: heat-map`, `source:
-approved-clarity-export`, an ordinary `artifact-class` such as `synthetic-eval`, `evidence-path`,
-and its exact `evidence-sha256`. Restricted or unknown artifact classes park. The launcher recomputes
-the digest before it runs. Then use the fail-closed inspection:
+There is currently no supported normal-execution command. A prompt-declared source, class, path, or
+digest cannot authorize a Clarity export or signed-in session, so the launcher parks before reading
+the prompt or its declared evidence.
+
+A future code-owned binding must authenticate the least-privilege Clarity source or an approved
+export deposit, classify it under `config/handoff-policy.json` before opening the payload, and bind
+immutable provenance plus a digest. Only after that binding exists may the provider be wired, its
+`grok-cli-heat-map` route become `live_verified`, and signed-in Clarity/browser capability be
+role-tested. A transport-only smoke remains safe:
 
 ```sh
-python3 bin/grok-agent.py --seat grok-bot-heat-map \
-  --prompt-file /safe/path/heat-map.md --cwd /path/to/repo --json
+python3 bin/grok-agent.py --seat grok-bot-heat-map --smoke --execute
 ```
 
-Execution is allowed only after the provider is wired, its `grok-cli-heat-map` route is
-`live_verified`, `mb-heat-map` is installed, and signed-in Clarity/browser capability has been
-observed and role-tested. Preflight byte-validates the installed `mb-heat-map` profile, then
-execution copies those exact bytes into the private staging directory and passes that staged profile
-path to `grok --agent`; it never executes the mutable `~/.grok/agents` path directly or uses Slack.
+The smoke byte-validates and privately stages the generated profile. It proves agent/model
+selection only and never proves Clarity access or a role result.
 
 ## Standing rules
 

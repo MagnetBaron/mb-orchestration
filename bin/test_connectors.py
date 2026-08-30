@@ -40,6 +40,30 @@ class VisualQaConfigTests(unittest.TestCase):
         self.assertEqual(modes["live-storefront-audit"]["host_match"], "exact")
         self.assertTrue(modes["live-storefront-audit"]["read_only"])
 
+    def test_config_packet_field_mirror_matches_code_owned_canonical_order(self):
+        modes = live_config()["grok_cli"]["visual_qa"]["modes"]
+        scalars = [f"{field}:" for field in connectors.REVIEW_D_SCALAR_FIELDS]
+        self.assertEqual(
+            modes["preview-review"]["required_fields"],
+            [*scalars, "changed-path:", "page:"],
+        )
+        self.assertEqual(
+            modes["live-storefront-audit"]["required_fields"],
+            [*scalars, "page:"],
+        )
+
+    def test_documented_preview_renderer_example_is_complete_and_runnable(self):
+        text = (ROOT / "visual-qa.md").read_text()
+        self.assertIn(
+            "python3 bin/connectors.py --render visual-qa-ticket gadget-duke \\" \
+            + "\n  --changed-path templates/index.liquid --page home",
+            text,
+        )
+        packet = connectors.render_ticket(
+            live_config(), "gadget-duke", ["templates/index.liquid"], ["home"]
+        )
+        self.assertEqual(connectors.reconstruct_review_d_packet(live_config(), packet), packet)
+
     def test_live_mode_denies_sensitive_paths_and_all_mutations(self):
         policy = live_config()["grok_cli"]["visual_qa"]
         deny = policy["deny_before_navigation"]

@@ -166,6 +166,19 @@ def check_connectors(conns, provider_ids):
         for pid in m.get("available_on", []):
             if pid not in provider_ids:
                 err(f"connector {name}: available_on unknown provider {pid!r}")
+    modes = (((conns.get("grok_cli") or {}).get("visual_qa") or {}).get("modes") or {})
+    scalar_fields = ["role:", "mode:", "store:", "site:", "url:"]
+    expected_fields = {
+        "preview-review": [*scalar_fields, "changed-path:", "page:"],
+        "live-storefront-audit": [*scalar_fields, "page:"],
+    }
+    for mode, expected in expected_fields.items():
+        actual = (modes.get(mode) or {}).get("required_fields")
+        if actual != expected:
+            err(
+                f"connectors.grok_cli.visual_qa.modes.{mode}.required_fields must "
+                f"mirror the exact code-owned packet order {expected!r}"
+            )
 
 
 def check_integration_adapters(adapters, providers_data):
@@ -796,6 +809,15 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
             if isinstance(route, dict) and (route.get("host"), route.get("harness")) != ("grok-cli", "grok"):
                 err(f"seat-exec recipe {pid!r}: bound route must use host='grok-cli' and harness='grok'")
             grok_agent_mod = load_module("grok_agent_doctor_recipe", HERE / "grok-agent.py")
+            execution_binding = grok_agent_mod.EXECUTION_INPUT_BINDINGS.get(pid)
+            if execution_binding is None and (
+                p.get("wired") is True
+                or (isinstance(route, dict) and route.get("route_state") == "live_verified")
+            ):
+                err(
+                    f"standing provider {pid!r}: wired/live_verified promotion is forbidden "
+                    "until its shared code-owned execution input binding is implemented"
+                )
             approved_args = list(grok_agent_mod.APPROVED_STANDING_TEMPLATE)
             if approved_args.count("{sandbox_profile}") != 1:
                 err("standing recipe validator must contain exactly one {sandbox_profile} token")

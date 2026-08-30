@@ -51,9 +51,9 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 | **Implement** | terra | Grok Build | Google MCP without a connector; standing-role change-sets |
 | **MCP volume** | terra | Codex GPT Terra (· Luna coordination) | Default coder; MCP without a live connector |
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 5 | Row-dump fetch loops |
-| **Standing / Review D** | terra | Grok CLI `mb-review-d` *(parked until browser/pixels are observed)* | Admin, SimGym, publish, implement, or mutate a live storefront |
-| **Analytics input** | terra | Grok CLI `mb-heat-map` *(parked until signed-in Clarity/browser is observed)* | Review verdicts, implement, settings |
-| **Marketplace intelligence** | terra | Grok CLI `mb-marketplace-intelligence` *(unwired until profile sync + test)* | Marketplace browsing without recorded permission; list/bid/buy/message/publish/auth; implement or review verdict |
+| **Standing / Review D** | terra | Grok CLI `mb-review-d` *(parked until a code-owned pixel-input binding exists and browser/pixels are observed)* | Admin, SimGym, publish, implement, or mutate a live storefront |
+| **Analytics input** | terra | Grok CLI `mb-heat-map` *(parked until a code-owned Clarity binding exists and signed-in Clarity/browser is observed)* | Review verdicts, implement, settings |
+| **Marketplace intelligence** | terra | Grok CLI `mb-marketplace-intelligence` *(parked until a code-owned authorized-deposit manifest exists, then profile sync + test)* | Marketplace browsing without recorded permission; list/bid/buy/message/publish/auth; implement or review verdict |
 | **Gate 1 (Anthropic)** | frontier | Opus 5 (routed across Claude seats by teamclaude) | Default implementer |
 | **Gate 2 (OpenAI)** | sole | Codex Sol (under reserve line) | Cursor Sol (different meter) |
 | **Architecture / long-horizon** | frontier | Fable 5 *(rare escalation; same family as Opus; never a second family)* | Any gating verdict; daily coding |
@@ -138,11 +138,12 @@ sole-gates a risk class — its `ship` there is advisory, owner lands; unwired �
 
 When Sol is needed for **both** code review and MCP judgment the same week: code-review risk gate wins the Sol slot; MCP judgment goes to Opus if Sol is spent or already used on that change-set.
 
-**Review D** when storefront *pixels* change. Dispatch a config-rendered prompt file to the named
-`mb-review-d` Grok CLI agent (`visual-qa-cli.md`). Unpublished changes use visitor-preview review; a
-configured live-host preview must have an exact-host + non-empty `preview_theme_id` rule. A separate
-live-audit mode may inspect an allowlisted public storefront read-only, but never substitutes for the
-preview gate. Missing browser/pixel capability parks; a CLI smoke is not a visual verdict.
+**Review D** when storefront *pixels* change. Render its config-derived packet, but do not dispatch
+that packet to the named `mb-review-d` Grok CLI agent until the code-owned pixel-input binding exists
+(`visual-qa-cli.md`). Unpublished changes use visitor-preview review; a configured live-host preview
+must have an exact-host + non-empty `preview_theme_id` rule. A separate live-audit mode may inspect an
+allowlisted public storefront read-only, but never substitutes for the preview gate. Missing binding
+or browser/pixel capability parks; a CLI smoke is not a visual verdict.
 
 **Autonomy limits (disclosed).** Cross-family autonomy needs **≥2 review families**: with fewer (a downgrade or a solo/one-family setup) risk-class work — money, auth, PII, secrets — **parks pending a human** rather than auto-shipping (the routing collapses toward one seat; the discipline holds). And **unattended land-to-prod is a current non-goal** — the executor is gated: `bin/run-brief.py` is **dry-run only** (it plans, shells nothing) and fails closed without an explicit run; landing/publish/send stay behind owner gates (`DOCTRINE.md` §non-goals).
 
@@ -150,8 +151,8 @@ preview gate. Missing browser/pixel capability parks; a CLI smoke is not a visua
 
 Resolver records requested intake, effective dispatcher, fallback reason, authors, review scopes, and handoff decision. Its steps:
 
-1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → its named Grok CLI role only when live; theme/layout → Build then Review D; product copy → MCP packet (if needed) then Grok write.
-   Marketplace sold-price/competitor research → `marketplace-intelligence.md`; the Marketplace Intelligence Bot may analyze supplied approved snapshots/API outputs only and remains parked while its route is unwired. Never substitute scheduled marketplace browsing for a missing authorized source.
+1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → its named Grok CLI role only when its code-owned input binding and live gates pass; theme/layout → Build then parked Review D until its pixel binding exists; product copy → MCP packet (if needed) then Grok write.
+   Marketplace sold-price/competitor research → `marketplace-intelligence.md`; the Marketplace Intelligence Bot parks before prompt or evidence reads until a code-owned manifest binding and live route exist. Never substitute scheduled marketplace browsing for a missing authorized source.
 2. **Brief** every job (fields above) and **stamp `review:`** at the router's floor; ambiguous risk → park + ask owner. Do not invent seats.
 3. **Route reviews** with `bin/resolve-route.py` (which reads `bin/usage-status.py` and the model registry), never by guesswork.
 4. **Selective skills** → mobile/Dart/Flutter/iOS accessibility: `mobile-dev-router`; explicit Cloudflare platform work: `cloudflare-dev-router`; Obsidian vault/Bases/Canvas/CLI work: `knowledge-vault-router`; React specialty, generic MCP builder, or measured web-performance work: `engineering-dev-router`. Put only the matching router plus its exact `~/.agents/skills/<router>/SKILL.md` path in the brief. Unrelated dispatch, implementation, and review lanes get `skills: []`.

@@ -262,8 +262,13 @@
             }
           ],
           "required_fields": [
+            "role:",
+            "mode:",
+            "store:",
             "site:",
-            "url:"
+            "url:",
+            "changed-path:",
+            "page:"
           ],
           "url_policy": "shopifypreview.com subdomain, or the named store's exact configured live host with preview_theme_id",
           "may_add_to_cart_only_to_reach_cart": true,
@@ -273,8 +278,10 @@
           "required_fields": [
             "role:",
             "mode:",
+            "store:",
             "site:",
-            "url:"
+            "url:",
+            "page:"
           ],
           "host_source": "stores.*.live_hosts",
           "host_match": "exact",

@@ -220,6 +220,20 @@ class StandingGrokSandboxRecipeTests(unittest.TestCase):
         if target_incompatible():
             self.assertTrue(any("symlink" in x for x in doctor.INFO))
 
+    def test_doctor_rejects_standing_route_promotion_without_shared_input_binding(self):
+        providers = copy.deepcopy(self.provs)
+        registry = copy.deepcopy(self.registry)
+        providers["grok-bot-marketplace-intelligence"]["wired"] = True
+        registry["routes"]["grok-cli-marketplace-intelligence"][
+            "route_state"
+        ] = "live_verified"
+        doctor.check_seat_exec(self.seat_exec, providers, self.ids, registry)
+        self.assertTrue(any(
+            "grok-bot-marketplace-intelligence" in problem
+            and "code-owned execution input binding" in problem
+            for problem in doctor.ERRORS
+        ))
+
 
 def target_incompatible():
     spec = importlib.util.spec_from_file_location(

@@ -515,6 +515,70 @@ def _parse_session_time(value, field: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _session_file_identity(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_gid,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _read_session_file(path: Path) -> str:
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise InventoryError("session overlay platform lacks no-follow file opening")
+    flags = os.O_RDONLY | os.O_NONBLOCK | nofollow
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise InventoryError(
+            "session overlay file must be an owner-only regular non-symlink file"
+        ) from None
+    try:
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise InventoryError(
+                    "session overlay file must be an owner-only regular non-symlink file"
+                )
+            if before.st_uid != os.getuid():
+                raise InventoryError("session overlay file must be owned by the current user")
+            if stat.S_IMODE(before.st_mode) & 0o077:
+                raise InventoryError("session overlay file must be owner-only (mode 0600)")
+            if before.st_size > SESSION_MAX_BYTES:
+                raise InventoryError("session overlay exceeds the bounded size limit")
+            chunks = []
+            total = 0
+            while total <= SESSION_MAX_BYTES:
+                chunk = os.read(fd, min(65_536, SESSION_MAX_BYTES + 1 - total))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+            after = os.fstat(fd)
+            if _session_file_identity(before) != _session_file_identity(after):
+                raise InventoryError("session overlay file changed during its bounded read")
+        except OSError:
+            raise InventoryError("session overlay file could not be read safely") from None
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    raw = b"".join(chunks)
+    if len(raw) > SESSION_MAX_BYTES:
+        raise InventoryError("session overlay exceeds the bounded size limit")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeError:
+        raise InventoryError("session overlay file must be valid UTF-8") from None
+
+
 def _read_session_source(source: str | None) -> str | None:
     from_env = source is None
     if source is None:
@@ -529,17 +593,13 @@ def _read_session_source(source: str | None) -> str | None:
         if from_env:
             raise InventoryError("MB_INTEGRATION_SESSION may not request stdin")
         import sys
-        raw = sys.stdin.read(SESSION_MAX_BYTES + 1)
+        try:
+            raw = sys.stdin.read(SESSION_MAX_BYTES + 1)
+        except (OSError, UnicodeError):
+            raise InventoryError("session overlay stdin could not be read safely") from None
     else:
         path = Path(source).expanduser()
-        if path.is_symlink() or not path.is_file():
-            raise InventoryError("session overlay file must be a regular non-symlink file")
-        mode = stat.S_IMODE(path.stat().st_mode)
-        if mode & 0o077:
-            raise InventoryError("session overlay file must be owner-only (mode 0600)")
-        if path.stat().st_size > SESSION_MAX_BYTES:
-            raise InventoryError("session overlay exceeds the bounded size limit")
-        raw = path.read_text()
+        raw = _read_session_file(path)
     if len(raw.encode("utf-8")) > SESSION_MAX_BYTES:
         raise InventoryError("session overlay exceeds the bounded size limit")
     return raw

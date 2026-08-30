@@ -48,6 +48,7 @@ import routing  # noqa: E402
 import integrations  # noqa: E402
 import dispatch_evidence  # noqa: E402
 import handoff_policy  # noqa: E402
+from grok_role_bindings import EXECUTION_INPUT_BINDINGS  # noqa: E402
 try:
     import observe  # noqa: E402
 except Exception as _OBS_IMPORT_ERROR:  # observability must not take routing down
@@ -535,17 +536,20 @@ def review_d_input_step(providers, registry):
     """
     review_d_id = "grok-bot-review-d"
     review_d = (providers.get("providers") or {}).get(review_d_id) or {}
+    execution_input_binding = EXECUTION_INPUT_BINDINGS.get(review_d_id)
     route_live = modelreg.provider_route_is_live(registry, review_d)
     runtime_caps = {
         cap: integrations.effective("grok", "capability", cap, require_callable=True)
         for cap in ("browser", "pixels")
     }
-    available = (bool(review_d.get("wired")) and route_live
+    available = (bool(execution_input_binding) and bool(review_d.get("wired")) and route_live
                  and all(ok for ok, _reason in runtime_caps.values()))
     if available:
         why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
     else:
         missing = []
+        if not execution_input_binding:
+            missing.append("code-owned pixel input transport is not implemented")
         if not review_d.get("wired"):
             missing.append("provider wired is not true")
         if not route_live:
@@ -554,7 +558,13 @@ def review_d_input_step(providers, registry):
             if not ok:
                 missing.append(f"{cap} capability is not freshly callable ({reason})")
         why = "PARK Review D: " + "; ".join(missing)
-    return {"seat": review_d_id, "why": why, "available": available, "input_seat": True}
+    return {
+        "seat": review_d_id,
+        "why": why,
+        "available": available,
+        "input_seat": True,
+        "execution_input_binding": execution_input_binding,
+    }
 
 
 def provider_can_code(provider, registry):
