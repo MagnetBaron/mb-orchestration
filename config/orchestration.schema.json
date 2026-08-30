@@ -341,6 +341,18 @@
       "required": ["schema_version", "recipes"],
       "properties": {
         "schema_version": { "const": 1 },
+        "wrappers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["bin", "prefix", "model_flag"],
+            "properties": {
+              "bin": { "type": "string", "minLength": 1 },
+              "prefix": { "type": "array", "items": { "type": "string" } },
+              "model_flag": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "recipes": {
           "type": "object", "minProperties": 1,
           "additionalProperties": {
@@ -351,7 +363,8 @@
               "args_template": { "type": "array", "items": { "type": "string" } },
               "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "none"] },
               "worktree": { "type": "boolean" },
-              "never_metered_host": { "type": "boolean" }
+              "never_metered_host": { "type": "boolean" },
+              "separate_invocation_when_dispatcher": { "type": "boolean" }
             }
           }
         }

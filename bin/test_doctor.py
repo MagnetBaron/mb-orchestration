@@ -68,21 +68,27 @@ class SeatExecTeamclaudeTests(unittest.TestCase):
     def _route(self, pid):
         return self.registry["routes"][self.provs[pid]["route"]]
 
+    def _wrappers(self):
+        return self.seat_exec["wrappers"]
+
     def test_live_anthropic_recipes_render_teamclaude_with_exact_model_ids(self):
         ctx = {
             "brief_path": "brief.md", "worktree": ".worktrees/lane-x", "branch": "lane-x",
             "repo": ".", "output_path": "out", "preview_url": "http://example.invalid",
         }
+        spec = self._wrappers()["teamclaude"]
+        want_prefix = [spec["bin"], *spec["prefix"]]
         for pid, model in self.EXPECTED_MODELS.items():
             with self.subTest(pid=pid):
                 recipe = self.seat_exec["recipes"][pid]
                 cmd = run_brief.render_cmd(recipe, ctx)
-                self.assertEqual(cmd[:3], ["teamclaude", "run", "--"])
-                self.assertIn("--model", cmd)
-                self.assertEqual(cmd[cmd.index("--model") + 1], model)
+                self.assertEqual(cmd[: len(want_prefix)], want_prefix)
+                self.assertEqual(cmd.count(spec["model_flag"]), 1)
+                self.assertEqual(cmd[cmd.index(spec["model_flag"]) + 1], model)
                 self.assertEqual(self._route(pid).get("host"), "teamclaude")
                 self.assertEqual(self._route(pid).get("invocation_id"), model)
-                self.assertIsNone(doctor.teamclaude_recipe_error(pid, recipe, self._route(pid)))
+                self.assertIsNone(
+                    doctor.wrapped_recipe_error(pid, recipe, self._route(pid), self._wrappers()))
 
     def test_live_seat_exec_stays_clean(self):
         doctor.check_seat_exec(self.seat_exec, self.provs, self.ids, self.registry)
@@ -103,7 +109,7 @@ class SeatExecTeamclaudeTests(unittest.TestCase):
     def test_teamclaude_recipe_missing_model_id_is_rejected(self):
         recipe = copy.deepcopy(self.seat_exec["recipes"]["fable-5"])
         recipe["args_template"] = ["run", "--", "-p", "architecture pass on the git diff on {branch}"]
-        err = doctor.teamclaude_recipe_error("fable-5", recipe, self._route("fable-5"))
+        err = doctor.wrapped_recipe_error("fable-5", recipe, self._route("fable-5"), self._wrappers())
         self.assertIsNotNone(err)
         self.assertIn("claude-fable-5", err)
 
@@ -112,13 +118,53 @@ class SeatExecTeamclaudeTests(unittest.TestCase):
         recipe["args_template"] = [
             "run", "--", "-p", "review", "--model", "claude-opus-5",
         ]
-        err = doctor.teamclaude_recipe_error("opus-4.8", recipe, self._route("opus-4.8"))
+        err = doctor.wrapped_recipe_error("opus-4.8", recipe, self._route("opus-4.8"), self._wrappers())
         self.assertIsNotNone(err)
         self.assertIn("claude-opus-4-8", err)
 
+    def test_duplicate_model_flag_is_rejected(self):
+        recipe = copy.deepcopy(self.seat_exec["recipes"]["opus-5"])
+        recipe["args_template"] = [
+            "run", "--", "-p", "review", "--model", "claude-opus-5", "--model", "claude-sonnet-5",
+        ]
+        err = doctor.wrapped_recipe_error("opus-5", recipe, self._route("opus-5"), self._wrappers())
+        self.assertIsNotNone(err)
+        self.assertIn("exactly one", err)
+
+    def test_dangling_model_flag_is_rejected(self):
+        recipe = copy.deepcopy(self.seat_exec["recipes"]["opus-5"])
+        recipe["args_template"] = ["run", "--", "-p", "review", "--model"]
+        err = doctor.wrapped_recipe_error("opus-5", recipe, self._route("opus-5"), self._wrappers())
+        self.assertIsNotNone(err)
+
+    def test_direct_claude_with_absent_route_fails_closed(self):
+        recipe = {"bin": "claude", "args_template": ["-p", "review"]}
+        err = doctor.wrapped_recipe_error("opus-5", recipe, None, self._wrappers())
+        self.assertIsNotNone(err)
+        self.assertIn("auth_blocked", err)
+
+    def test_direct_claude_with_auth_blocked_route_fails_closed(self):
+        recipe = {"bin": "claude", "args_template": ["-p", "review"]}
+        route = self.registry["routes"]["opus-5-direct-claude"]
+        self.assertEqual(route.get("route_state"), "auth_blocked")
+        err = doctor.wrapped_recipe_error("opus-5", recipe, route, self._wrappers())
+        self.assertIsNotNone(err)
+        self.assertIn("auth_blocked", err)
+
+    def test_malformed_wrapper_spec_fails_closed(self):
+        recipe = self.seat_exec["recipes"]["opus-5"]
+        wrappers = {"teamclaude": {"bin": "teamclaude"}}
+        err = doctor.wrapped_recipe_error("opus-5", recipe, self._route("opus-5"), wrappers)
+        self.assertIsNotNone(err)
+        self.assertIn("fail closed", err)
+
     def test_non_teamclaude_provider_is_outside_this_check(self):
         recipe = self.seat_exec["recipes"]["codex-sol"]
-        self.assertIsNone(doctor.teamclaude_recipe_error("codex-sol", recipe, self._route("codex-sol")))
+        self.assertIsNone(
+            doctor.wrapped_recipe_error("codex-sol", recipe, self._route("codex-sol"), self._wrappers()))
+
+    def test_codex_sol_carries_separate_invocation_when_dispatcher(self):
+        self.assertIs(self.seat_exec["recipes"]["codex-sol"]["separate_invocation_when_dispatcher"], True)
 
 
 if __name__ == "__main__":
