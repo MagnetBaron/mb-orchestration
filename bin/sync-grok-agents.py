@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import json
 import os
 import tempfile
 from pathlib import Path
+
+import mborch
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -23,8 +24,8 @@ ROLE_NAMES = ("review-d", "heat-map", "marketplace-intelligence")
 
 
 def expected() -> dict[str, str]:
-    roles = json.loads((ROOT / "config" / "roles.json").read_text())["roles"]
-    providers = json.loads((ROOT / "config" / "providers.json").read_text())["providers"]
+    roles = mborch.load_config("roles.json", required=True)["roles"]
+    providers = mborch.load_config("providers.json", required=True)["providers"]
     out = {}
     for name in ROLE_NAMES:
         role = roles.get(name)

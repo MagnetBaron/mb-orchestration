@@ -817,11 +817,17 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 "grok-bot-marketplace-intelligence": "marketplace-intelligence",
             }
             connector_roles = (((load_json("connectors.json") or {}).get("grok_cli") or {}).get("roles") or {})
-            connector_requires = (connector_roles.get(connector_role_names[pid]) or {}).get("requires")
+            connector_role = connector_roles.get(connector_role_names[pid]) or {}
+            connector_requires = connector_role.get("requires")
             if connector_requires != approved_capabilities[pid]:
                 err(
                     f"connectors.grok_cli.roles.{connector_role_names[pid]}.requires must match "
                     f"seat-exec runtime capabilities {approved_capabilities[pid]!r}"
+                )
+            if connector_role.get("seat") != pid or connector_role.get("agent") != approved_agents[pid]:
+                err(
+                    f"connectors.grok_cli.roles.{connector_role_names[pid]} must bind "
+                    f"seat={pid!r} and agent={approved_agents[pid]!r}"
                 )
         route_id = p.get("route")
         route = routes.get(route_id) if route_id else None

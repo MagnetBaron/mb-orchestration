@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +28,18 @@ class SyncGrokAgentsTests(unittest.TestCase):
             rc = target.main(["--target-home", td])
             self.assertEqual(rc, 2)
             self.assertFalse((Path(td) / ".grok").exists())
+
+    def test_expected_profiles_honor_config_overlay(self):
+        with tempfile.TemporaryDirectory() as td:
+            overlay = Path(td)
+            roles = json.loads((HERE.parent / "config" / "roles.json").read_text())
+            providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+            roles["roles"]["review-d"]["prompt"] += " OVERLAY-PROOF"
+            (overlay / "roles.json").write_text(json.dumps(roles))
+            (overlay / "providers.json").write_text(json.dumps(providers))
+            with mock.patch.dict(os.environ, {"MB_CONFIG_DIR": str(overlay)}):
+                profiles = target.expected()
+        self.assertIn("OVERLAY-PROOF", profiles["mb-review-d.md"])
 
 
 if __name__ == "__main__":

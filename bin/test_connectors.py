@@ -51,11 +51,16 @@ class VisualQaConfigTests(unittest.TestCase):
         config = live_config()
         for store, meta in config["stores"].items():
             with self.subTest(store=store):
-                preview = connectors.render_ticket(config, store)
                 live = connectors.render_live_ticket(config, store)
-                self.assertTrue(preview.startswith("role: review-d\nmode: preview-review\n"))
                 self.assertTrue(live.startswith("role: review-d\nmode: live-storefront-audit\n"))
                 self.assertIn(f"url: https://{meta['live_hosts'][0]}/", live)
+                if meta.get("review_d_preview_url"):
+                    preview = connectors.render_ticket(config, store)
+                    self.assertTrue(preview.startswith("role: review-d\nmode: preview-review\n"))
+                else:
+                    with self.assertRaisesRegex(SystemExit, "no concrete review_d_preview_url"):
+                        connectors.render_ticket(config, store)
+                    preview = ""
                 self.assertNotIn("Slack", preview + live)
                 self.assertNotIn("#visual-qa", preview + live)
                 self.assertNotIn("@Website Visual QA", preview + live)

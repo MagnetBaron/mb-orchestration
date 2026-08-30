@@ -104,7 +104,9 @@ def _validate_preview_url(c, store, url):
 def render_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
-    url = s.get("review_d_preview_url", f"https://<token>-<shop_id>.{s.get('preview_host','shopifypreview.com').lstrip('*.')}")
+    url = s.get("review_d_preview_url")
+    if not url:
+        sys.exit(f"connectors: store {store!r} has no concrete review_d_preview_url")
     _validate_preview_url(c, store, url)
     return (
         "role: review-d\n"

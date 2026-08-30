@@ -156,6 +156,40 @@ class GrokAgentTests(unittest.TestCase):
         self.assertEqual(rc, 2)
         run.assert_not_called()
 
+    def test_smoke_requires_exact_sentinel_and_uses_empty_temporary_cwd(self):
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-review-d.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            good = subprocess.CompletedProcess([], 0, stdout="cli-agent-path-ok\n", stderr="")
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.subprocess, "run", return_value=good) as run:
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents), "--cwd", str(HERE.parent),
+                ])
+            self.assertEqual(rc, 0)
+            cmd = run.call_args.args[0]
+            self.assertNotEqual(cmd[cmd.index("--cwd") + 1], str(HERE.parent))
+            self.assertEqual(cmd[cmd.index("--agent") + 1], str(profile))
+
+            bad = subprocess.CompletedProcess([], 0, stdout="almost-ok\n", stderr="")
+            with mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.subprocess, "run", return_value=bad):
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents),
+                ])
+            self.assertEqual(rc, 2)
+
+    def test_missing_smoke_recipe_parks_without_subprocess(self):
+        with mock.patch.object(target.mborch, "load_config", return_value={"recipes": {}}), \
+             mock.patch.object(target.subprocess, "run") as run:
+            rc = target.main(["--seat", "grok-bot-review-d", "--smoke", "--execute"])
+        self.assertEqual(rc, 2)
+        run.assert_not_called()
+
     def test_pixel_route_parks_when_cli_browser_capability_is_unwired(self):
         result = subprocess.run([
             sys.executable, str(HERE / "resolve-route.py"),

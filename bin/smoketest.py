@@ -278,13 +278,15 @@ def c_unit_tests():
     d = run([PY, "bin/test_doctor.py"])
     e = run([PY, "bin/test_sync_commands.py"])
     f = run([PY, "bin/test_grok_agent.py"])
-    ok = all(x.returncode == 0 for x in (a, b, c, d, e, f))
+    g = run([PY, "bin/test_sync_grok_agents.py"])
+    ok = all(x.returncode == 0 for x in (a, b, c, d, e, f, g))
     detail = "generate=" + (a.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " registry=" + (b.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " observability=" + (c.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " doctor=" + (d.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " sync=" + (e.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " grok-agent=" + (f.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " grok-sync=" + (g.stderr.strip().splitlines() or ["ok"])[-1]
     return ok, detail
 
 

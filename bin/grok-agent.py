@@ -81,10 +81,7 @@ def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
         allowed = {
             body.rstrip("\n")
             for store in (config.get("stores") or {})
-            for body in (
-                connector_packets.render_ticket(config, store),
-                connector_packets.render_live_ticket(config, store),
-            )
+            for body in _safe_review_d_packets(config, store)
         }
         if text.rstrip("\n") not in allowed:
             return "Review D prompt must byte-match a validated bin/connectors.py packet"
@@ -120,6 +117,16 @@ def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
     if actual_digest != digest:
         return "bound evidence digest does not match evidence-sha256"
     return None
+
+
+def _safe_review_d_packets(config: dict, store: str) -> list[str]:
+    packets = []
+    for render in (connector_packets.render_ticket, connector_packets.render_live_ticket):
+        try:
+            packets.append(render(config, store))
+        except SystemExit:
+            continue
+    return packets
 
 
 def inspect(seat: str, cwd: Path, prompt_file: Path | None, agent_dir: Path) -> dict:
@@ -242,8 +249,19 @@ def main(argv=None) -> int:
         with tempfile.TemporaryDirectory(prefix="grok-agent-smoke-") as smoke_dir:
             cmd = ["grok", "--cwd", smoke_dir, "--agent", str(profile), "--model", "grok-4.6",
                    "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain",
-                   "-p", "CLI transport smoke only. Use no tools and return exactly: cli-agent-ok"]
-            return subprocess.run(cmd, cwd=smoke_dir, check=False).returncode
+                   "-p", "CLI transport smoke only. Use no tools and return exactly: cli-agent-path-ok"]
+            completed = subprocess.run(
+                cmd, cwd=smoke_dir, check=False, text=True, capture_output=True
+            )
+            if completed.stdout:
+                print(completed.stdout, end="")
+            if completed.stderr:
+                print(completed.stderr, end="", file=sys.stderr)
+            last_line = (completed.stdout or "").rstrip().splitlines()[-1:]
+            if completed.returncode != 0 or last_line != ["cli-agent-path-ok"]:
+                print("PARK: Grok CLI smoke did not return exact cli-agent-path-ok", file=sys.stderr)
+                return 2
+            return 0
 
     result = inspect(args.seat, cwd, args.prompt_file, args.agent_dir)
     if args.json or not args.execute:
