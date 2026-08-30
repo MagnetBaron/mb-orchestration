@@ -108,6 +108,7 @@ class VisualQaConfigTests(unittest.TestCase):
         config = live_config()
         cases = [
             "https://gadgetduke.com/",
+            "https://gadgetduke.com/?preview_theme_id=",
             "https://www.gadgetduke.com/?preview_theme_id=151997775942",
             "https://evil.example/?next=https://gadgetduke.com/?preview_theme_id=151997775942",
         ]

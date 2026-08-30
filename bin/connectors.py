@@ -96,8 +96,10 @@ def _recognized_preview_trigger(c, store, url):
         required = item.get("required_query_parameter")
         exact_host = str(item.get("exact_host") or "").lower()
         token = item.get("event_contains")
+        required_values = query.get(required, []) if required else []
         if (item.get("store") == store and token and token in url
-                and exact_host in configured_hosts and host == exact_host and required in query):
+                and exact_host in configured_hosts and host == exact_host
+                and any(str(value).strip() for value in required_values)):
             return token
 
     sys.exit(f"connectors: store {store!r} preview URL has no safe configured event trigger")
