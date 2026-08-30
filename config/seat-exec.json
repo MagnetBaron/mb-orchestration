@@ -11,9 +11,9 @@
   },
   "recipes": {
     "grok-build": {
-      "bin": "grok", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "bin": "grok", "args_template": ["--cwd", "{worktree}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "xhigh", "--no-subagents"],
       "reads": "brief", "worktree": true, "never_metered_host": true,
-      "note": "Default implementer. 1 worktree / 1 branch / named file scope; resume existing branch on retry."
+      "note": "Default implementer. Exact installed CLI contract: grok-4.6 at xhigh, one worktree / one branch / named file scope, no nested subagents; resume the existing branch on retry. grok-4.6-build is only the internal registry route key."
     },
     "codex-terra": {
       "bin": "codex", "args_template": ["exec", "--cd", "{worktree}", "--brief", "{brief_path}"],

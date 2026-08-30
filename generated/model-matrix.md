@@ -50,7 +50,7 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `gpt-5.6-sol` | openai | OpenAI | stable | gpt-5.6-sol | https://openai.com/index/gpt-5-6/ | no | no |
 | `gpt-5.6-terra` | openai | OpenAI | stable | gpt-5.6-terra | https://openai.com/index/gpt-5-6/ | no | no |
 | `grok-4.5` | xai | xAI | superseded | grok-4.5 | https://docs.x.ai/developers/pricing | no | no |
-| `grok-4.6` | xai | xAI | stable | grok-4.6, grok-4.6-build | https://docs.x.ai/developers/grok-4-6 | no | no |
+| `grok-4.6` | xai | xAI | stable | grok-4.6 | https://docs.x.ai/developers/grok-4-6 | no | no |
 | `kimi-k2.6` | moonshot | Moonshot | superseded | kimi-k2.6 | https://platform.kimi.ai/ | no | no |
 | `kimi-k2.7-code` | moonshot | Moonshot | stable | kimi-k2.7-code, kimi-for-coding | https://platform.kimi.ai/ | no | no |
 | `kimi-k3` | moonshot | Moonshot | stable | kimi-k3, kimi-k3-max | https://platform.kimi.ai/ | no | no |

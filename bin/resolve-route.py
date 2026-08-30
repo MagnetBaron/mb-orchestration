@@ -357,6 +357,50 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     dispatcher_family = (prov.get(dispatcher) or {}).get("family")
     dispatcher_group = modelreg.independence_group_of(registry, dispatcher_family)
 
+    # Review E is a metered, independent-family escape hatch, not a routine third
+    # reviewer.  It opens only when (a) its separate provider wiring flag and
+    # catalog route are both live, (b) one native family remains usable, and (c)
+    # another native review family has positive quota-spent evidence.  Missing or
+    # non-live native routes with otherwise unspent backing rows are outages, not
+    # quota evidence, and must park rather than cascade to Review E.
+    native_family_state = {}
+    for native_pid in review_ids:
+        native = prov.get(native_pid, {})
+        native_family = native.get("family")
+        if native_family == "open-weight" or not native.get("review_eligible"):
+            continue
+        native_group = modelreg.independence_group_of(registry, native_family)
+        if not native_group:
+            continue
+        state = native_family_state.setdefault(
+            native_group,
+            {"route_live": False, "backing_rows": []},
+        )
+        state["route_live"] = bool(
+            state["route_live"] or modelreg.provider_route_is_live(registry, native)
+        )
+        known_seats = {r.get("seat") for r in state["backing_rows"]}
+        for row in provider_seats(native_pid, providers, rows):
+            if row.get("seat") not in known_seats:
+                state["backing_rows"].append(row)
+                known_seats.add(row.get("seat"))
+    native_available = {
+        group for group, state in native_family_state.items()
+        if state["route_live"] and any(routing.usable(r) for r in state["backing_rows"])
+    }
+    native_quota_spent = {
+        group for group, state in native_family_state.items()
+        if state["backing_rows"]
+        and all(r.get("tier") == "spent" for r in state["backing_rows"])
+    }
+    review_e = prov.get("review-e") or {}
+    review_e_open = bool(
+        review_e.get("wired") is True
+        and modelreg.provider_route_is_live(registry, review_e)
+        and native_available
+        and native_quota_spent
+    )
+
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
     fable_seats = [r for r in rows if r.get("fable") and routing.usable(r) and r["seat"] not in downgraded]
     anthropic_seats = [r for r in rows if r.get("family") == "anthropic" and routing.usable(r)]
@@ -365,6 +409,8 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     for pid in review_ids:
         p = prov.get(pid, {})
         if not p.get("review_eligible"):
+            continue
+        if pid == "review-e" and not review_e_open:
             continue
         if pid in author_ids:
             continue
@@ -403,7 +449,8 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     # Independent dispatch first, then different family, then billing and availability
     # tier. Among the same independence/billing/tier, configured review_order precedes
     # expiry/intake tie-breaks so drain-window edits cannot invert the gate.
-    out.sort(key=lambda e: (not e["dispatch_independent"],
+    out.sort(key=lambda e: (e["provider"] == "review-e",
+                            not e["dispatch_independent"],
                             bool(dispatcher_family and e["family"] == dispatcher_family),
                             0 if e.get("billing") == "included" else 1,
                             {"available": 0, "reserve": 1, "spent": 2}.get(e.get("tier"), 2),
@@ -432,7 +479,13 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
     swap = [r for r in reviewers if routing.resets_before(r["row"], task_seconds)]
     warn = f" ⚠ resets mid-task: {', '.join(r['seat'] for r in swap)} — bring in at the next boundary" if swap else ""
     if level == "single-frontier":
-        first = reviewers[0]
+        # Review E never handles the routine/single-frontier gate.  Its only
+        # allowed routing role is the missing second family of a cross-family
+        # pair after positive native quota-spent evidence.
+        first = next((r for r in reviewers if r.get("provider") != "review-e"), None)
+        if first is None:
+            return {"satisfied": False, "chain": [],
+                    "explanation": "PARK: no USABLE native reviewer; Review E cannot be the sole gate."}
         if not first.get("dispatch_independent", True):
             return {"satisfied": False, "chain": [first],
                     "explanation": "PARK: only the dispatcher can review; dispatch intent/risk lacks an independent check."}
@@ -781,7 +834,10 @@ def main(argv=None):
     reviewers = live_reviewers(providers, rows, ledger, registry,
                                dispatcher=effective_dispatcher, authors=authors)
     review_e = providers["providers"].get("review-e") or {}
-    review_e_wired = modelreg.provider_route_is_live(registry, review_e)
+    review_e_wired = bool(
+        review_e.get("wired") is True
+        and modelreg.provider_route_is_live(registry, review_e)
+    )
     if not handoff["allowed"]:
         review = {"satisfied": False, "chain": [], "explanation": handoff["reason"]}
     elif not dispatcher.get("satisfied"):

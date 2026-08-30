@@ -9,7 +9,7 @@ Cursor Models size is “generous,” not a published dollar figure. Other Model
 **Cursor Grok 4.6** and **Grok Build** both serve Grok 4.6. They are not the exact same product.
 
 - Same model family (Grok 4.6), available in both Cursor and Grok Build.
-- Different harness, tools, default effort, and billing label (Build sessions often show `grok-4.6-build`). Same weights in spirit; different wrapper. Benchmarks move with the harness, not just the name.
+- Different harness, tools, default effort, and billing label. The selectable Grok CLI model is exactly `grok-4.6`; `grok-4.6-build` is only this repository's internal route key. Same weights in spirit; different wrapper. Benchmarks move with the harness, not just the name.
 - **Different meters:** Cursor Grok → Cursor Models pool. `grok` CLI → SuperGrok Heavy.
 
 So: use Cursor Grok to empty the IDE pool first. Keep Heavy for the orchestration implementer (`grok` CLI), not because the brain is a different species.

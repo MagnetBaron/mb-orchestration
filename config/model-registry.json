@@ -279,8 +279,7 @@
       "lab": "xAI",
       "lifecycle": "stable",
       "official_ids": [
-        "grok-4.6",
-        "grok-4.6-build"
+        "grok-4.6"
       ],
       "notes": "Default implementer. Near-frontier and materially cheaper than scarce review seats. Effort order is empirical (high vs xhigh).",
       "official_sources": [

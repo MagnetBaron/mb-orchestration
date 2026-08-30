@@ -53,12 +53,12 @@
     },
     "grok-build": {
       "label": "Grok Build CLI (implement)", "level": "terra", "family": "xai", "kind": "cli",
-      "model": "grok-4.6-build", "functions": ["implement", "dispatch"], "capabilities": ["code", "dispatch"],
+      "model": "grok-4.6", "functions": ["implement", "dispatch"], "capabilities": ["code", "dispatch"],
       "prowess": { "implement": 82, "dispatch": 79 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
       "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json", "runtime_note": "TTY launcher path required; non-TTY launcher failed" },
       "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
       "route": "grok-4.6-build",
-      "notes": "Default implementer. 1 worktree / 1 branch / named file scope."
+      "notes": "Default implementer. Exact selectable provider model is grok-4.6; grok-4.6-build is only the internal route key. 1 worktree / 1 branch / named file scope."
     },
     "grok-bot-review-d": {
       "label": "Grok Bot — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "app",

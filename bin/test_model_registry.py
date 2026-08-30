@@ -1707,6 +1707,32 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
     def _entry(self):
         return json.loads((REPO / "config" / "entrypoints.json").read_text())
 
+    def _live_review_e(self, *, wired=True):
+        provs = providers()
+        provs["providers"]["review-e"]["wired"] = wired
+        registry = live()
+        registry["routes"]["review-e-fireworks"]["route_state"] = "live_verified"
+        return provs, registry
+
+    def _review_e_route_probe(self):
+        """Treat the Review E test route as live after the test promotes it.
+
+        The checked-in Review E model is intentionally a non-routable placeholder,
+        so a unit matrix cannot make it genuinely live without fabricating the named
+        model and its six promotion attestations. This patch isolates the routing
+        matrix at the already-validated live-route boundary.
+        """
+        real = rr.modelreg.provider_route_is_live
+        return mock.patch.object(
+            rr.modelreg,
+            "provider_route_is_live",
+            side_effect=lambda registry, provider, as_of=None: (
+                registry["routes"]["review-e-fireworks"].get("route_state") == "live_verified"
+                if (provider or {}).get("route") == "review-e-fireworks"
+                else real(registry, provider, as_of=as_of)
+            ),
+        )
+
     def test_every_tested_dispatch_target_honors_user_selection(self):
         provs = providers()
         for pid in ("codex-sol", "opus-5", "opus-4.8", "grok-build", "fable-5",
@@ -2079,6 +2105,78 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertNotIn("codex-sol", [r["provider"] for r in reviewers])
         self.assertEqual(reviewers[0]["provider"], "opus-5")
 
+    def test_review_e_live_does_not_preempt_available_native_families(self):
+        provs, registry = self._live_review_e()
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, self._rows(), {}, registry, dispatcher="grok-build",
+            )
+        ids = [r["provider"] for r in reviewers]
+        self.assertNotIn("review-e", ids)
+        review = rr.pick_review("cross-family", reviewers, True, 0)
+        self.assertTrue(review["satisfied"], review)
+        self.assertEqual(
+            {r["independence_group"] for r in review["chain"]},
+            {"anthropic", "openai"},
+        )
+
+    def test_review_e_opens_only_for_positive_native_quota_spent_evidence(self):
+        provs, registry = self._live_review_e()
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, self._rows(spent=("codex-sol",)), {}, registry,
+                dispatcher="grok-build",
+            )
+        ids = [r["provider"] for r in reviewers]
+        self.assertIn("opus-5", ids)
+        self.assertIn("review-e", ids)
+        review = rr.pick_review("cross-family", reviewers, True, 0)
+        self.assertTrue(review["satisfied"], review)
+        self.assertEqual(
+            {r["independence_group"] for r in review["chain"]},
+            {"anthropic", "open-weight"},
+        )
+
+    def test_review_e_stays_after_native_intake_family_artifact_review(self):
+        provs, registry = self._live_review_e()
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, self._rows(spent=("codex-sol",)), {}, registry,
+                dispatcher="opus-5",
+            )
+        self.assertEqual(reviewers[0]["provider"], "opus-5", reviewers)
+        self.assertEqual(reviewers[0]["review_scope"], "artifact-only")
+        self.assertFalse(reviewers[0]["dispatch_independent"])
+        self.assertEqual(reviewers[-1]["provider"], "review-e", reviewers)
+        review = rr.pick_review("cross-family", reviewers, True, 0)
+        self.assertTrue(review["satisfied"], review)
+        self.assertEqual([r["provider"] for r in review["chain"]], ["opus-5", "review-e"])
+        self.assertTrue(any(r["dispatch_independent"] for r in review["chain"]))
+
+    def test_native_outage_does_not_open_review_e(self):
+        provs, registry = self._live_review_e()
+        registry["routes"]["gpt-5.6-sol-codex"]["route_state"] = "unavailable"
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, self._rows(), {}, registry, dispatcher="grok-build",
+            )
+        ids = [r["provider"] for r in reviewers]
+        self.assertNotIn("codex-sol", ids)
+        self.assertNotIn("review-e", ids)
+        review = rr.pick_review("cross-family", reviewers, True, 0)
+        self.assertFalse(review["satisfied"], review)
+
+    def test_review_e_live_route_still_requires_wired_true(self):
+        provs, registry = self._live_review_e(wired=False)
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, self._rows(spent=("codex-sol",)), {}, registry,
+                dispatcher="grok-build",
+            )
+        self.assertNotIn("review-e", [r["provider"] for r in reviewers])
+        review = rr.pick_review("cross-family", reviewers, False, 0)
+        self.assertFalse(review["satisfied"], review)
+
     def test_reserve_reviewer_still_sorts_after_available(self):
         rows = self._rows()
         next(r for r in rows if r["seat"] == "codex-sol")["tier"] = "available"
@@ -2108,6 +2206,51 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
                 any("codex-sol" in e and "separate_invocation" in e for e in doc.ERRORS),
                 doc.ERRORS,
             )
+        finally:
+            doc.ERRORS[:] = saved
+
+    def test_grok_command_shape_uses_only_installed_cli_contract(self):
+        doc = load_mod("doctor_grok_command", HERE / "doctor.py")
+        seat = json.loads((REPO / "config" / "seat-exec.json").read_text())
+        provs = providers()
+        expected = [
+            "--cwd", "{worktree}", "--prompt-file", "{brief_path}",
+            "--model", "grok-4.6", "--reasoning-effort", "xhigh",
+            "--no-subagents",
+        ]
+        self.assertEqual(seat["recipes"]["grok-build"]["args_template"], expected)
+        self.assertEqual(provs["providers"]["grok-build"]["model"], "grok-4.6")
+        self.assertEqual(live()["models"]["grok-4.6"]["official_ids"], ["grok-4.6"])
+
+        saved = list(doc.ERRORS)
+        doc.ERRORS.clear()
+        try:
+            doc.check_seat_exec(seat, provs["providers"], set(provs["providers"]))
+            self.assertEqual(doc.ERRORS, [])
+
+            unsupported = copy.deepcopy(seat)
+            unsupported["recipes"]["grok-build"]["args_template"][:4] = [
+                "--workdir", "{worktree}", "--brief", "{brief_path}",
+            ]
+            doc.ERRORS.clear()
+            doc.check_seat_exec(unsupported, provs["providers"], set(provs["providers"]))
+            self.assertTrue(any("unsupported Grok flag" in e for e in doc.ERRORS), doc.ERRORS)
+
+            shortened = copy.deepcopy(seat)
+            shortened["recipes"]["grok-build"]["args_template"][5] = "grok-4"
+            doc.ERRORS.clear()
+            doc.check_seat_exec(shortened, provs["providers"], set(provs["providers"]))
+            self.assertTrue(any("--model must use 'grok-4.6'" in e for e in doc.ERRORS), doc.ERRORS)
+
+            wrong_provider_model = copy.deepcopy(provs)
+            wrong_provider_model["providers"]["grok-build"]["model"] = "grok-4.6-build"
+            doc.ERRORS.clear()
+            doc.check_seat_exec(
+                seat,
+                wrong_provider_model["providers"],
+                set(wrong_provider_model["providers"]),
+            )
+            self.assertTrue(any("selectable model must be exact" in e for e in doc.ERRORS), doc.ERRORS)
         finally:
             doc.ERRORS[:] = saved
 

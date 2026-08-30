@@ -510,6 +510,13 @@ def check_seat_exec(seat_exec, provs, provider_ids):
         err("seat-exec.json: no recipes defined")
         return
     valid_reads = {"brief", "git-diff", "preview-url", "analytics", "none"}
+    grok_required_flags = {
+        "--cwd": "{worktree}",
+        "--prompt-file": "{brief_path}",
+        "--model": "grok-4.6",
+        "--reasoning-effort": None,
+    }
+    grok_unsupported_flags = {"--workdir", "--brief"}
     for pid, r in recipes.items():
         if pid not in provider_ids:
             err(f"seat-exec recipe {pid!r}: not a known provider (config/providers.json)")
@@ -535,6 +542,40 @@ def check_seat_exec(seat_exec, provs, provider_ids):
             err(f"seat-exec recipe {pid!r}: args_template must be a list")
         if not isinstance(r.get("worktree"), bool):
             err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
+        if pid == "grok-build":
+            raw_args = r.get("args_template")
+            args = raw_args if isinstance(raw_args, list) else []
+            if bin_ != "grok":
+                err("seat-exec recipe 'grok-build': bin must be exact installed CLI 'grok'")
+            bad = sorted(grok_unsupported_flags & set(args))
+            if bad:
+                err(f"seat-exec recipe 'grok-build': unsupported Grok flag(s) {bad}")
+            for flag_name, expected_value in grok_required_flags.items():
+                if args.count(flag_name) != 1:
+                    err(f"seat-exec recipe 'grok-build': requires exactly one {flag_name}")
+                    continue
+                pos = args.index(flag_name)
+                actual = args[pos + 1] if pos + 1 < len(args) else None
+                if expected_value is not None and actual != expected_value:
+                    err(
+                        f"seat-exec recipe 'grok-build': {flag_name} must use "
+                        f"{expected_value!r}, got {actual!r}"
+                    )
+            if "--reasoning-effort" in args:
+                pos = args.index("--reasoning-effort")
+                effort = args[pos + 1] if pos + 1 < len(args) else None
+                if effort not in ("high", "xhigh"):
+                    err(
+                        "seat-exec recipe 'grok-build': --reasoning-effort must be "
+                        f"high or xhigh, got {effort!r}"
+                    )
+            if args.count("--no-subagents") != 1:
+                err("seat-exec recipe 'grok-build': requires exactly one --no-subagents")
+            if (provs.get(pid) or {}).get("model") != "grok-4.6":
+                err(
+                    "provider 'grok-build': selectable model must be exact 'grok-4.6'; "
+                    "'grok-4.6-build' is only an internal route key"
+                )
         flag = r.get("separate_invocation_when_dispatcher")
         if flag is not None and flag is not True and flag is not False:
             err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")
