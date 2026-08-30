@@ -39,7 +39,7 @@ KINDS = ("route_decision", "run_plan", "review_verdict", "test_verdict",
 SOURCES = ("resolve-route", "run-brief", "observe-cli")
 HANDOFF_PARK_CODES = frozenset({
     "restricted_artifact", "unknown_artifact", "missing_required_artifact",
-    "unknown_participant",
+    "unknown_participant", "standing_review_authorization",
 })
 EVENT_ID_RE = re.compile(r"^obs-v[0-9]+-[a-f0-9]+$")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -81,6 +81,7 @@ _NOT_USAGE_STARVATION = (
     "not an active connector", "wrong-route", "not dispatch-qualified",
     "unknown dispatcher", "unknown dispatcher profile", "restricted artifact",
     "unknown artifact", "required handoff artifact", "coding-capable",
+    "standing_review_authorization", "not preauthorized",
     "implement/ide", "auth_blocked", "unwired", "catalog_verified",
     "required mcp",
 )
@@ -345,6 +346,9 @@ def park_reason_code(reason) -> str | None:
     if not reason:
         return None
     r = str(reason).lower()
+    if "standing_review_authorization" in r and (
+            "missing" in r or "weakened" in r or "not preauthorized" in r):
+        return "standing_review_authorization"
     if "restricted artifact" in r:
         return "restricted_artifact"
     if "unknown artifact" in r:
@@ -965,6 +969,12 @@ def analyze(events) -> dict:
                 1 for r in handoff_parked
                 if (r.get("terminal") or {}).get("park_reason_code") == "missing_required_artifact"
                 or (r.get("handoff") or {}).get("missing_required")
+            ),
+            "standing_review_authorization": sum(
+                1 for r in handoff_parked
+                if (r.get("terminal") or {}).get("park_reason_code") == "standing_review_authorization"
+                or (r.get("handoff") or {}).get("authorization_basis")
+                == "fail-closed-standing-review-authorization"
             ),
             "requires_user_permission_true": sum(
                 1 for r in runs if (r.get("handoff") or {}).get("requires_user_permission")

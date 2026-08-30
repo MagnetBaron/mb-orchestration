@@ -35,8 +35,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -109,7 +111,7 @@ def provider_seats(pid, providers, rows):
     return sorted(seats, key=routing.route_key)
 
 
-STANDING_REVIEW_AUTHORIZATION_REQUIRED = {
+STANDING_REVIEW_AUTHORIZATION_CONSTANTS = {
     "provider_scope": "all-configured-review-providers",
     "artifact_scope": "ordinary_artifacts",
     "per_review_approval_required": False,
@@ -117,28 +119,51 @@ STANDING_REVIEW_AUTHORIZATION_REQUIRED = {
     "intake_family_review_scope": "artifact-only",
     "intake_family_must_not_be_sole_reviewer": True,
     "separate_physical_invocation_required": True,
-    "effective_date": "2026-08-30",
 }
+STANDING_REVIEW_AUTHORIZATION_KEYS = frozenset(
+    {*STANDING_REVIEW_AUTHORIZATION_CONSTANTS, "effective_date"}
+)
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def standing_review_authorization(policy):
-    """Return the exact standing authorization object, or None if missing/weakened."""
+def parse_standing_effective_date(raw, *, today=None):
+    """Return a date for a valid ISO YYYY-MM-DD not in the future, else None."""
+    if not isinstance(raw, str) or not _ISO_DATE_RE.fullmatch(raw):
+        return None
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed > (today or date.today()):
+        return None
+    return parsed
+
+
+def standing_review_authorization(policy, *, today=None):
+    """Return the standing authorization object, or None if missing/weakened/malformed.
+
+    Semantic fields must match the known constants exactly. effective_date must be a
+    valid ISO YYYY-MM-DD that is not in the future. Extra or missing keys fail closed.
+    """
     auth = policy.get("standing_review_authorization")
     if not isinstance(auth, dict):
         return None
-    if set(auth) != set(STANDING_REVIEW_AUTHORIZATION_REQUIRED):
+    if set(auth) != STANDING_REVIEW_AUTHORIZATION_KEYS:
         return None
-    if any(auth.get(key) != value for key, value in STANDING_REVIEW_AUTHORIZATION_REQUIRED.items()):
+    if any(auth.get(key) != value for key, value in STANDING_REVIEW_AUTHORIZATION_CONSTANTS.items()):
         return None
-    return dict(STANDING_REVIEW_AUTHORIZATION_REQUIRED)
+    if parse_standing_effective_date(auth.get("effective_date"), today=today) is None:
+        return None
+    return {**STANDING_REVIEW_AUTHORIZATION_CONSTANTS, "effective_date": auth["effective_date"]}
 
 
 def evaluate_handoff(policy, artifacts):
     """Classify the run's artifacts before any provider is selected.
 
     Ordinary configured-provider handoffs are preauthorized only when the exact
-    standing review authorization object is present. Missing or weakened
-    authorization parks ordinary artifacts without a permission request.
+    standing review authorization object is present and currently effective.
+    Missing, weakened, malformed, future-dated, or extra-field authorization
+    parks ordinary artifacts without a permission request.
     Restricted or unknown classes park for their own reasons, also without a
     permission request.
     """
@@ -327,6 +352,8 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     live_ids = {pid for pid in review_ids
                 if modelreg.provider_route_is_live(registry, prov.get(pid) or {})}
     author_ids = set(authors or ())
+    # Family independence follows the *effective* dispatcher. A requested intake
+    # that fell back is not a review participant unless that provider was selected.
     dispatcher_family = (prov.get(dispatcher) or {}).get("family")
     dispatcher_group = modelreg.independence_group_of(registry, dispatcher_family)
 
@@ -373,10 +400,16 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
                         "billing": seat.get("billing"), "row": seat, "order": order_index.get(pid, 99),
                         "dispatch_independent": dispatch_independent,
                         "review_scope": "artifact-and-dispatch" if dispatch_independent else "artifact-only"})
-    # Independent dispatch check first, then different family, then live usage/economic order.
+    # Independent dispatch first, then different family, then billing and availability
+    # tier. Among the same independence/billing/tier, configured review_order precedes
+    # expiry/intake tie-breaks so drain-window edits cannot invert the gate.
     out.sort(key=lambda e: (not e["dispatch_independent"],
                             bool(dispatcher_family and e["family"] == dispatcher_family),
-                            routing.route_key(e["row"]), e["order"]))
+                            0 if e.get("billing") == "included" else 1,
+                            {"available": 0, "reserve": 1, "spent": 2}.get(e.get("tier"), 2),
+                            e["order"],
+                            1 if e["row"].get("intake") else 0,
+                            -routing.expiry_urgency(e["row"])))
     return out
 
 

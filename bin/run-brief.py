@@ -140,9 +140,11 @@ def plan_for_seat(pid, recipes, ctx, role, dispatcher=None, review_scope=None):
         entry["reason"] = "no CLI (app/API seat) — reached out-of-band (Slack #visual-qa / off-box HTTP), never shelled"
     else:
         entry["would_run"] = render_cmd(r, ctx)
-        if role == "review" and pid == dispatcher and r.get("separate_invocation_when_dispatcher"):
-            entry["note"] = ("same provider dispatched this run → separate review invocation; artifact-only, "
-                             "does not independently attest to dispatch intent/risk")
+        if (role == "review" and r.get("separate_invocation_when_dispatcher")
+                and review_scope == "artifact-only"):
+            entry["note"] = ("same-family or same-provider review of the effective dispatcher → "
+                             "separate physical invocation; artifact-only, does not independently "
+                             "attest to dispatch intent/risk")
     if review_scope:
         entry["review_scope"] = review_scope
     return entry

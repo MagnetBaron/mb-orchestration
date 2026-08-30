@@ -10,8 +10,9 @@ import json
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -1847,7 +1848,11 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
                          "artifact-only")
         self.assertTrue(got["standing_review_authorization"]["intake_family_must_not_be_sole_reviewer"])
         self.assertTrue(got["standing_review_authorization"]["separate_physical_invocation_required"])
-        self.assertEqual(got["standing_review_authorization"]["effective_date"], "2026-08-30")
+        self.assertRegex(got["standing_review_authorization"]["effective_date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertLessEqual(
+            date.fromisoformat(got["standing_review_authorization"]["effective_date"]),
+            date.today(),
+        )
 
     def test_restricted_and_unknown_handoffs_park_without_permission_loop(self):
         policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
@@ -1971,6 +1976,138 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             del missing["standing_review_authorization"]
             doc.check_handoff_policy(missing)
             self.assertTrue(any("standing_review_authorization" in e for e in doc.ERRORS), doc.ERRORS)
+            doc.ERRORS.clear()
+            extra = copy.deepcopy(policy)
+            extra["standing_review_authorization"]["bonus"] = True
+            doc.check_handoff_policy(extra)
+            self.assertTrue(any("unexpected field" in e for e in doc.ERRORS), doc.ERRORS)
+            doc.ERRORS.clear()
+            future = copy.deepcopy(policy)
+            future["standing_review_authorization"]["effective_date"] = (
+                date.today() + timedelta(days=2)
+            ).isoformat()
+            doc.check_handoff_policy(future)
+            self.assertTrue(any("future" in e for e in doc.ERRORS), doc.ERRORS)
+            doc.ERRORS.clear()
+            bad = copy.deepcopy(policy)
+            bad["standing_review_authorization"]["effective_date"] = "2026-13-40"
+            doc.check_handoff_policy(bad)
+            self.assertTrue(any("effective_date" in e for e in doc.ERRORS), doc.ERRORS)
+        finally:
+            doc.ERRORS[:] = saved
+
+    def test_malformed_future_or_extra_authorization_parks_ordinary_handoff(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        extra = copy.deepcopy(policy)
+        extra["standing_review_authorization"]["extra"] = 1
+        got = rr.evaluate_handoff(extra, ["brief"])
+        self.assertFalse(got["allowed"])
+        self.assertFalse(got["requires_user_permission"])
+        future = copy.deepcopy(policy)
+        future["standing_review_authorization"]["effective_date"] = "2099-01-01"
+        got = rr.evaluate_handoff(future, ["brief"])
+        self.assertFalse(got["allowed"])
+        malformed = copy.deepcopy(policy)
+        malformed["standing_review_authorization"]["effective_date"] = "30 Aug 2026"
+        got = rr.evaluate_handoff(malformed, ["brief"])
+        self.assertFalse(got["allowed"])
+        self.assertEqual(got["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+
+    def _handoff_load_config(self, mutate):
+        orig = rr.mborch.load_config
+        def fake(name, required=True):
+            data = orig(name, required=required)
+            if name == "handoff-policy.json" and isinstance(data, dict):
+                data = copy.deepcopy(data)
+                mutate(data)
+            return data
+        return fake
+
+    def test_rr_main_parks_missing_standing_authorization(self):
+        def mutate(policy):
+            del policy["standing_review_authorization"]
+        buf = io.StringIO()
+        with mock.patch.object(rr.mborch, "load_config", self._handoff_load_config(mutate)):
+            with contextlib.redirect_stdout(buf):
+                rc = rr.main(["--class", "internal-notes", "--intake-provider", "grok-build", "--json"])
+        got = json.loads(buf.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertFalse(got["routing_satisfied"])
+        self.assertFalse(got["handoff"]["allowed"])
+        self.assertFalse(got["handoff"]["requires_user_permission"])
+        self.assertEqual(got["handoff"]["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+        self.assertIsNone(got["handoff"]["standing_review_authorization"])
+        self.assertIn("standing_review_authorization", got["park_reason"])
+
+    def test_rr_main_parks_weakened_standing_authorization(self):
+        def mutate(policy):
+            policy["standing_review_authorization"]["per_review_approval_required"] = True
+        buf = io.StringIO()
+        with mock.patch.object(rr.mborch, "load_config", self._handoff_load_config(mutate)):
+            with contextlib.redirect_stdout(buf):
+                rc = rr.main(["--class", "internal-notes", "--intake-provider", "grok-build", "--json"])
+        got = json.loads(buf.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertFalse(got["handoff"]["allowed"])
+        self.assertFalse(got["handoff"]["requires_user_permission"])
+        self.assertEqual(got["handoff"]["action"], "park")
+        self.assertEqual(got["handoff"]["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+
+    def test_neutral_family_dispatcher_keeps_doctrinal_review_order(self):
+        rows = self._rows()
+        next(r for r in rows if r["seat"] == "codex-sol").update(
+            {"window_kinds": ["weekly"], "runway_seconds": 3600, "intake": False}
+        )
+        next(r for r in rows if r["seat"] == "claude-pro-a").update(
+            {"window_kinds": ["weekly"], "runway_seconds": 86400 * 20, "intake": True}
+        )
+        reviewers = rr.live_reviewers(
+            providers(), rows, {}, live(), dispatcher="grok-build",
+        )
+        ids = [r["provider"] for r in reviewers if r["provider"] in ("opus-5", "codex-sol")]
+        self.assertEqual(ids[:2], ["opus-5", "codex-sol"], reviewers)
+        self.assertTrue(all(r["dispatch_independent"] for r in reviewers
+                            if r["provider"] in ("opus-5", "codex-sol")))
+
+    def test_spent_reviewer_stays_excluded_when_order_is_doctrinal(self):
+        reviewers = rr.live_reviewers(
+            providers(), self._rows(spent=("codex-sol",)), {}, live(), dispatcher="grok-build",
+        )
+        self.assertNotIn("codex-sol", [r["provider"] for r in reviewers])
+        self.assertEqual(reviewers[0]["provider"], "opus-5")
+
+    def test_reserve_reviewer_still_sorts_after_available(self):
+        rows = self._rows()
+        next(r for r in rows if r["seat"] == "codex-sol")["tier"] = "available"
+        next(r for r in rows if r["seat"] == "claude-pro-a")["tier"] = "reserve"
+        reviewers = rr.live_reviewers(
+            providers(), rows, {}, live(), dispatcher="grok-build",
+        )
+        by = {r["provider"]: r for r in reviewers}
+        self.assertEqual(by["codex-sol"]["tier"], "available")
+        self.assertEqual(by["opus-5"]["tier"], "reserve")
+        ids = [r["provider"] for r in reviewers if r["provider"] in ("opus-5", "codex-sol")]
+        self.assertEqual(ids[0], "codex-sol")
+
+    def test_dual_eligible_review_dispatch_requires_separate_invocation_flag(self):
+        doc = load_mod("doctor_seat_exec", HERE / "doctor.py")
+        seat = json.loads((REPO / "config" / "seat-exec.json").read_text())
+        provs = providers()
+        saved = list(doc.ERRORS)
+        doc.ERRORS.clear()
+        try:
+            doc.check_seat_exec(seat, provs["providers"], set(provs["providers"]))
+            self.assertEqual(doc.ERRORS, [])
+            weak = copy.deepcopy(seat)
+            del weak["recipes"]["codex-sol"]["separate_invocation_when_dispatcher"]
+            doc.check_seat_exec(weak, provs["providers"], set(provs["providers"]))
+            self.assertTrue(
+                any("codex-sol" in e and "separate_invocation" in e for e in doc.ERRORS),
+                doc.ERRORS,
+            )
         finally:
             doc.ERRORS[:] = saved
 

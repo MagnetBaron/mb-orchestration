@@ -339,6 +339,7 @@ class MissingAndFallbackTests(unittest.TestCase):
         self.assertEqual(report["handoff_parks"]["count"], 1)
         self.assertGreaterEqual(report["handoff_parks"]["restricted"], 1)
         self.assertEqual(report["handoff_parks"]["requires_user_permission_true"], 0)
+        self.assertEqual(report["handoff_parks"]["standing_review_authorization"], 0)
 
     def test_no_permission_loop_on_restricted_handoff(self):
         policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
@@ -353,6 +354,50 @@ class MissingAndFallbackTests(unittest.TestCase):
         self.assertFalse(ev["handoff"]["authorship_changes_authority"])
         self.assertEqual(ev["handoff"]["authorization_basis"], "fail-closed-restricted")
         self.assertEqual(observe.validate_event(ev), [])
+
+    def test_standing_authorization_park_is_observability_first_class(self):
+        policy = json.loads((REPO / "config" / "handoff-policy.json").read_text())
+        del policy["standing_review_authorization"]
+        got = rr.evaluate_handoff(policy, ["brief", "repo-source"])
+        self.assertEqual(got["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+        self.assertFalse(got["requires_user_permission"])
+        code = observe.park_reason_code(got["reason"])
+        self.assertEqual(code, "standing_review_authorization")
+        self.assertIn(code, observe.HANDOFF_PARK_CODES)
+        ev = observe.event_from_route_decision(
+            _decision(routing_satisfied=False, park_reason=got["reason"], handoff=got),
+            run_id="run-auth-park", ts="2026-08-30T00:00:00+00:00",
+        )
+        self.assertEqual(ev["terminal"]["park_reason_code"], "standing_review_authorization")
+        self.assertEqual(ev["handoff"]["authorization_basis"],
+                         "fail-closed-standing-review-authorization")
+        self.assertFalse(ev["usage"]["starvation"])
+        report = observe.analyze([ev])
+        self.assertEqual(report["handoff_parks"]["count"], 1)
+        self.assertEqual(report["handoff_parks"]["standing_review_authorization"], 1)
+        self.assertEqual(report["usage_starvation"]["count"], 0)
+
+    def test_separate_invocation_note_follows_review_scope(self):
+        recipes = json.loads((REPO / "config" / "seat-exec.json").read_text())["recipes"]
+        self.assertTrue(recipes["codex-sol"]["separate_invocation_when_dispatcher"])
+        ctx = {"brief_path": "b", "worktree": "w", "branch": "br", "repo": ".",
+               "output_path": "o", "preview_url": "u"}
+        same = run_brief.plan_for_seat(
+            "codex-sol", recipes, ctx, "review", dispatcher="codex-sol",
+            review_scope="artifact-only",
+        )
+        self.assertIn("separate physical invocation", same["note"])
+        family = run_brief.plan_for_seat(
+            "opus-5", recipes, ctx, "review", dispatcher="opus-4.8",
+            review_scope="artifact-only",
+        )
+        self.assertIn("separate physical invocation", family["note"])
+        independent = run_brief.plan_for_seat(
+            "opus-5", recipes, ctx, "review", dispatcher="codex-sol",
+            review_scope="artifact-and-dispatch",
+        )
+        self.assertNotIn("note", independent)
 
     def test_reviewer_disagreement_and_fix_loop_retraction(self):
         route = observe.event_from_route_decision(

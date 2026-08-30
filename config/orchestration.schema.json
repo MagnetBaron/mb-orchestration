@@ -200,7 +200,7 @@
             "intake_family_review_scope": { "const": "artifact-only" },
             "intake_family_must_not_be_sole_reviewer": { "const": true },
             "separate_physical_invocation_required": { "const": true },
-            "effective_date": { "const": "2026-08-30" }
+            "effective_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "format": "date" }
           }
         }
       }
@@ -375,7 +375,8 @@
               "args_template": { "type": "array", "items": { "type": "string" } },
               "reads": { "enum": ["brief", "git-diff", "preview-url", "analytics", "none"] },
               "worktree": { "type": "boolean" },
-              "never_metered_host": { "type": "boolean" }
+              "never_metered_host": { "type": "boolean" },
+              "separate_invocation_when_dispatcher": { "type": "boolean" }
             }
           }
         }

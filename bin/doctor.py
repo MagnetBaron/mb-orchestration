@@ -17,6 +17,7 @@ warnings under --strict).
 """
 from __future__ import annotations
 import argparse, importlib.util, json, re, sys
+from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -423,18 +424,33 @@ def check_handoff_policy(policy):
         "intake_family_review_scope": "artifact-only",
         "intake_family_must_not_be_sole_reviewer": True,
         "separate_physical_invocation_required": True,
-        "effective_date": "2026-08-30",
     }
     auth = policy.get("standing_review_authorization")
     if not isinstance(auth, dict):
         err("handoff-policy: standing_review_authorization object is required")
     else:
-        extra = sorted(set(auth) - set(expected_auth))
+        expected_keys = set(expected_auth) | {"effective_date"}
+        extra = sorted(set(auth) - expected_keys)
         if extra:
             err(f"handoff-policy standing_review_authorization unexpected field(s): {extra}")
+        missing = sorted(expected_keys - set(auth))
+        if missing:
+            err(f"handoff-policy standing_review_authorization missing field(s): {missing}")
         for key, value in expected_auth.items():
-            if auth.get(key) != value:
+            if key in auth and auth.get(key) != value:
                 err(f"handoff-policy standing_review_authorization.{key} must be {value!r}")
+        raw_date = auth.get("effective_date")
+        if "effective_date" in auth:
+            if not isinstance(raw_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date):
+                err("handoff-policy standing_review_authorization.effective_date must be ISO YYYY-MM-DD")
+            else:
+                try:
+                    parsed = date.fromisoformat(raw_date)
+                except ValueError:
+                    err("handoff-policy standing_review_authorization.effective_date is not a valid calendar date")
+                else:
+                    if parsed > date.today():
+                        err("handoff-policy standing_review_authorization.effective_date must not be in the future")
 
 
 def check_windows(windows, subs_ids, fable_from_subs, provs=None):
@@ -519,6 +535,15 @@ def check_seat_exec(seat_exec, provs, provider_ids):
             err(f"seat-exec recipe {pid!r}: args_template must be a list")
         if not isinstance(r.get("worktree"), bool):
             err(f"seat-exec recipe {pid!r}: worktree must be a boolean")
+        flag = r.get("separate_invocation_when_dispatcher")
+        if flag is not None and flag is not True and flag is not False:
+            err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")
+    for pid, p in (provs or {}).items():
+        if p.get("review_eligible") and p.get("dispatch_eligible"):
+            recipe = recipes.get(pid)
+            if not isinstance(recipe, dict) or recipe.get("separate_invocation_when_dispatcher") is not True:
+                err(f"seat-exec: provider {pid!r} is review_eligible and dispatch_eligible so "
+                    "separate_invocation_when_dispatcher must be true")
 
 
 def check_observability(monitoring):
