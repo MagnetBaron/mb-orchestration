@@ -185,6 +185,7 @@ OPERATIONAL_PRIOR_SOURCES = {
     ("mcp_judgment", "opus-5-teamclaude"): "config/providers.json",
     ("mcp_judgment", "gpt-5.6-sol-codex"): "config/providers.json",
     ("visual_qa", "grok-bot-visual-qa"): "config/providers.json",
+    ("marketplace_intelligence", "grok-bot-marketplace-intelligence"): "config/providers.json",
     ("evidence_audit", "opus-5-teamclaude"): "config/providers.json",
     ("evidence_audit", "gpt-5.6-sol-codex"): "config/providers.json",
     ("model_evaluation_admin", "opus-5-teamclaude"): "config/providers.json",
@@ -231,6 +232,7 @@ REQUIRED_ROLES = (
     "mcp_volume",
     "mcp_judgment",
     "visual_qa",
+    "marketplace_intelligence",
     "evidence_audit",
     "model_evaluation_admin",
 )

@@ -27,7 +27,7 @@ from __future__ import annotations
 # this set; a class label may match a catalog key and stay coarse.
 COARSE_CAPABILITIES = frozenset({
     "code", "review", "architecture", "dispatch", "mcp_bulk", "mcp_judgment",
-    "browser", "visual_qa", "analytics", "ide",
+    "browser", "visual_qa", "analytics", "marketplace_intelligence", "ide",
 })
 
 # Current Google-MCP volume seat. `--needs-mcp` requires this provider in available_on.

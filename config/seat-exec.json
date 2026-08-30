@@ -65,6 +65,11 @@
       "reads": "analytics", "worktree": false, "never_metered_host": true,
       "note": "App analytics input (Clarity heatmaps/replays). No CLI; feeds dispatch, never a verdict."
     },
+    "grok-bot-marketplace-intelligence": {
+      "bin": null, "args_template": [],
+      "reads": "marketplace-evidence", "worktree": false, "never_metered_host": true,
+      "note": "Unwired app Bot definition. Reads newly deposited approved snapshots or positively authorized API outputs only. The CLI cannot create or activate the Bot or routine. Never a review verdict or implementer."
+    },
     "review-e": {
       "bin": null, "args_template": [],
       "reads": "git-diff", "worktree": false, "never_metered_host": false,

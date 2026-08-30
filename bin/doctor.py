@@ -509,7 +509,7 @@ def check_seat_exec(seat_exec, provs, provider_ids):
     if not recipes:
         err("seat-exec.json: no recipes defined")
         return
-    valid_reads = {"brief", "git-diff", "preview-url", "analytics", "none"}
+    valid_reads = {"brief", "git-diff", "preview-url", "analytics", "marketplace-evidence", "none"}
     grok_required_flags = {
         "--cwd": "{worktree}",
         "--prompt-file": "{brief_path}",

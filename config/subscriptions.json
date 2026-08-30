@@ -1,7 +1,7 @@
 {
   "_note": "SUBSCRIPTION INVENTORY \u2014 the ONE file a new user edits to port this system. It describes what you pay for and which providers each plan backs. Nothing here is invariant policy; it is your account reality. Change a plan \u2192 edit only this file (and usage-windows.json anchors). `grants.fable` is authoritative for Fable availability and is re-checked by bin/detect-capability.py so a silent downgrade is caught. Seats are real accounts; teamclaude rotates across the Claude seats. To hand this to a different user: replace these entries with theirs, run `bin/doctor.py`, and the whole system re-routes with no prose edits.",
   "schema_version": 1,
-  "updated": "2026-08-27",
+  "updated": "2026-08-30",
   "owner": "constantine@themagnetbaron.com",
   "subscriptions": {
     "codex-200": {
@@ -26,11 +26,12 @@
       "backs_providers": [
         "grok-build",
         "grok-bot-review-d",
-        "grok-bot-heat-map"
+        "grok-bot-heat-map",
+        "grok-bot-marketplace-intelligence"
       ],
       "grants": {},
       "meter": "grok-heavy (weekly), see usage-windows.json",
-      "notes": "Abundant volume: Grok Build CLI (implement) + two Grok Bot app identities (Review D, Heat Map). Set the weekly anchor in usage-windows.json when known."
+      "notes": "Abundant volume: Grok Build CLI plus live Review D and Heat Map Bot identities. The Marketplace Intelligence Bot is only an unwired definition until created and test-run in the app. All Bots owned by one member share one managed computer and permissions. Set the weekly anchor in usage-windows.json when known."
     },
     "cursor-ultra": {
       "vendor": "Cursor",

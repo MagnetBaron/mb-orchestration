@@ -28,6 +28,19 @@
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "settings", "member-management", "mcpServers"],
       "prompt": "Read-only Microsoft Clarity heatmaps, replays, and summaries. Report evidence to Dispatch. Never administer Clarity, change settings, manage members, implement, or issue a review verdict."
     },
+    "marketplace-intelligence": {
+      "description": "Grok Bot Marketplace Intelligence: read-only sold-price, active-ask, and visual competitor evidence analysis from approved inputs.",
+      "level": "terra",
+      "seat": "grok-bot-marketplace-intelligence",
+      "read_only": true,
+      "tools": {
+        "claude": ["Read", "Glob", "Grep"],
+        "grok": ["Read", "Grep", "Glob"],
+        "codex": ["read_file", "list_dir", "search"]
+      },
+      "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish", "mcpServers", "authenticate", "list", "bid", "buy", "message", "form-submit"],
+      "prompt": "Analyze only owner-supplied marketplace exports/screenshots and positively authorized API outputs under marketplace-intelligence.md. Label confirmed sold transaction, platform aggregate, active ask, visual competitor evidence, directional demand proxy, or unavailable. Record query, source, timestamp, filters, currency, condition, shipping, tax, FX, and provenance; run exact-match before a labeled relaxed sensitivity pass; retain raw observations; deterministically deduplicate; disclose low sample sizes, outliers, and limitations. Never infer sales from active listings, badges, search rank, keyword volume, estimates, or missing data. Never browse, scrape, or operate eBay or Reverb without recorded express platform permission; never list, bid, buy, message, publish, authenticate, administer, implement, or issue a review verdict."
+    },
     "grok-build": {
       "description": "Grok Build: implementation in an isolated worktree.",
       "level": "terra",

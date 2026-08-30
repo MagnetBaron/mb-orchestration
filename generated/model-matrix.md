@@ -86,6 +86,7 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `grok-4.6-build` | `grok-4.6` | live_verified | stable | grok-cli | grok | `grok-4.6` | 2026-08-28 cli_listing | standing_provider | grok-build |
 | `grok-4.6-cursor` | `grok-4.6` | live_verified | stable | cursor | cursor-agent | `grok-4.6` | 2026-08-28 owner_eval | standing_provider | cursor-grok |
 | `grok-bot-heat-map` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
+| `grok-bot-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
 | `grok-bot-visual-qa` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
 | `kimi-k2.6-unwired` | `kimi-k2.6` | unwired | superseded | none | none | `kimi-k2.6` | 2026-08-28 vendor_self_reported | — | — |
 | `kimi-k2.7-code-unwired` | `kimi-k2.7-code` | unwired | stable | none | none | `kimi-k2.7-code` | 2026-08-28 vendor_self_reported | — | — |
@@ -256,6 +257,15 @@ Storefront pixel review of a visitor preview URL.
 |---|---:|---|---|---|---|
 | quality | 1 | `grok-bot-visual-qa` | medium | operational_prior | config/providers.json |
 | selection | 1 | `grok-bot-visual-qa` | high |  |  |
+
+### `marketplace_intelligence`
+
+Read-only analysis of approved marketplace snapshots and positively authorized API outputs. Unwired until the app Bot is created and test-run.
+
+| kind | n | route | confidence | basis | evidence |
+|---|---:|---|---|---|---|
+| quality | 1 | `grok-bot-marketplace-intelligence` | low | operational_prior | config/providers.json |
+| selection | 1 | `grok-bot-marketplace-intelligence` | low |  |  |
 
 ### `evidence_audit`
 

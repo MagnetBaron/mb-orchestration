@@ -1,7 +1,7 @@
 {
   "_note": "PROVIDER / AGENT REGISTRY — the single source for who exists, their capability LEVEL (durable routing tier), model FAMILY (cross-family review), BILLING (included vs metered $), CAPABILITIES (what they can access — browser, connectors, etc.), PROWESS (strength per function, so assignment tracks capability not habit), and how to DETECT them. Adding or upgrading a model is ONE clean edit here bound to a level (see model_slot_in). Providers at a level are REPLACEABLE. Invariant policy lives in AGENTS.md/DOCTRINE.md; everything that moves with the market lives here.",
   "schema_version": 4,
-  "updated": "2026-08-28",
+  "updated": "2026-08-30",
   "model_registry": "model-registry.json",
   "capability_levels": {
     "frontier": { "job": "Hard review, architecture, and land-gate judgment" },
@@ -12,7 +12,7 @@
   "families": {
     "anthropic": { "label": "Anthropic (Claude)", "note": "Fable and Opus are ONE family — never counts as two for a cross-family gate." },
     "openai": { "label": "OpenAI (GPT / Codex)", "note": "Sol, Terra, Luna share the Codex pipe." },
-    "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI + the two Grok Bot app identities." },
+    "xai": { "label": "xAI (Grok)", "note": "Grok Build CLI plus the live Visual QA and Heat Map Bots and the unwired Marketplace Intelligence Bot definition." },
     "open-weight": { "label": "Open-weight (independent lab)", "note": "The first review family that is none of Anthropic/OpenAI/xAI." },
     "cursor-pool": { "label": "Cursor harness (mixed underlying models)", "note": "A harness, not a model family; never a cross-family reviewer." }
   },
@@ -20,7 +20,7 @@
     "code": "Write/edit code in a repo", "review": "Judge a git diff", "architecture": "Design/plan review",
     "dispatch": "Queue/assign/risk-gate", "mcp_bulk": "High-volume connector fetches", "mcp_judgment": "Interpret fetched data",
     "browser": "Drive a real browser (Chrome) — preview walks, dashboards", "visual_qa": "Storefront pixel review",
-    "analytics": "Read analytics UIs (Clarity heatmaps/replays)", "ide": "In-editor agent",
+    "analytics": "Read analytics UIs (Clarity heatmaps/replays)", "marketplace_intelligence": "Analyze approved marketplace snapshots and authorized API outputs", "ide": "In-editor agent",
     "_note": "Connector-specific access (google-search-console, clarity-*, shopify-*, github, google-mcp, …) is NOT duplicated here — it lives in connectors.json `mcp_connectors.*.available_on`. Connector IDs and aliases are always derived, even if they equal a coarse word such as `browser`; a class label stays coarse only when it is declared in this catalog. A connector capability is granted only by an active matching connector whose available_on includes the provider. Doctor rejects provider.capabilities that collide with a connector-derived label, and rejects connector ID/alias collisions with this vocabulary. This catalog is the enumerated coarse vocabulary (`bin/routing.COARSE_CAPABILITIES`)."
   },
   "providers": {
@@ -75,6 +75,15 @@
       "backed_by": "grok-heavy", "detect": { "method": "app", "note": "Second Grok Bot identity; separate auth; shares #visual-qa by content-match." },
       "route": "grok-bot-heat-map",
       "notes": "Read-only Clarity heatmaps/replays via browser. Feeds Dispatch. Never a verdict."
+    },
+    "grok-bot-marketplace-intelligence": {
+      "label": "Grok Bot — Marketplace Intelligence", "level": "terra", "family": "xai", "kind": "app",
+      "model": null, "functions": ["marketplace_intelligence"], "capabilities": ["marketplace_intelligence"],
+      "prowess": { "marketplace_intelligence": 70 }, "billing": "included", "review_eligible": false,
+      "wired": false, "backed_by": "grok-heavy",
+      "detect": { "method": "app", "note": "Declared Bot identity only. No CLI/API management surface; app creation and one-time test run remain unperformed." },
+      "route": "grok-bot-marketplace-intelligence",
+      "notes": "Read-only analysis of owner-supplied marketplace snapshots and positively authorized API outputs. No model picker, so model stays null. Unwired and non-live until the app Bot is created and its routine is test-run. Never browse or scrape marketplace sites without recorded platform permission."
     },
     "fable-5": {
       "label": "Fable 5 (architecture only — OUT of the gating order)", "level": "frontier", "family": "anthropic", "kind": "cli",
@@ -145,6 +154,7 @@
     "Review E": "review-e",
     "Review D": "grok-bot-review-d",
     "Heat Map": "grok-bot-heat-map",
+    "Marketplace Intelligence": "grok-bot-marketplace-intelligence",
     "Grok Build": "grok-build",
     "MCP volume": "codex-terra",
     "Dispatch": "resolve-route decision.dispatcher.effective"
@@ -163,5 +173,5 @@
     ],
     "supersedes_note": "A provider may declare `supersedes` naming the id it replaces; doctor warns if both an entry and its superseded id remain enabled."
   },
-  "function_vocabulary": ["dispatch", "implement", "mcp_bulk", "mcp_judgment", "review", "architecture", "visual_qa", "analytics", "ide", "last_dollar"]
+  "function_vocabulary": ["dispatch", "implement", "mcp_bulk", "mcp_judgment", "review", "architecture", "visual_qa", "analytics", "marketplace_intelligence", "ide", "last_dollar"]
 }

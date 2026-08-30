@@ -1,7 +1,7 @@
 {
   "_note": "MODEL / ROUTE / RANKING CATALOG \u2014 identity and evidence, not runtime seats. Runtime billing, detect, and capability levels live in providers.json. A catalog entry or announcement is not a usable route. Only live_verified routes may resolve. Quality rank is not selection priority. Rank never grants tools, credentials, write access, publish authority, or data access.",
   "schema_version": 1,
-  "updated": "2026-08-29",
+  "updated": "2026-08-30",
   "as_of": "2026-08-28",
   "freshness_days": 90,
   "invariants": {
@@ -1414,6 +1414,30 @@
         }
       }
     },
+    "grok-bot-marketplace-intelligence": {
+      "model": "grok-4.6",
+      "provider": "grok-bot-marketplace-intelligence",
+      "host": "grok-bot",
+      "harness": "grok-bot-app",
+      "invocation_id": "marketplace-intelligence",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-28",
+      "evidence_strength": "none",
+      "capabilities": [
+        "marketplace_intelligence"
+      ],
+      "data_boundary": "subscription",
+      "quota_bucket": "grok-heavy",
+      "evidence": [
+        {
+          "date": "2026-08-28",
+          "route_state": "unwired",
+          "kind": "none",
+          "source": "wired:false in providers.json; Bot creation and one-time routine test remain unperformed"
+        }
+      ],
+      "notes": "Cataloged app Bot identity only. Grok Bot exposes no model picker; providers.json therefore keeps model:null. This catalog route does not assert that grok-4.6 is user-selectable in the Bot. Only live_verified routes resolve."
+    },
     "review-e-fireworks": {
       "model": "open-weight-review-e",
       "provider": "review-e",
@@ -1852,6 +1876,12 @@
       "description": "Storefront pixel review of a visitor preview URL.",
       "required_capabilities": [
         "visual_qa"
+      ]
+    },
+    "marketplace_intelligence": {
+      "description": "Read-only analysis of approved marketplace snapshots and positively authorized API outputs. Unwired until the app Bot is created and test-run.",
+      "required_capabilities": [
+        "marketplace_intelligence"
       ]
     },
     "evidence_audit": {
@@ -2307,6 +2337,26 @@
           "route": "grok-bot-visual-qa",
           "confidence": "high",
           "rationale": "Standing Review D seat. Never Admin/SimGym."
+        }
+      ]
+    },
+    "marketplace_intelligence": {
+      "quality": [
+        {
+          "rank": 1,
+          "route": "grok-bot-marketplace-intelligence",
+          "confidence": "low",
+          "rationale": "Narrow read-only Bot definition with source-specific evidence controls; not yet app-created or evaluated.",
+          "basis": "operational_prior",
+          "source": "config/providers.json"
+        }
+      ],
+      "selection": [
+        {
+          "priority": 1,
+          "route": "grok-bot-marketplace-intelligence",
+          "confidence": "low",
+          "rationale": "Unwired candidate only. Resolution must park until app creation and a recorded one-time test promote the route to live_verified."
         }
       ]
     },

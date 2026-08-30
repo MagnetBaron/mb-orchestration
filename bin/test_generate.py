@@ -47,6 +47,10 @@ class RegistrySchemaTests(unittest.TestCase):
         self.assertTrue(gen.REQUIRED_ROLES.issubset(reg["roles"]))
         self.assertEqual(reg["providers"]["review_order"],
                          ["opus-5", "codex-sol", "review-e"])
+        self.assertIn("marketplace-intelligence", reg["roles"])
+        marketplace = reg["providers"]["providers"]["grok-bot-marketplace-intelligence"]
+        self.assertIsNone(marketplace["model"])
+        self.assertFalse(marketplace["wired"])
 
     def test_rejects_roles_schema_version_2(self):
         data = live_roles()
@@ -204,6 +208,42 @@ class ArtifactTests(unittest.TestCase):
         self.assertNotIn("Write", outputs[grok_seo].split("---")[1])
         self.assertIn("Read-only: no. Write tools follow this role's host allowlists.", outputs[grok_build])
         self.assertIn("Write", outputs[grok_build].split("---")[1])
+
+    def test_marketplace_role_is_generated_read_only_and_unwired(self):
+        _, outputs = self.render()
+        for host in ("claude", "grok"):
+            path = next(
+                p for p in outputs
+                if p.name == "mb-marketplace-intelligence.md" and host in p.parts
+            )
+            text = outputs[path]
+            self.assertIn("Read-only: yes", text)
+            self.assertIn("owner-supplied marketplace", text)
+            self.assertNotIn("tools: Read, Write", text)
+        codex_path = next(p for p in outputs if p.name == "codex.toml")
+        parsed = tomllib.loads(outputs[codex_path])
+        role = parsed["subagents"]["roles"]["marketplace-intelligence"]
+        self.assertTrue(role["read_only"])
+        self.assertEqual(role["seat"], "grok-bot-marketplace-intelligence")
+        self.assertIn("bid", role["deny_tools"])
+
+    def test_marketplace_seat_exec_is_app_only_evidence_input(self):
+        seat = json.loads((CONFIG / "seat-exec.json").read_text())
+        recipe = seat["recipes"]["grok-bot-marketplace-intelligence"]
+        self.assertIsNone(recipe["bin"])
+        self.assertEqual(recipe["args_template"], [])
+        self.assertEqual(recipe["reads"], "marketplace-evidence")
+        self.assertFalse(recipe["worktree"])
+        self.assertTrue(recipe["never_metered_host"])
+
+    def test_marketplace_routine_keeps_website_automation_and_activation_parked(self):
+        text = (HERE.parent / "marketplace-intelligence.md").read_text()
+        self.assertIn("No scheduled marketplace browsing", text)
+        self.assertIn("Human-supplied snapshot only", text)
+        self.assertIn("Limited Release/restricted", text)
+        self.assertIn("Do not automate or screen-scrape the website", text)
+        self.assertIn("Activation is a separate owner app action", text)
+        self.assertIn("A separate Bot identity and prompt are not credential isolation", text)
 
     def test_seo_omits_codex_and_declares_named_mcp(self):
         _, outputs = self.render()
