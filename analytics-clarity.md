@@ -22,7 +22,8 @@ cookies never enter the repo or a prompt file.
 ## Launch contract
 
 Create a prompt naming a regular non-symlink export with `role: heat-map`, `source:
-approved-clarity-export`, `evidence-path`, and its exact `evidence-sha256`. The launcher recomputes
+approved-clarity-export`, an ordinary `artifact-class` such as `synthetic-eval`, `evidence-path`,
+and its exact `evidence-sha256`. Restricted or unknown artifact classes park. The launcher recomputes
 the digest before it runs. Then use the fail-closed inspection:
 
 ```sh

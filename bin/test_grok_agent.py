@@ -68,6 +68,7 @@ class GrokAgentTests(unittest.TestCase):
             prompt = root / "market.md"
             prompt.write_text(
                 "role: marketplace-intelligence\nsource: owner-deposited\n"
+                "artifact-class: synthetic-eval\n"
                 f"evidence-path: {evidence}\nevidence-sha256: {digest}\n"
             )
             self.assertIsNone(target._prompt_problem("grok-bot-marketplace-intelligence", prompt))
@@ -82,6 +83,7 @@ class GrokAgentTests(unittest.TestCase):
             digest = "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
             base = (
                 "role: marketplace-intelligence\nsource: owner-deposited\n"
+                "artifact-class: synthetic-eval\n"
                 f"evidence-path: {evidence}\nevidence-sha256: {digest}\n"
             )
             prompt = root / "market.md"
@@ -91,6 +93,10 @@ class GrokAgentTests(unittest.TestCase):
             ))
             prompt.write_text(base + "extra-artifact: /etc/hosts\n")
             self.assertIn("unknown", target._prompt_problem(
+                "grok-bot-marketplace-intelligence", prompt
+            ))
+            prompt.write_text(base.replace("artifact-class: synthetic-eval", "artifact-class: credentials"))
+            self.assertIn("non-restricted", target._prompt_problem(
                 "grok-bot-marketplace-intelligence", prompt
             ))
 
@@ -165,6 +171,28 @@ class GrokAgentTests(unittest.TestCase):
         self.assertEqual(rc, 2)
         run.assert_not_called()
 
+    def test_smoke_rejects_cross_seat_agent_substitution(self):
+        configs = {
+            name: json.loads((HERE.parent / "config" / name).read_text())
+            for name in ("seat-exec.json", "roles.json", "providers.json")
+        }
+        recipe = configs["seat-exec.json"]["recipes"]["grok-bot-review-d"]
+        recipe["required_agent"] = "mb-marketplace-intelligence"
+        with tempfile.TemporaryDirectory() as td:
+            agents = Path(td) / "agents"
+            agents.mkdir()
+            profile = agents / "mb-marketplace-intelligence.md"
+            profile.write_text(target.sync_profiles.expected()[profile.name])
+            with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: configs[n]), \
+                 mock.patch.object(target.shutil, "which", return_value="/usr/local/bin/grok"), \
+                 mock.patch.object(target.subprocess, "run") as run:
+                rc = target.main([
+                    "--seat", "grok-bot-review-d", "--smoke", "--execute",
+                    "--agent-dir", str(agents),
+                ])
+        self.assertEqual(rc, 2)
+        run.assert_not_called()
+
     def test_main_never_executes_when_normal_preflight_is_not_ready(self):
         with mock.patch.object(target, "inspect", return_value={
             "ready": False, "problems": ["parked"], "argv": ["grok"]
@@ -235,6 +263,25 @@ class GrokAgentTests(unittest.TestCase):
         decision = json.loads(result.stdout)
         self.assertFalse(decision["routing_satisfied"])
         self.assertIn("PARK Review D", decision["park_reason"])
+        self.assertTrue(any(step.get("input_seat") for step in decision["implement"]))
+
+    def test_configured_review_d_flag_triggers_input_gate_for_any_class(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = json.loads((HERE.parent / "config" / "review-depth.json").read_text())
+            config["classes"]["catalog-data"]["review_d"] = True
+            Path(td, "review-depth.json").write_text(json.dumps(config))
+            env = dict(os.environ)
+            env["MB_CONFIG_DIR"] = td
+            result = subprocess.run([
+                sys.executable, str(HERE / "resolve-route.py"),
+                "--class", "catalog-data", "--scale", "elevated",
+                "--intake-provider", "codex-sol", "--artifacts", "brief,diff",
+                "--json", "--no-record",
+            ], cwd=HERE.parent, env=env, text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertTrue(decision["gates"]["review_d_pixels"])
+        self.assertFalse(decision["routing_satisfied"])
         self.assertTrue(any(step.get("input_seat") for step in decision["implement"]))
 
     def test_launcher_rejects_mutable_capability_weakening(self):

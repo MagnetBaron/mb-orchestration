@@ -886,7 +886,7 @@ def main(argv=None):
             args.needs_mcp.strip(), args.pixels, args.task_seconds, registry,
             avoid_provider=effective_dispatcher,
         )
-    if args.pixels or args.klass == "storefront-theme":
+    if extra.get("review_d") or args.pixels or args.klass == "storefront-theme":
         if implement is None:
             implement = []
         implement.append(review_d_input_step(providers, registry))

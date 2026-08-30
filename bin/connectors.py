@@ -16,7 +16,7 @@ place to edit when a binding moves.
   connectors.py --json
 """
 from __future__ import annotations
-import argparse, json, sys
+import argparse, json, posixpath, sys
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -68,6 +68,38 @@ def _store(c, store):
     return stores[store]
 
 
+def _fully_unquote(value):
+    for _ in range(4):
+        decoded = unquote(value)
+        if decoded == value:
+            break
+        value = decoded
+    return value
+
+
+def _validate_navigation_url(c, store, url):
+    """Apply the common deny-before-navigation contract and return parsed URL data."""
+    _store(c, store)
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
+        sys.exit(f"connectors: store {store!r} URL must be credential-free HTTPS")
+    deny = c.get("grok_cli", {}).get("visual_qa", {}).get("deny_before_navigation", {})
+    decoded_url = _fully_unquote(url).lower()
+    decoded_path = _fully_unquote(parsed.path).lower()
+    normalized_path = posixpath.normpath("/" + decoded_path.lstrip("/"))
+    if host in {str(value).lower() for value in deny.get("hosts") or []}:
+        sys.exit(f"connectors: store {store!r} URL uses a denied host")
+    if any(normalized_path == str(prefix).lower()
+           or normalized_path.startswith(str(prefix).lower() + "/")
+           for prefix in deny.get("path_prefixes") or []):
+        sys.exit(f"connectors: store {store!r} URL uses a denied path")
+    if any(str(marker).lower() in decoded_url
+           for marker in deny.get("case_insensitive_markers") or []):
+        sys.exit(f"connectors: store {store!r} URL contains a denied marker")
+    return parsed, host, normalized_path
+
+
 def _validate_preview_url(c, store, url):
     """Return the matched preview policy after validating the rendered CLI packet.
 
@@ -77,22 +109,7 @@ def _validate_preview_url(c, store, url):
     """
     s = _store(c, store)
     preview = c.get("grok_cli", {}).get("visual_qa", {}).get("modes", {}).get("preview-review", {})
-    parsed = urlsplit(url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
-        sys.exit(f"connectors: store {store!r} preview URL must be credential-free HTTPS")
-    deny = c.get("grok_cli", {}).get("visual_qa", {}).get("deny_before_navigation", {})
-    decoded_url = unquote(url).lower()
-    decoded_path = unquote(parsed.path).lower()
-    if host in {str(value).lower() for value in deny.get("hosts") or []}:
-        sys.exit(f"connectors: store {store!r} preview URL uses a denied host")
-    if any(decoded_path == str(prefix).lower()
-           or decoded_path.startswith(str(prefix).lower() + "/")
-           for prefix in deny.get("path_prefixes") or []):
-        sys.exit(f"connectors: store {store!r} preview URL uses a denied path")
-    if any(str(marker).lower() in decoded_url
-           for marker in deny.get("case_insensitive_markers") or []):
-        sys.exit(f"connectors: store {store!r} preview URL contains a denied marker")
+    parsed, host, _path = _validate_navigation_url(c, store, url)
 
     pattern = preview.get("shared_preview_host") or s.get("preview_host", "")
     if pattern.startswith("*."):
@@ -136,11 +153,16 @@ def render_live_ticket(c, store):
     live_hosts = s.get("live_hosts") or []
     if not live_hosts:
         sys.exit(f"connectors: store {store!r} has no configured live_hosts")
+    url = f"https://{live_hosts[0]}/"
+    parsed, host, normalized_path = _validate_navigation_url(c, store, url)
+    configured_hosts = {str(value).lower() for value in live_hosts}
+    if host not in configured_hosts or normalized_path != "/" or parsed.query or parsed.fragment:
+        sys.exit(f"connectors: store {store!r} live URL must be an exact configured root host")
     return (
         "role: review-d\n"
         "mode: live-storefront-audit\n"
         f"site: {name}\n"
-        f"url: https://{live_hosts[0]}/\n"
+        f"url: {url}\n"
         "scope: public storefront read-only\n"
         "pages: Home, search, collection, PDP\n"
     )

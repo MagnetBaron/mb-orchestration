@@ -84,6 +84,8 @@ class VisualQaConfigTests(unittest.TestCase):
         cases = [
             "https://gadgetduke.com/checkout?preview_theme_id=151997775942",
             "https://gadgetduke.com/%63heckout?preview_theme_id=151997775942",
+            "https://gadgetduke.com/%2563heckout?preview_theme_id=151997775942",
+            "https://gadgetduke.com/else/../checkout?preview_theme_id=151997775942",
             "https://gadgetduke.com/products/simgym-demo?preview_theme_id=151997775942",
         ]
         for url in cases:
@@ -91,6 +93,12 @@ class VisualQaConfigTests(unittest.TestCase):
                 config["stores"]["gadget-duke"]["review_d_preview_url"] = url
                 with self.assertRaisesRegex(SystemExit, "denied"):
                     connectors.render_ticket(config, "gadget-duke")
+
+    def test_live_ticket_applies_same_deny_before_navigation_gate(self):
+        config = live_config()
+        config["stores"]["gadget-duke"]["live_hosts"] = ["admin.shopify.com"]
+        with self.assertRaisesRegex(SystemExit, "denied host"):
+            connectors.render_live_ticket(config, "gadget-duke")
 
     def test_configured_live_host_preview_fails_if_rule_is_removed(self):
         config = live_config()

@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
 import integrations  # noqa: E402
 import connectors as connector_packets  # noqa: E402
+import handoff_policy  # noqa: E402
 
 _SYNC_SPEC = importlib.util.spec_from_file_location(
     "grok_agent_sync_profiles", Path(__file__).resolve().parent / "sync-grok-agents.py"
@@ -102,7 +103,7 @@ def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
         "grok-bot-marketplace-intelligence": "marketplace-intelligence",
     }.get(seat)
     allowed_fields = {
-        "role", "source", "evidence-path", "evidence-sha256",
+        "role", "source", "artifact-class", "evidence-path", "evidence-sha256",
         "site", "date-range", "question", "scope",
     }
     fields = {}
@@ -122,6 +123,12 @@ def _prompt_problem(seat: str, prompt_file: Path | None) -> str | None:
                        else {"owner-deposited", "authorized-api-output"})
     if fields.get("source") not in allowed_sources:
         return "prompt must declare an approved evidence source"
+    policy = mborch.load_config("handoff-policy.json", required=True)
+    artifact_class = fields.get("artifact-class")
+    ordinary = handoff_policy.configured_classes(policy, "ordinary_artifacts")
+    restricted = handoff_policy.effective_restricted_artifacts(policy)
+    if not artifact_class or artifact_class not in ordinary or artifact_class in restricted:
+        return "prompt artifact-class must be an ordinary non-restricted handoff class"
     evidence_raw = fields.get("evidence-path")
     digest = fields.get("evidence-sha256")
     if not evidence_raw or not digest or not digest.startswith("sha256:"):
@@ -263,6 +270,13 @@ def main(argv=None) -> int:
         problems = []
         if not binary:
             problems.append("grok executable is not on PATH")
+        if agent != AGENTS[args.seat]:
+            problems.append(f"recipe required_agent must be exact {AGENTS[args.seat]!r}")
+        if recipe.get("required_capabilities") != list(REQUIRED_CAPABILITIES[args.seat]):
+            problems.append(
+                f"recipe required_capabilities must be exact "
+                f"{list(REQUIRED_CAPABILITIES[args.seat])!r}"
+            )
         profile_problem = _profile_problem(profile, agent)
         if profile_problem:
             problems.append(profile_problem)

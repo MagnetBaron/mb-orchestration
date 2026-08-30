@@ -50,8 +50,9 @@ defined and comparable.
 ## Launch contract
 
 Place approved evidence in a regular non-symlink file. The prompt must declare `role:
-marketplace-intelligence`, `source: owner-deposited` or `authorized-api-output`, `evidence-path`,
-and its exact `evidence-sha256`. The launcher recomputes that digest and also requires a fresh
+marketplace-intelligence`, `source: owner-deposited` or `authorized-api-output`, an ordinary
+`artifact-class` such as `public-docs` or `synthetic-eval`, `evidence-path`, and its exact
+`evidence-sha256`. Restricted or unknown artifact classes park. The launcher recomputes that digest and also requires a fresh
 `deposited-evidence` runtime attestation before launch. Then inspect:
 
 ```sh
