@@ -795,14 +795,35 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 err(f"seat-exec recipe {pid!r}: provider and bound route must pin exact model 'grok-4.6'")
             if isinstance(route, dict) and (route.get("host"), route.get("harness")) != ("grok-cli", "grok"):
                 err(f"seat-exec recipe {pid!r}: bound route must use host='grok-cli' and harness='grok'")
-            approved_args = [
-                "--cwd", "{repo}", "--agent", "{agent_profile}",
-                "--prompt-file", "{brief_path}", "--model", "grok-4.6",
-                "--reasoning-effort", "high", "--no-subagents",
-                "--output-format", "plain",
-            ]
+            grok_agent_mod = load_module("grok_agent_doctor_recipe", HERE / "grok-agent.py")
+            approved_args = list(grok_agent_mod.APPROVED_STANDING_TEMPLATE)
+            if approved_args.count("{sandbox_profile}") != 1:
+                err("standing recipe validator must contain exactly one {sandbox_profile} token")
+            sandbox_idx = approved_args.index("--sandbox") if "--sandbox" in approved_args else -1
+            if sandbox_idx < 0 or approved_args[sandbox_idx + 1] != "{sandbox_profile}":
+                err(
+                    f"seat-exec recipe {pid!r}: --sandbox must be followed by "
+                    "{{sandbox_profile}}; hard-coding a shadowable profile name is forbidden"
+                )
+            if "mb-standing" in approved_args:
+                err(
+                    f"seat-exec recipe {pid!r}: hard-coded mb-standing sandbox name is forbidden"
+                )
+            if "--deny" not in approved_args or "MCPTool(*)" not in approved_args:
+                err(f"seat-exec recipe {pid!r}: must deny MCPTool(*) exactly")
+            if "--tools" not in approved_args or "read_file,grep,list_dir" not in approved_args:
+                err(
+                    f"seat-exec recipe {pid!r}: must pin Grok built-in tool ids "
+                    "read_file,grep,list_dir"
+                )
+            if "--no-subagents" not in approved_args or "--disable-web-search" not in approved_args:
+                err(f"seat-exec recipe {pid!r}: must disable subagents and web search/fetch")
             if r.get("args_template") != approved_args:
-                err(f"seat-exec recipe {pid!r}: args_template must match exact approved argv {approved_args!r}")
+                err(
+                    f"seat-exec recipe {pid!r}: args_template must match exact approved argv "
+                    f"{approved_args!r}; removing, renaming, duplicating, reordering, or "
+                    "hard-coding {{sandbox_profile}} is forbidden"
+                )
             caps = r.get("required_capabilities")
             if not isinstance(caps, list) or any(not isinstance(x, str) or not x for x in caps):
                 err(f"seat-exec recipe {pid!r}: required_capabilities must be a string list")
@@ -837,6 +858,36 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
         flag = r.get("separate_invocation_when_dispatcher")
         if flag is not None and flag is not True and flag is not False:
             err(f"seat-exec recipe {pid!r}: separate_invocation_when_dispatcher must be a boolean")
+    grok_agent = load_module("grok_agent_doctor", HERE / "grok-agent.py")
+    if grok_agent.STAGED_SANDBOX_PLACEHOLDER != "<ephemeral-sandbox-profile>":
+        err("inspect must show the non-executable <ephemeral-sandbox-profile> placeholder")
+    dummy_profile = grok_agent.SANDBOX_PROFILE_PREFIX + ("0" * 32)
+    try:
+        grok_agent.validate_sandbox_profile_name(dummy_profile)
+        profile_text = grok_agent._sandbox_profile_text(dummy_profile)
+    except ValueError as exc:
+        err(f"standing Grok sandbox profile failed closed: {exc}")
+        profile_text = ""
+    if profile_text and 'extends = "strict"' not in profile_text:
+        err("standing Grok sandbox profile must extend strict")
+    if grok_agent.auto_runtime_socket_deny_incompatible():
+        if sys.platform != "darwin":
+            err(
+                "symlink runtime-socket endpoints on a non-macOS host must PARK; "
+                "restrict_network=false is macOS-only"
+            )
+        elif "restrict_network = false" not in profile_text:
+            err(
+                "Grok 1.0.13 runtime-socket auto-deny fails when well-known "
+                "endpoints are symlinks; standing launcher must set "
+                "restrict_network=false and deny only resolved non-symlink sockets"
+            )
+        else:
+            info(
+                "Grok 1.0.13 cannot auto-deny symlink runtime sockets; standing "
+                "roles keep extends=strict, skip inherited restrict_network on macOS, and "
+                "deny resolved non-symlink socket targets only"
+            )
     for pid, p in (provs or {}).items():
         if p.get("review_eligible") and p.get("dispatch_eligible"):
             recipe = recipes.get(pid)

@@ -21,6 +21,40 @@ gen = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gen)
 
 ROLE_NAMES = ("review-d", "heat-map", "marketplace-intelligence")
+STANDING_GROK_TOOLS = {
+    "review-d": ("Read", "Grep", "Glob"),
+    "heat-map": ("Read", "Grep", "Glob"),
+    "marketplace-intelligence": ("Read", "Grep", "Glob"),
+}
+
+
+def grok_tools_from_profile(text: str) -> tuple[str, ...] | None:
+    if not isinstance(text, str) or not text.startswith("---\n"):
+        return None
+    end = text.find("\n---\n", 4)
+    if end < 0:
+        return None
+    tools = None
+    for line in text[4:end].splitlines():
+        if line.startswith("tools:"):
+            if tools is not None:
+                return None
+            names = tuple(part.strip() for part in line[6:].split(",") if part.strip())
+            if not names:
+                return None
+            tools = names
+    return tools
+
+
+def standing_tools_problem(role_name: str, tools) -> str | None:
+    allowed = STANDING_GROK_TOOLS.get(role_name)
+    if allowed is None:
+        return f"{role_name}: unknown standing Grok role"
+    if tools is None:
+        return f"{role_name}: standing Grok profile is missing an exact tools allowlist"
+    if tuple(tools) != allowed:
+        return f"{role_name}: standing Grok tools must be exact {list(allowed)!r}"
+    return None
 
 
 def expected() -> dict[str, str]:
@@ -34,10 +68,16 @@ def expected() -> dict[str, str]:
         seat = providers.get(role.get("seat")) or {}
         if seat.get("kind") != "cli" or seat.get("model") != "grok-4.6":
             raise ValueError(f"{name}: seat must be a Grok CLI provider pinned to grok-4.6")
-        tools = set((role.get("tools") or {}).get("grok") or [])
-        if tools & gen.WRITE_TOOLS:
-            raise ValueError(f"{name}: standing Grok profile contains write tools")
-        out[f"mb-{name}.md"] = gen.grok(role, name)
+        declared = (role.get("tools") or {}).get("grok")
+        problem = standing_tools_problem(name, declared)
+        if problem:
+            raise ValueError(problem)
+        body = gen.grok(role, name)
+        rendered = grok_tools_from_profile(body)
+        problem = standing_tools_problem(name, rendered)
+        if problem:
+            raise ValueError(problem)
+        out[f"mb-{name}.md"] = body
     return out
 
 

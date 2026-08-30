@@ -17,6 +17,9 @@ spec.loader.exec_module(doctor)
 rb_spec = importlib.util.spec_from_file_location("run_brief_seat_exec", HERE / "run-brief.py")
 run_brief = importlib.util.module_from_spec(rb_spec)
 rb_spec.loader.exec_module(run_brief)
+ga_spec = importlib.util.spec_from_file_location("grok_agent_doctor_test_mod", HERE / "grok-agent.py")
+grok_agent = importlib.util.module_from_spec(ga_spec)
+ga_spec.loader.exec_module(grok_agent)
 
 
 class StalePolicyTests(unittest.TestCase):
@@ -165,6 +168,66 @@ class SeatExecTeamclaudeTests(unittest.TestCase):
 
     def test_codex_sol_carries_separate_invocation_when_dispatcher(self):
         self.assertIs(self.seat_exec["recipes"]["codex-sol"]["separate_invocation_when_dispatcher"], True)
+
+
+class StandingGrokSandboxRecipeTests(unittest.TestCase):
+    def setUp(self):
+        self.seat_exec = json.loads((ROOT / "config" / "seat-exec.json").read_text())
+        self.providers = json.loads((ROOT / "config" / "providers.json").read_text())
+        self.registry = json.loads((ROOT / "config" / "model-registry.json").read_text())
+        self.provs = self.providers["providers"]
+        self.ids = set(self.provs)
+        self._errors = doctor.ERRORS[:]
+        doctor.ERRORS.clear()
+
+    def tearDown(self):
+        doctor.ERRORS[:] = self._errors
+
+    def test_live_standing_recipes_pin_sandbox_immediately_after_cwd(self):
+        for pid in (
+            "grok-bot-review-d", "grok-bot-heat-map", "grok-bot-marketplace-intelligence",
+        ):
+            args = self.seat_exec["recipes"][pid]["args_template"]
+            self.assertEqual(args[0:4], ["--cwd", "{repo}", "--sandbox", "{sandbox_profile}"])
+            self.assertEqual(args, grok_agent.APPROVED_STANDING_TEMPLATE)
+
+    def test_removing_or_weakening_sandbox_fails_closed(self):
+        mutations = [
+            lambda args: [tok for tok in args if tok not in ("--sandbox", "{sandbox_profile}")],
+            lambda args: ["--cwd", "{repo}", "--sandbox", "workspace", *args[4:]],
+            lambda args: ["--cwd", "{repo}", "--sandbox", "read-only", *args[4:]],
+            lambda args: ["--cwd", "{repo}", "--agent", "{agent_profile}", "--sandbox", "{sandbox_profile}", *args[6:]],
+            lambda args: ["--cwd", "{repo}", "--sandbox", "{sandbox_profile}", "--sandbox", "{sandbox_profile}", *args[4:]],
+            lambda args: ["--cwd", "{repo}", "--sandbox", "mb-standing", *args[4:]],
+            lambda args: ["--cwd", "{repo}", "--sandbox", "{sandbox_profile_renamed}", *args[4:]],
+        ]
+        for mutate in mutations:
+            mutated = copy.deepcopy(self.seat_exec)
+            mutated["recipes"]["grok-bot-review-d"]["args_template"] = mutate(
+                mutated["recipes"]["grok-bot-review-d"]["args_template"]
+            )
+            doctor.ERRORS.clear()
+            doctor.check_seat_exec(mutated, self.provs, self.ids, self.registry)
+            blob = "\n".join(doctor.ERRORS)
+            self.assertIn("grok-bot-review-d", blob)
+            self.assertIn("--sandbox", blob)
+
+    def test_doctor_records_symlink_runtime_socket_workaround(self):
+        doctor.ERRORS.clear()
+        doctor.INFO.clear()
+        doctor.check_seat_exec(self.seat_exec, self.provs, self.ids, self.registry)
+        self.assertFalse(any("restrict_network" in x for x in doctor.ERRORS))
+        if target_incompatible():
+            self.assertTrue(any("symlink" in x for x in doctor.INFO))
+
+
+def target_incompatible():
+    spec = importlib.util.spec_from_file_location(
+        "grok_agent_doctor_test", Path(__file__).resolve().parent / "grok-agent.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.auto_runtime_socket_deny_incompatible()
 
 
 if __name__ == "__main__":

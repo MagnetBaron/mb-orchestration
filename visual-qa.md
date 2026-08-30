@@ -8,6 +8,9 @@ cloud Bot routine, or invented `grok bot` command is part of the active path. Se
 The reference route is currently `unwired`: the CLI/profile smoke is not a browser or screenshot
 proof. Until a credential-free browser/pixel source is observed and role-tested, Review D parks and
 cannot issue `ship` or `fix-list` from HTML/WebFetch alone.
+The launcher also has no code-owned pixel-input binding yet, so changing registry or inventory
+attestations cannot make normal Review D execution ready. That requires a separate implementation
+that injects hash-bound screenshots/browser observations into the isolated process.
 
 ## Allowlist and packet rendering
 
@@ -15,11 +18,13 @@ cannot issue `ship` or `fix-list` from HTML/WebFetch alone.
 
 ```sh
 python3 bin/connectors.py --render visual-qa-allowlist
-python3 bin/connectors.py --render visual-qa-ticket magnet-baron
 python3 bin/connectors.py --render visual-qa-ticket gadget-duke
 python3 bin/connectors.py --render visual-qa-live-ticket magnet-baron
 python3 bin/connectors.py --render visual-qa-live-ticket gadget-duke
 ```
+
+Magnet Baron has no configured `review_d_preview_url`, so its current Review D path is live-audit
+only. Use `visual-qa-live-ticket magnet-baron` until a visitor-preview binding is configured.
 
 Preview mode accepts an HTTPS subdomain of the configured `*.shopifypreview.com` host, or an exact
 configured live host with a non-empty `preview_theme_id` under a matching per-store rule. Live audit

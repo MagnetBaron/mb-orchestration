@@ -7,6 +7,9 @@ exactly `grok-4.6`.
 The reference route is parked. `grok mcp list` currently exposes no signed-in Clarity/browser source,
 so the installed profile alone cannot read heatmaps or replay pixels. Never reuse old Slack/Bot
 evidence to mark the CLI route live.
+The launcher has no code-owned Clarity/browser input binding yet; registry or inventory attestations
+alone cannot promote normal Heat Map execution. A future binding must stage an approved, hash-bound
+export or a separately verified least-privilege transport before this seat can become ready.
 
 ## Binding
 
@@ -33,8 +36,9 @@ python3 bin/grok-agent.py --seat grok-bot-heat-map \
 
 Execution is allowed only after the provider is wired, its `grok-cli-heat-map` route is
 `live_verified`, `mb-heat-map` is installed, and signed-in Clarity/browser capability has been
-observed and role-tested. The resulting command uses the byte-validated
-`grok --agent ~/.grok/agents/mb-heat-map.md` definition file, never Slack.
+observed and role-tested. Preflight byte-validates the installed `mb-heat-map` profile, then
+execution copies those exact bytes into the private staging directory and passes that staged profile
+path to `grok --agent`; it never executes the mutable `~/.grok/agents` path directly or uses Slack.
 
 ## Standing rules
 

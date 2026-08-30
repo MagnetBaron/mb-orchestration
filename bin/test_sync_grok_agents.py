@@ -18,8 +18,24 @@ spec.loader.exec_module(target)
 
 class SyncGrokAgentsTests(unittest.TestCase):
     def test_generator_rejects_write_capability_for_standing_roles(self):
-        with mock.patch.object(target.gen, "WRITE_TOOLS", set(target.gen.WRITE_TOOLS) | {"Read"}):
-            with self.assertRaisesRegex(ValueError, "contains write tools"):
+        roles = json.loads((HERE.parent / "config" / "roles.json").read_text())
+        roles["roles"]["review-d"]["tools"]["grok"] = ["Read", "Grep", "Glob", "Write"]
+        with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: {
+            "roles.json": roles,
+            "providers.json": json.loads((HERE.parent / "config" / "providers.json").read_text()),
+        }[n]):
+            with self.assertRaisesRegex(ValueError, "must be exact"):
+                target.expected()
+
+    def test_distribution_rejects_unknown_grok_tools_such_as_taskcreate(self):
+        roles = json.loads((HERE.parent / "config" / "roles.json").read_text())
+        providers = json.loads((HERE.parent / "config" / "providers.json").read_text())
+        roles["roles"]["review-d"]["tools"]["grok"] = ["Read", "Grep", "Glob", "TaskCreate"]
+        with mock.patch.object(target.mborch, "load_config", side_effect=lambda n, **_: {
+            "roles.json": roles,
+            "providers.json": providers,
+        }[n]):
+            with self.assertRaisesRegex(ValueError, "must be exact"):
                 target.expected()
 
     def test_main_reports_generation_failure_without_writing(self):
