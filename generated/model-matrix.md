@@ -1,6 +1,6 @@
 # Model matrix
 
-Generated from `config/model-registry.json` as of 2026-08-28.
+Generated from `config/model-registry.json` as of 2026-08-30.
 Deterministic. Do not hand-edit; run `python3 bin/model-registry.py write-matrix`.
 
 A catalog entry is not a usable route. Only `live_verified` routes resolve.
@@ -88,6 +88,9 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `grok-bot-heat-map` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
 | `grok-bot-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
 | `grok-bot-visual-qa` | `grok-4.6` | live_verified | stable | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
+| `grok-cli-heat-map` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-heat-map` | 2026-08-30 none | — | grok-bot-heat-map |
+| `grok-cli-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-marketplace-intelligence` | 2026-08-30 none | — | grok-bot-marketplace-intelligence |
+| `grok-cli-review-d` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-review-d` | 2026-08-30 local_smoke | direct_invocation | grok-bot-review-d |
 | `kimi-k2.6-unwired` | `kimi-k2.6` | unwired | superseded | none | none | `kimi-k2.6` | 2026-08-28 vendor_self_reported | — | — |
 | `kimi-k2.7-code-unwired` | `kimi-k2.7-code` | unwired | stable | none | none | `kimi-k2.7-code` | 2026-08-28 vendor_self_reported | — | — |
 | `kimi-k3-unwired` | `kimi-k3` | unwired | stable | none | none | `kimi-k3` | 2026-08-28 independent_benchmark | — | — |
@@ -255,8 +258,8 @@ Storefront pixel review of a visitor preview URL.
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|
-| quality | 1 | `grok-bot-visual-qa` | medium | operational_prior | config/providers.json |
-| selection | 1 | `grok-bot-visual-qa` | high |  |  |
+| quality | 1 | `grok-cli-review-d` | low | vendor_external_prior | https://docs.x.ai/developers/grok-4-6 |
+| selection | 1 | `grok-cli-review-d` | low |  |  |
 
 ### `marketplace_intelligence`
 
@@ -264,8 +267,8 @@ Read-only analysis of approved marketplace snapshots and positively authorized A
 
 | kind | n | route | confidence | basis | evidence |
 |---|---:|---|---|---|---|
-| quality | 1 | `grok-bot-marketplace-intelligence` | low | operational_prior | config/providers.json |
-| selection | 1 | `grok-bot-marketplace-intelligence` | low |  |  |
+| quality | 1 | `grok-cli-marketplace-intelligence` | low | vendor_external_prior | https://docs.x.ai/developers/grok-4-6 |
+| selection | 1 | `grok-cli-marketplace-intelligence` | low |  |  |
 
 ### `evidence_audit`
 

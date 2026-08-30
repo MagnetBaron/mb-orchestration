@@ -763,6 +763,35 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                     f"approved argv {approved_args!r}; got {args!r}. Unknown, duplicate, "
                     "positional, reordered, and permission-bypassing flags are forbidden"
                 )
+        if pid in {"grok-bot-review-d", "grok-bot-heat-map", "grok-bot-marketplace-intelligence"}:
+            expected_model = p.get("model")
+            route_id = p.get("route")
+            route = routes.get(route_id) if route_id else None
+            agent = r.get("required_agent")
+            approved_agents = {
+                "grok-bot-review-d": "mb-review-d",
+                "grok-bot-heat-map": "mb-heat-map",
+                "grok-bot-marketplace-intelligence": "mb-marketplace-intelligence",
+            }
+            if bin_ != "grok":
+                err(f"seat-exec recipe {pid!r}: bin must be exact installed CLI 'grok'")
+            if agent != approved_agents[pid]:
+                err(f"seat-exec recipe {pid!r}: required_agent must be {approved_agents[pid]!r}")
+            if expected_model != "grok-4.6" or not isinstance(route, dict) or route.get("model") != expected_model:
+                err(f"seat-exec recipe {pid!r}: provider and bound route must pin exact model 'grok-4.6'")
+            if isinstance(route, dict) and (route.get("host"), route.get("harness")) != ("grok-cli", "grok"):
+                err(f"seat-exec recipe {pid!r}: bound route must use host='grok-cli' and harness='grok'")
+            approved_args = [
+                "--cwd", "{repo}", "--agent", approved_agents[pid],
+                "--prompt-file", "{brief_path}", "--model", "grok-4.6",
+                "--reasoning-effort", "high", "--no-subagents",
+                "--output-format", "plain",
+            ]
+            if r.get("args_template") != approved_args:
+                err(f"seat-exec recipe {pid!r}: args_template must match exact approved argv {approved_args!r}")
+            caps = r.get("required_capabilities")
+            if not isinstance(caps, list) or any(not isinstance(x, str) or not x for x in caps):
+                err(f"seat-exec recipe {pid!r}: required_capabilities must be a string list")
         route_id = p.get("route")
         route = routes.get(route_id) if route_id else None
         mismatch = wrapped_recipe_error(pid, r, route, wrappers)

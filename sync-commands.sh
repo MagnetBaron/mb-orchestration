@@ -21,6 +21,7 @@ PRIMARY_CLAUDE_CONFIG="$TARGET_HOME/.claude"
 CODEX_PROMPTS="$TARGET_HOME/.codex/prompts"
 NATIVE_ORCA="$TARGET_HOME/.agents/skills/orca/SKILL.md"
 NATIVE_ORCA_SOURCE="$REPO/skills/orca/SKILL.md"
+GROK_ROLE_SYNC="$REPO/bin/sync-grok-agents.py"
 
 [ -d "$EXPECTED_REPO" ] || { echo "canonical checkout missing: $EXPECTED_REPO" >&2; exit 1; }
 EXPECTED_REPO="$(cd "$EXPECTED_REPO" && pwd -P)"
@@ -29,6 +30,7 @@ EXPECTED_REPO="$(cd "$EXPECTED_REPO" && pwd -P)"
   exit 1
 }
 [ -f "$NATIVE_ORCA_SOURCE" ] || { echo "native skill missing: $NATIVE_ORCA_SOURCE" >&2; exit 1; }
+[ -f "$GROK_ROLE_SYNC" ] || { echo "Grok role distributor missing: $GROK_ROLE_SYNC" >&2; exit 1; }
 normalize_github_origin() {
   local value="$1"
   value="${value%/}"
@@ -108,6 +110,7 @@ if [ "$MODE" = "sync" ]; then
   done
   ln -sfn ../../.claude/commands/orchestrate.md "$REPO/.cursor/commands/orca.md"
   ln -sfn ../../.claude/commands/orchestrate.md "$REPO/.cursor/commands/orchestrate.md"
+  python3 "$GROK_ROLE_SYNC" --target-home "$TARGET_HOME"
 fi
 
 rc=0
@@ -139,12 +142,15 @@ for config_dir in "${claude_config_dirs[@]}"; do
 done
 check_link "$REPO/.cursor/commands/orca.md"
 check_link "$REPO/.cursor/commands/orchestrate.md"
+if ! python3 "$GROK_ROLE_SYNC" --target-home "$TARGET_HOME" --check; then
+  rc=1
+fi
 
 if [ "$rc" -eq 0 ]; then
   if [ "$MODE" = "sync" ]; then
-    echo "/orca distributed from $CANON; /orchestrate retained as an identical alias."
+    echo "/orca distributed from $CANON; /orchestrate retained as an identical alias; standing Grok CLI profiles synced."
   else
-    echo "/orca and /orchestrate are canonical on every discovered host."
+    echo "/orca, /orchestrate, and standing Grok CLI profiles are canonical on every discovered host."
   fi
 fi
 exit "$rc"

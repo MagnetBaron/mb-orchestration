@@ -36,7 +36,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `skills/` | Progressive skill routers (four public gateways; 44 private leaves) |
 | `model-evals/` | Synthetic role-eval cases and admin runbook |
 | `docs/` | Evidence-backed audits (not operational) |
-| domain files | `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `visual-qa-slack.md` · `grokbot-connection.md` · `analytics-clarity.md` · `marketplace-intelligence.md` · `luna-close-loop.md` · `qa-idle-handoff.md` |
+| domain files | `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `visual-qa-cli.md` · `grokbot-connection.md` · `analytics-clarity.md` · `marketplace-intelligence.md` · `luna-close-loop.md` · `qa-idle-handoff.md` |
 | `install.md` · `SETUP-BOTS.md` · `FUTURE.md` | First wire-up, worker-machine handoff, deferred multi-Mini |
 
 ### `config/` — edit these, not prose
@@ -46,8 +46,8 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `providers.json` | Agents/providers, capability levels, families, detection, model pins |
 | `model-registry.json` | Canonical model/route/ranking catalog (identity, lifecycle, route state, evidence, per-role quality vs selection) |
 | `subscriptions.json` | The plans you pay for — **the one file a new user edits** |
-| `connectors.json` | Vetted MCP/analytics/store/Slack authorization ceiling and public bindings; live proof comes from the runtime inventory |
-| `integration-adapters.json` | Safe runtime-manifest adapters, aliases, session-only Grok Bot/Cursor capability map, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
+| `connectors.json` | Vetted MCP/analytics/store/Grok CLI authorization ceiling and public bindings; live proof comes from runtime inventory |
+| `integration-adapters.json` | Safe runtime-manifest adapters, aliases, session-only Cursor capability map, TTL, and explicit provider-to-runtime map; connector config remains the authorization ceiling |
 | `entrypoints.json` | Entry surfaces, user profiles, per-run dispatcher fallback order |
 | `handoff-policy.json` | Ordinary preauthorization and extensible restricted classes; `bin/handoff_policy.py` enforces the non-removable minimum and restricted-wins runtime behavior |
 | `usage-windows.json` | Reset anchors + soft caps per seat |
@@ -113,9 +113,9 @@ process-scoped and never cached. Suggested/installable,
 installed, enabled, configured, blocked/auth-health, and current-session callable states stay
 distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.
 
-Website Visual QA has two config-derived modes with one narrow Slack routine per event token:
-visitor-preview review and exact-trigger, read-only live-storefront audit. Render tickets with `bin/connectors.py --render visual-qa-ticket
+Website Visual QA has two config-derived Grok CLI packet modes:
+visitor-preview review and read-only live-storefront audit. Render prompt packets with `bin/connectors.py --render visual-qa-ticket
 <store>` and `bin/connectors.py --render visual-qa-live-ticket <store>`. The live mode observes only
 an exact configured public host and cannot log in, add to cart, submit, purchase, publish, or mutate.
-See `visual-qa.md` and `visual-qa-slack.md`; do not replace the narrow per-token event filters with a broad
-listener.
+See `visual-qa.md` and `visual-qa-cli.md`; missing browser/pixel evidence must park rather than become a
+visual verdict.

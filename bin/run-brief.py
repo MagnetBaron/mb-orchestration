@@ -137,7 +137,7 @@ def plan_for_seat(pid, recipes, ctx, role, dispatcher=None, review_scope=None):
         entry["reason"] = ("METERED host — executor guard: never shell a diff/brief to a metered "
                            "inference host (secrets/PII ban); included capacity or owner-land only")
     elif not bin_:
-        entry["reason"] = "no CLI (app/API seat) — reached out-of-band (Slack #visual-qa / off-box HTTP), never shelled"
+        entry["reason"] = "no CLI (app/API seat) — reached out-of-band, never shelled"
     else:
         entry["would_run"] = render_cmd(r, ctx)
         if (role == "review" and r.get("separate_invocation_when_dispatcher")

@@ -32,7 +32,7 @@ Everything user-specific is in `config/` — edit these, not prose:
 2. `config/entrypoints.json` — entry surfaces, per-user profiles, and evidence-ranked fallback order.
    `--intake-provider` overrides a profile for one run; valid user selection wins while usable.
 3. `config/handoff-policy.json` — keep ordinary artifact preauthorization and restricted classes fail-closed.
-4. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, Slack channel.
+4. `config/connectors.json` — your MCP connectors, Shopify stores, analytics login, and Grok CLI role bindings.
 5. `config/usage-windows.json` — set the anchors you know (Grok weekly weekday/time, Cursor billing day).
 6. `python3 bin/doctor.py` — confirm no orphaned providers or drift.
 
@@ -50,13 +50,13 @@ MagnetBaron fork adds the clone URL + `mb/` overlay.
 
 Do not merge exclusive named routes. `mb/sync-plan.mjs` (LaunchAgent every 6h) blocks `*fable*` when no seat can serve it and unblocks it if a seat gains Fable again. Plan downgrades need no manual route edit — and `bin/detect-capability.py` cross-checks it. No four Claude desktop apps. Direct `claude` without teamclaude is not a working route.
 
-## 4. Review D + Heat Map (Grok Bots)
+## 4. Review D + Heat Map (Grok CLI agents)
 
-Policy: `visual-qa.md` / `analytics-clarity.md`. Owner creates the named bots and the one public
-`#visual-qa` channel once (binding in `config/connectors.json`). Daily handoff is Slack. Render the
-paste-ready allowlist/preview/live-audit tickets with `bin/connectors.py --render …`. Website Visual
-QA uses two modes with one narrow routine per configured event token; its live-storefront mode is exact-trigger and read-only. Delivery
-details: `visual-qa-slack.md`.
+Policy: `visual-qa.md` / `analytics-clarity.md`. Generate and install the named Grok profiles.
+Daily handoff is a config-rendered prompt file through `bin/grok-agent.py`; render allowlist,
+preview, and live-audit packets with `bin/connectors.py --render …`. Review D and Heat Map remain
+parked until their browser/Clarity prerequisites are observed and role-tested. Delivery details:
+`visual-qa-cli.md`.
 
 ## 5. Google MCP
 
@@ -110,7 +110,7 @@ standing-config change lands.
 4. Worktrees for parallel Grok jobs
 5. Risk gate + `bin/resolve-route.py` for the review chain
 6. teamclaude (login + plan-sync agent; no exclusive Fable route)
-7. Slack `#visual-qa` + Website Visual QA / Heat Map bots (owner)
+7. Grok CLI named-agent profiles + role-specific capability evidence (owner)
 8. Google MCP on the providers `connectors.json` lists (owner)
 9. Usage metering: anchors in `config/usage-windows.json`; read state with `bin/usage-status.py`
 10. `EDGE-CASES.md` known to the dispatcher for outages

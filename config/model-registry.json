@@ -2,7 +2,7 @@
   "_note": "MODEL / ROUTE / RANKING CATALOG \u2014 identity and evidence, not runtime seats. Runtime billing, detect, and capability levels live in providers.json. A catalog entry or announcement is not a usable route. Only live_verified routes may resolve. Quality rank is not selection priority. Rank never grants tools, credentials, write access, publish authority, or data access.",
   "schema_version": 1,
   "updated": "2026-08-30",
-  "as_of": "2026-08-28",
+  "as_of": "2026-08-30",
   "freshness_days": 90,
   "invariants": {
     "single_dispatcher_per_run": "exactly one effective dispatcher is selected per run from the requested intake/provider profile and live usage; rankings never grant dispatch",
@@ -1438,6 +1438,67 @@
       ],
       "notes": "Cataloged app Bot identity only. Grok Bot exposes no model picker; providers.json therefore keeps model:null. This catalog route does not assert that grok-4.6 is user-selectable in the Bot. Only live_verified routes resolve."
     },
+    "grok-cli-review-d": {
+      "model": "grok-4.6",
+      "provider": "grok-bot-review-d",
+      "host": "grok-cli",
+      "harness": "grok",
+      "invocation_id": "mb-review-d",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-30",
+      "evidence_strength": "local_smoke",
+      "capabilities": ["visual_qa"],
+      "data_boundary": "subscription",
+      "quota_bucket": "grok-heavy",
+      "evidence": [{
+        "date": "2026-08-30",
+        "route_state": "unwired",
+        "kind": "direct_invocation",
+        "source": "grok 1.0.13 accepted --agent mb-review-d with exact model grok-4.6; no browser or pixel integration was observed",
+        "signal": "direct_invocation"
+      }],
+      "notes": "CLI transport smoke passed, but visual QA remains unwired until browser and pixel capture are observed and role-tested. Slack evidence does not promote this route."
+    },
+    "grok-cli-heat-map": {
+      "model": "grok-4.6",
+      "provider": "grok-bot-heat-map",
+      "host": "grok-cli",
+      "harness": "grok",
+      "invocation_id": "mb-heat-map",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-30",
+      "evidence_strength": "none",
+      "capabilities": ["analytics"],
+      "data_boundary": "subscription",
+      "quota_bucket": "grok-heavy",
+      "evidence": [{
+        "date": "2026-08-30",
+        "route_state": "unwired",
+        "kind": "none",
+        "source": "named CLI profile is defined but no signed-in Clarity or browser integration is observed"
+      }],
+      "notes": "Direct CLI transport only; remains parked until signed-in Clarity/browser access is observed and role-tested."
+    },
+    "grok-cli-marketplace-intelligence": {
+      "model": "grok-4.6",
+      "provider": "grok-bot-marketplace-intelligence",
+      "host": "grok-cli",
+      "harness": "grok",
+      "invocation_id": "mb-marketplace-intelligence",
+      "route_state": "unwired",
+      "evidence_date": "2026-08-30",
+      "evidence_strength": "none",
+      "capabilities": ["marketplace_intelligence"],
+      "data_boundary": "subscription",
+      "quota_bucket": "grok-heavy",
+      "evidence": [{
+        "date": "2026-08-30",
+        "route_state": "unwired",
+        "kind": "none",
+        "source": "profile generation is defined; installed profile and one-time role test are required before promotion"
+      }],
+      "notes": "May analyze only deposited approved evidence after profile sync and role smoke; never browse marketplaces without recorded platform permission."
+    },
     "review-e-fireworks": {
       "model": "open-weight-review-e",
       "provider": "review-e",
@@ -2324,19 +2385,19 @@
       "quality": [
         {
           "rank": 1,
-          "route": "grok-bot-visual-qa",
-          "confidence": "medium",
-          "rationale": "The only live credential-free preview walker.",
-          "basis": "operational_prior",
-          "source": "config/providers.json"
+          "route": "grok-cli-review-d",
+          "confidence": "low",
+          "rationale": "Named CLI role is the intended transport but lacks observed browser and pixel capability.",
+          "basis": "vendor_external_prior",
+          "source": "https://docs.x.ai/developers/grok-4-6"
         }
       ],
       "selection": [
         {
           "priority": 1,
-          "route": "grok-bot-visual-qa",
-          "confidence": "high",
-          "rationale": "Standing Review D seat. Never Admin/SimGym."
+          "route": "grok-cli-review-d",
+          "confidence": "low",
+          "rationale": "Unwired candidate only; routing must park until browser/pixel capability is observed and role-tested."
         }
       ]
     },
@@ -2344,19 +2405,19 @@
       "quality": [
         {
           "rank": 1,
-          "route": "grok-bot-marketplace-intelligence",
+          "route": "grok-cli-marketplace-intelligence",
           "confidence": "low",
-          "rationale": "Narrow read-only Bot definition with source-specific evidence controls; not yet app-created or evaluated.",
-          "basis": "operational_prior",
-          "source": "config/providers.json"
+          "rationale": "Narrow read-only CLI definition with source-specific evidence controls; profile sync and role evaluation remain required.",
+          "basis": "vendor_external_prior",
+          "source": "https://docs.x.ai/developers/grok-4-6"
         }
       ],
       "selection": [
         {
           "priority": 1,
-          "route": "grok-bot-marketplace-intelligence",
+          "route": "grok-cli-marketplace-intelligence",
           "confidence": "low",
-          "rationale": "Unwired candidate only. Resolution must park until app creation and a recorded one-time test promote the route to live_verified."
+          "rationale": "Unwired candidate only. Resolution must park until profile sync and a recorded one-time test promote the route to live_verified."
         }
       ]
     },

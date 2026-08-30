@@ -757,8 +757,26 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
                           "available": False, "tier": "spent"})
 
     if pixels or klass == "storefront-theme":
-        steps.append({"seat": "grok-bot-review-d", "why": "Review D pixel walk once a visitor preview URL exists (Slack #visual-qa)",
-                      "available": True, "input_seat": True})
+        review_d_id = "grok-bot-review-d"
+        review_d = prov.get(review_d_id) or {}
+        route_live = modelreg.provider_route_is_live(registry, review_d)
+        has_browser = "browser" in routing.capabilities_of(
+            review_d_id, review_d, connectors, require_callable=False
+        )
+        available = bool(review_d.get("wired")) and route_live and has_browser
+        if available:
+            why = "Review D pixel walk through the mb-review-d Grok CLI agent once a validated preview brief exists"
+        else:
+            missing = []
+            if not review_d.get("wired"):
+                missing.append("provider wired is not true")
+            if not route_live:
+                missing.append("CLI route is not live_verified")
+            if not has_browser:
+                missing.append("browser/pixel capability is not observed")
+            why = "PARK Review D: " + "; ".join(missing)
+        steps.append({"seat": review_d_id, "why": why,
+                      "available": available, "input_seat": True})
     return steps
 
 
@@ -887,10 +905,12 @@ def main(argv=None):
             "reason": f"PARK: handoff participant(s) are not configured: {', '.join(unknown_participants)}",
         })
     impl_required_steps = [s for s in (implement or []) if not s.get("input_seat")]
+    input_required_steps = [s for s in (implement or []) if s.get("input_seat")]
     implementation_satisfied = (not args.implement or
                                 (bool(impl_required_steps) and all(s.get("available", True) for s in impl_required_steps)))
+    input_satisfied = all(s.get("available", True) for s in input_required_steps)
     routing_satisfied = bool(handoff["allowed"] and dispatcher.get("satisfied") and
-                             review.get("satisfied") and implementation_satisfied)
+                             review.get("satisfied") and implementation_satisfied and input_satisfied)
     if not handoff["allowed"]:
         park_reason = handoff["reason"]
     elif not dispatcher.get("satisfied"):
@@ -899,6 +919,9 @@ def main(argv=None):
         park_reason = review["explanation"]
     elif not implementation_satisfied:
         park_reason = "PARK: no complete usable implementation path"
+    elif not input_satisfied:
+        blocked_inputs = [s.get("why") for s in input_required_steps if not s.get("available", True)]
+        park_reason = "; ".join(x for x in blocked_inputs if x) or "PARK: required input seat unavailable"
     else:
         park_reason = None
 

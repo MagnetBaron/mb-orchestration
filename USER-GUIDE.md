@@ -15,7 +15,7 @@ limit. You do not need every plan below — the whole point is that it flexes to
 ## 1. Which AI family matters for which task
 
 Route by **family**, not by brand loyalty. The families are Anthropic (Claude: Fable, Opus),
-OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok: Build + the two Grok Bots), open-weight
+OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok Build + named CLI roles), open-weight
 (DeepSeek/Kimi/Qwen/GLM via Fireworks or a local runtime), and Cursor (a harness over mixed models).
 
 | Task | Best family | Why |
@@ -26,8 +26,8 @@ OpenAI (GPT/Codex: Sol, Terra, Luna), xAI (Grok: Build + the two Grok Bots), ope
 | **Architecture / long-horizon (rare)** | **Anthropic — Fable 5** | Same family as Opus; out of the gating order. Opus 5 is stronger/more efficient for normal judgment |
 | **Google-MCP volume** (Search Console, Drive, DataForSEO) | **OpenAI — GPT Terra** | Has the Google connectors; cheap tool loops |
 | **Interpreting MCP/analytics numbers** | **Anthropic Opus / OpenAI Sol** | Scarce judgment on already-fetched data (never bulk-fetch here) |
-| **Storefront pixel QA** | **xAI — Grok Bot (Visual QA)** | Credential-free preview walks; app-only cloud teammate |
-| **Analytics heatmaps/replays** | **xAI — Grok Bot (Heat Map)** | Browser-only Clarity layer the API can't return |
+| **Storefront pixel QA** | **xAI — Grok CLI `mb-review-d`** | Parked until credential-free browser/pixels are observed |
+| **Analytics heatmaps/replays** | **xAI — Grok CLI `mb-heat-map`** | Parked until signed-in Clarity/browser is observed |
 | **Independent third-family review** | **open-weight — Review E** | The only review family that is *not* Anthropic/OpenAI/xAI (see §3) |
 | **IDE / inline edits** | **Cursor (Grok pool)** | First-party pool; drain before paid buckets |
 | **Dispatch** | Requested/profile intake provider, with recorded-availability fallback | Exactly one effective coordinator per run; reviewer chain flexes around dispatcher and authors. Rankings never grant authority |
@@ -101,7 +101,7 @@ python3 bin/subscription-calculator.py \
 
 | If last month you… | It recommends | Because |
 |--------------------|---------------|---------|
-| coded/listed ≥1 h/day, or did storefront/analytics | SuperGrok Heavy | abundant volume + both Grok Bots ride one plan |
+| coded/listed ≥1 h/day, or ran a verified standing role | SuperGrok Heavy | abundant Grok CLI volume; capability proof remains separate |
 | needed any frontier review | 1× Claude Max | the Opus 5 gate (Fable optional, architecture only) |
 | did >10 reviews/week | +1–3 Claude Team-premium seats | teamclaude rotates review load so no seat caps mid-week |
 | coded heavily but reviewed lightly | +2 Claude Pro | cheap Opus overflow + rotation headroom (no Fable) |
@@ -166,7 +166,7 @@ points, and habits:
 
 1. Rewrite `config/subscriptions.json` with their plans (this drives Fable grants and capacity).
 2. Set `config/entrypoints.json` — their entry surfaces, profiles, and fallback order.
-3. Set `config/connectors.json` — their MCP connectors, stores, analytics login, Slack channel.
+3. Set `config/connectors.json` — their MCP connectors, stores, analytics login, and Grok CLI role bindings.
 4. Fill the anchors they know in `config/usage-windows.json`.
 5. Run `python3 bin/doctor.py` (must be error-free) and `python3 bin/smoketest.py` (must be 13/13).
 6. `python3 bin/detect-agents.py` to see which agents are live; register any new CLI with

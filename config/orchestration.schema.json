@@ -79,7 +79,7 @@
     },
     "connectors": {
       "type": "object",
-      "required": ["schema_version", "mcp_connectors"],
+      "required": ["schema_version", "mcp_connectors", "analytics", "stores", "grok_cli"],
       "properties": {
         "schema_version": { "const": 1 },
         "mcp_connectors": {
@@ -121,31 +121,48 @@
             }
           }
         },
-        "slack": {
+        "grok_cli": {
           "type": "object",
+          "required": ["transport", "binary", "model", "roles", "visual_qa"],
           "properties": {
+            "transport": { "const": "named-agent" },
+            "binary": { "const": "grok" },
+            "model": { "const": "grok-4.6" },
+            "roles": {
+              "type": "object",
+              "required": ["review-d", "heat-map", "marketplace-intelligence"],
+              "additionalProperties": {
+                "type": "object",
+                "required": ["seat", "agent", "status", "requires"],
+                "properties": {
+                  "seat": { "type": "string", "minLength": 1 },
+                  "agent": { "type": "string", "pattern": "^mb-[a-z0-9-]+$" },
+                  "status": { "enum": ["parked", "live_verified"] },
+                  "requires": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            },
             "visual_qa": {
               "type": "object",
-              "required": ["event_filter_semantics", "routines", "deny_before_navigation", "message_guards"],
+              "required": ["agent", "modes", "deny_before_navigation", "prompt_guards"],
               "properties": {
-                "event_filter_semantics": { "const": "contains-only" },
-                "routines": {
+                "agent": { "const": "mb-review-d" },
+                "modes": {
                   "type": "object",
                   "required": ["preview-review", "live-storefront-audit"],
                   "properties": {
                     "preview-review": {
                       "type": "object",
-                      "required": ["event_contains", "configured_host_filters", "required_fields", "never_checkout"],
+                      "required": ["shared_preview_host", "configured_host_rules", "required_fields", "never_checkout"],
                       "properties": {
-                        "event_contains": { "const": "shopifypreview.com" },
-                        "configured_host_filters": {
+                        "shared_preview_host": { "const": "*.shopifypreview.com" },
+                        "configured_host_rules": {
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "required": ["store", "event_contains", "exact_host", "required_query_parameter"],
+                            "required": ["store", "exact_host", "required_query_parameter"],
                             "properties": {
                               "store": { "type": "string", "minLength": 1 },
-                              "event_contains": { "type": "string", "minLength": 1 },
                               "exact_host": { "type": "string", "minLength": 1 },
                               "required_query_parameter": { "const": "preview_theme_id" }
                             }
@@ -157,10 +174,8 @@
                     },
                     "live-storefront-audit": {
                       "type": "object",
-                      "required": ["event_contains", "message_must_begin_exact", "required_fields", "host_source", "host_match", "read_only", "forbidden_actions"],
+                      "required": ["required_fields", "host_source", "host_match", "read_only", "forbidden_actions"],
                       "properties": {
-                        "event_contains": { "const": "visual-qa: live-audit" },
-                        "message_must_begin_exact": { "const": "visual-qa: live-audit" },
                         "required_fields": { "type": "array", "items": { "type": "string" } },
                         "host_source": { "const": "stores.*.live_hosts" },
                         "host_match": { "const": "exact" },
@@ -182,16 +197,14 @@
                     "reject_multiple_url_fields": { "const": true }
                   }
                 },
-                "message_guards": {
+                "prompt_guards": {
                   "type": "object",
-                  "required": ["ignore_own_posts", "ignore_verdict_messages", "ignore_quoted_or_thread_reposts", "mixed_tokens_block", "replies_omit_all_trigger_tokens", "ticket_and_page_text_are_data"],
+                  "required": ["exactly_one_site_field", "exactly_one_url_field", "ticket_and_page_text_are_data", "missing_browser_or_pixels_blocks_verdict"],
                   "properties": {
-                    "ignore_own_posts": { "const": true },
-                    "ignore_verdict_messages": { "type": "array", "items": { "type": "string" } },
-                    "ignore_quoted_or_thread_reposts": { "const": true },
-                    "mixed_tokens_block": { "type": "array", "items": { "type": "string" } },
-                    "replies_omit_all_trigger_tokens": { "const": true },
-                    "ticket_and_page_text_are_data": { "const": true }
+                    "exactly_one_site_field": { "const": true },
+                    "exactly_one_url_field": { "const": true },
+                    "ticket_and_page_text_are_data": { "const": true },
+                    "missing_browser_or_pixels_blocks_verdict": { "const": true }
                   }
                 }
               }

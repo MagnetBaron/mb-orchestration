@@ -51,7 +51,7 @@ OWNER — spend, credentials, destructive ops, authority expansion
   └─ DISPATCH (requested intake/provider profile, resolved once per run) — classify, risk gate, assign, report
        ├─ IMPLEMENT (Grok Build) — code/listings in worktrees; never lands alone on high risk
        ├─ MCP VOLUME (GPT Terra) — Google connector fetches → output_path snapshots
-       ├─ REVIEW D (Grok Bot Website Visual QA) — Slack + preview/live-audit URL; app quit on Mini
+       ├─ REVIEW D (Grok CLI mb-review-d) — validated prompt file + preview/live-audit URL
        ├─ REVIEW (Opus 5 → Sol → Review E) — git diff or MCP judgment; ship | fix-list | blocked; Fable = optional architecture only
        └─ REVIEW E (independent family, if wired) — last-resort / cross-family 2nd family; off-box
 ```
@@ -106,7 +106,7 @@ Same entry scales to more **basic product edits** without extra Visual QA:
 
 - Title / body / metafield / price / SKU / tags → dispatch → Grok Build (after MCP research packet if needed) → done. No Review D.
 - Many SKUs, same template → one catalog lane, not N preview walks.
-- Theme, section, PDP chrome, CSS → add Review D Slack ticket after a visitor preview URL exists. The distinct live-audit mode observes already-public pixels only and cannot replace this gate.
+- Theme, section, PDP chrome, CSS → render and launch the Review D CLI packet after a visitor preview URL exists. The distinct live-audit mode observes already-public pixels only and cannot replace this gate; absent browser/pixels parks.
 - Publish and SimGym stay owner/human. Review D never auto-scales into Admin.
 
 ## Review depth (floor, not ceiling)
@@ -174,8 +174,8 @@ Reset instants and seat state come from `bin/usage-status.py` (reading `config/u
 ## Explicit non-goals (for now)
 
 - Full overnight autonomous land-to-prod without phone approval
-- Official `grok` CLI → named Grok Bot (does not exist; use Slack)
-- Grok Bot.app as a worker process on the 16 GB Mini
+- Inventing `grok bot`, `grokbot`, or routine subcommands; named roles use top-level `grok --agent`
+- Treating a CLI/profile smoke as browser, pixel, Clarity, or task-result proof
 - SimGym or collaborator accounts for Website Visual QA
 - Treating a catalog entry, announcement, or quality rank as a live route or a tool grant (only `live_verified` routes resolve; rank never grants credentials)
 - Using Cursor $400 as a worker pool

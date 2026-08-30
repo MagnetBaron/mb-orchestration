@@ -196,7 +196,7 @@ def c_detect_capability():
 
 def c_connectors():
     r = run([PY, "bin/test_connectors.py"])
-    detail = "visual-QA render/trigger/deny regression suite"
+    detail = "visual-QA CLI packet/URL/deny regression suite"
     if r.returncode != 0:
         detail = (r.stderr or r.stdout).strip().splitlines()[-1]
     return r.returncode == 0, detail
@@ -277,12 +277,14 @@ def c_unit_tests():
     c = run([PY, "bin/test_observability.py"])
     d = run([PY, "bin/test_doctor.py"])
     e = run([PY, "bin/test_sync_commands.py"])
-    ok = all(x.returncode == 0 for x in (a, b, c, d, e))
+    f = run([PY, "bin/test_grok_agent.py"])
+    ok = all(x.returncode == 0 for x in (a, b, c, d, e, f))
     detail = "generate=" + (a.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " registry=" + (b.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " observability=" + (c.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " doctor=" + (d.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " sync=" + (e.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " grok-agent=" + (f.stderr.strip().splitlines() or ["ok"])[-1]
     return ok, detail
 
 
@@ -505,7 +507,7 @@ def main(argv=None):
     check("integration inventory (dynamic fail-closed grants)",
           lambda: (run([PY, "bin/test_integrations.py"]).returncode == 0,
                    "add/remove/disable/recovery/concurrency/session/bypass suite"))
-    check("connectors (visual-QA exact-trigger and deny gates)", c_connectors)
+    check("connectors (visual-QA CLI packets and deny gates)", c_connectors)
     check("generate-roles (idempotent + toml)", c_generate_roles)
     check("skills wiring (resolve + fail-closed negatives)", c_skills)
     check("primed MCP connector validates + inert (nothing wired)", c_primed_connector_inert)

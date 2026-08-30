@@ -582,7 +582,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         loaded = gen.load(ROOT / "config/roles.json", ROOT / "config/providers.json", inventory=inv)
         self.assertIn("shopify-theme-build", loaded["roles"])
 
-    def test_doctor_discovery_is_read_only_and_checks_grokbot_alias_coverage(self):
+    def test_doctor_discovery_is_read_only_and_cli_roles_do_not_depend_on_cursor_aliases(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)
         os.environ["MB_INTEGRATION_SOURCE_ROOT"] = str(Path(self.tmp.name) / "empty-home")
         doctor = load_doctor()
@@ -596,7 +596,8 @@ class IntegrationInventoryTests(unittest.TestCase):
         del adapters["session_only_aliases"]["grokbot-cursor"]["capability"]["browser"]
         doctor.ERRORS.clear()
         doctor.check_integration_adapters(adapters, providers)
-        self.assertTrue(any("do not cover grok-bot-review-d" in e for e in doctor.ERRORS), doctor.ERRORS)
+        self.assertEqual(doctor.ERRORS, [])
+        self.assertEqual(adapters["provider_runtimes"]["grok-bot-review-d"], "grok")
 
     def test_cli_session_merge_json_and_check(self):
         self.write([])

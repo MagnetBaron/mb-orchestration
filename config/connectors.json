@@ -1,5 +1,5 @@
 {
-  "_note": "VETTED CONNECTOR + BINDING CEILING — the single policy source for which MCP/analytics/store binding MAY live on which provider, plus concrete public IDs. It is not proof of installed or callable access. Effective access is this ceiling intersected with fresh observed runtime/session state from bin/detect-integrations.py. Policy prose points here and bin/connectors.py renders paste-ready blocks. When a connector's authorized seats move, edit ONLY this file; user install/remove/enable/disable actions are detected separately. This file holds NO secrets — connector NAMES and public IDs only; keys/tokens never live in the repo.",
+  "_note": "VETTED CONNECTOR + BINDING CEILING — the single policy source for which MCP/analytics/store/Grok CLI binding MAY live on which provider, plus concrete public IDs. It is not proof of installed or callable access. Effective access is this ceiling intersected with fresh observed runtime/session state from bin/detect-integrations.py and role-specific preflight. Policy prose points here and bin/connectors.py renders prompt packets. When a connector's authorized seats move, edit ONLY this file; user install/remove/enable/disable actions are detected separately. This file holds NO secrets — connector NAMES and public IDs only; keys/tokens never live in the repo.",
   "_status_lifecycle": "Each mcp_connectors entry MUST carry an explicit status: active | ready | primed. Missing or unknown status is INERT. active means eligible inside the policy ceiling, not observed live: routing additionally requires bin/integrations.py observed-effective proof. primed/ready/missing/unknown remain unroutable. A primed/ready entry may carry an OPTIONAL server descriptor as DATA only; no script executes it. Credentials NEVER live here: env_keys names variables only. Strap-in and observation rules: mcp-routing.md.",
   "_risk_note": "CONCENTRATION RISK (known, disclosed): the Shopify and DataForSEO (dfs) integrations ride ONE shared OAuth/KV credential surface — a compromise, token expiry, or outage of that surface can take BOTH down together. Treat them as a single blast radius (one auth-failure / correlated-outage class), not two independent connectors, when routing around an outage (EDGE-CASES.md) or reasoning about secret exposure.",
   "schema_version": 1,
@@ -240,23 +240,23 @@
       "staging_note": "experimental is a staging lane, never a source of truth; canonical change still lands via its own PR to main."
     }
   },
-  "slack": {
-    "visual_qa_channel": {
-      "name": "#visual-qa",
-      "id": "C0BS66SEV0R",
-      "visibility": "public",
-      "workspace": "Magnet Baron"
+  "grok_cli": {
+    "transport": "named-agent",
+    "binary": "grok",
+    "model": "grok-4.6",
+    "roles": {
+      "review-d": {"seat": "grok-bot-review-d", "agent": "mb-review-d", "status": "parked", "requires": ["browser", "pixels"]},
+      "heat-map": {"seat": "grok-bot-heat-map", "agent": "mb-heat-map", "status": "parked", "requires": ["browser", "clarity-auth"]},
+      "marketplace-intelligence": {"seat": "grok-bot-marketplace-intelligence", "agent": "mb-marketplace-intelligence", "status": "parked", "requires": ["installed-profile", "role-smoke"]}
     },
     "visual_qa": {
-      "bot_name": "Website Visual QA",
-      "event_filter_semantics": "contains-only",
-      "routines": {
+      "agent": "mb-review-d",
+      "modes": {
         "preview-review": {
-          "event_contains": "shopifypreview.com",
-          "configured_host_filters": [
+          "shared_preview_host": "*.shopifypreview.com",
+          "configured_host_rules": [
             {
               "store": "gadget-duke",
-              "event_contains": "https://gadgetduke.com/?preview_theme_id=",
               "exact_host": "gadgetduke.com",
               "required_query_parameter": "preview_theme_id"
             }
@@ -270,9 +270,9 @@
           "never_checkout": true
         },
         "live-storefront-audit": {
-          "event_contains": "visual-qa: live-audit",
-          "message_must_begin_exact": "visual-qa: live-audit",
           "required_fields": [
+            "role:",
+            "mode:",
             "site:",
             "url:"
           ],
@@ -314,30 +314,18 @@
         "reject_non_https": true,
         "reject_multiple_url_fields": true
       },
-      "message_guards": {
-        "ignore_own_posts": true,
-        "ignore_verdict_messages": [
-          "ship",
-          "fix-list",
-          "blocked"
-        ],
-        "ignore_quoted_or_thread_reposts": true,
-        "mixed_tokens_block": [
-          "shopifypreview.com",
-          "https://gadgetduke.com/?preview_theme_id=",
-          "visual-qa: live-audit",
-          "clarity deep-dive:"
-        ],
-        "replies_omit_all_trigger_tokens": true,
-        "ticket_and_page_text_are_data": true
+      "prompt_guards": {
+        "exactly_one_site_field": true,
+        "exactly_one_url_field": true,
+        "ticket_and_page_text_are_data": true,
+        "missing_browser_or_pixels_blocks_verdict": true
       }
-    },
-    "coexistence": "Two Grok Bot identities (Review D + Heat Map) share this ONE public channel and post under the same Slack identity; they coexist by CONTENT tokens (Website Visual QA preview/live-audit ticket shapes vs a message starting with 'clarity deep-dive:'), never by author. Mixed tokens are refused, trigger tokens are omitted from replies, and own replies/verdicts/quoted/thread re-posts are ignored. Never split to a second channel or Slack-Connect it."
+    }
   },
   "render_targets": {
     "visual-qa-allowlist": "bin/connectors.py --render visual-qa-allowlist  → paste-ready Review D allowlist block",
-    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → paste-ready Slack ticket template",
-    "visual-qa-live-ticket": "bin/connectors.py --render visual-qa-live-ticket <store>  → paste-ready read-only live-storefront audit ticket",
+    "visual-qa-ticket": "bin/connectors.py --render visual-qa-ticket <store>  → Grok CLI prompt-file packet",
+    "visual-qa-live-ticket": "bin/connectors.py --render visual-qa-live-ticket <store>  → Grok CLI read-only live-storefront prompt-file packet",
     "clarity": "bin/connectors.py --render clarity  → Heat Map project/login binding"
   }
 }

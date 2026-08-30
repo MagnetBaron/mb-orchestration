@@ -11,7 +11,7 @@ changes, edit `config/`, run `bin/doctor.py`, and the routing re-derives; prose 
 - `config/providers.json` — agents/providers, capability levels, families, detection
 - `config/model-registry.json` — model identity, routes, lifecycle, route state, per-role rankings
 - `config/subscriptions.json` — the plans you pay for (the one file a new user edits)
-- `config/connectors.json` — live MCP/analytics/store/Slack bindings (no stale IDs in prose)
+- `config/connectors.json` — live MCP/analytics/store/Grok CLI bindings (no stale IDs in prose)
 - `config/entrypoints.json` — entry surfaces, user profiles, and per-run dispatcher fallback order
 - `config/handoff-policy.json` — preauthorized ordinary artifacts, standing review authorization, fail-closed restricted classes
 - `config/usage-windows.json` + `config/review-depth.json` — reset anchors + review floors
@@ -48,12 +48,12 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 | Role (invariant) | Level | Current provider(s) — see providers.json | Does not |
 |------|------|------|------|
 | **Dispatch** | varies | Per-run selected Sol / Opus 5 / Opus 4.8 / Fable / Terra / Luna / Grok, when live and qualified | More than one effective dispatcher per run; authority from rank alone |
-| **Implement** | terra | Grok Build | Google MCP without a connector; Grok Bot change-sets |
+| **Implement** | terra | Grok Build | Google MCP without a connector; standing-role change-sets |
 | **MCP volume** | terra | Codex GPT Terra (· Luna coordination) | Default coder; MCP without a live connector |
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 5 | Row-dump fetch loops |
-| **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement, or mutate a live storefront |
-| **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
-| **Marketplace intelligence** | terra | Grok Bot Marketplace Intelligence *(unwired until app creation + test)* | Marketplace browsing without recorded permission; list/bid/buy/message/publish/auth; implement or review verdict |
+| **Standing / Review D** | terra | Grok CLI `mb-review-d` *(parked until browser/pixels are observed)* | Admin, SimGym, publish, implement, or mutate a live storefront |
+| **Analytics input** | terra | Grok CLI `mb-heat-map` *(parked until signed-in Clarity/browser is observed)* | Review verdicts, implement, settings |
+| **Marketplace intelligence** | terra | Grok CLI `mb-marketplace-intelligence` *(unwired until profile sync + test)* | Marketplace browsing without recorded permission; list/bid/buy/message/publish/auth; implement or review verdict |
 | **Gate 1 (Anthropic)** | frontier | Opus 5 (routed across Claude seats by teamclaude) | Default implementer |
 | **Gate 2 (OpenAI)** | sole | Codex Sol (under reserve line) | Cursor Sol (different meter) |
 | **Architecture / long-horizon** | frontier | Fable 5 *(rare escalation; same family as Opus; never a second family)* | Any gating verdict; daily coding |
@@ -71,7 +71,7 @@ Direct `claude` without teamclaude is `auth_blocked` and is not a working route.
 observed runtime/session state from `bin/detect-integrations.py` (today Opus +
 appropriate GPT), never assumed on Grok — route per `mcp-routing.md`. **Legwork-or-stop:** volume runs
 on Grok or a GPT-Terra MCP lane, else parks — never dumped on Sol/Opus/Cursor $ on a probe fail
-(outages: `EDGE-CASES.md`). **No desktop apps** after device-auth; one implementer process on the 16 GB Mini; Grok Bot.app stays quit on the worker.
+(outages: `EDGE-CASES.md`). **No desktop apps** after device-auth; one implementer process on the 16 GB Mini.
 
 ## Usage economics (never strand)
 
@@ -138,11 +138,11 @@ sole-gates a risk class — its `ship` there is advisory, owner lands; unwired �
 
 When Sol is needed for **both** code review and MCP judgment the same week: code-review risk gate wins the Sol slot; MCP judgment goes to Opus if Sol is spent or already used on that change-set.
 
-**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel and narrow per-token event
-bindings in `config/connectors.json`). Unpublished changes use visitor-preview review; a configured
-live-host theme preview must have an exact-host + `preview_theme_id` event filter. A separate
-exact-trigger live-audit mode may inspect an allowlisted public storefront read-only, but never
-substitutes for the preview gate and never adds to cart, submits, logs in, purchases, or mutates.
+**Review D** when storefront *pixels* change. Dispatch a config-rendered prompt file to the named
+`mb-review-d` Grok CLI agent (`visual-qa-cli.md`). Unpublished changes use visitor-preview review; a
+configured live-host preview must have an exact-host + non-empty `preview_theme_id` rule. A separate
+live-audit mode may inspect an allowlisted public storefront read-only, but never substitutes for the
+preview gate. Missing browser/pixel capability parks; a CLI smoke is not a visual verdict.
 
 **Autonomy limits (disclosed).** Cross-family autonomy needs **≥2 review families**: with fewer (a downgrade or a solo/one-family setup) risk-class work — money, auth, PII, secrets — **parks pending a human** rather than auto-shipping (the routing collapses toward one seat; the discipline holds). And **unattended land-to-prod is a current non-goal** — the executor is gated: `bin/run-brief.py` is **dry-run only** (it plans, shells nothing) and fails closed without an explicit run; landing/publish/send stay behind owner gates (`DOCTRINE.md` §non-goals).
 
@@ -150,7 +150,7 @@ substitutes for the preview gate and never adds to cart, submits, logs in, purch
 
 Resolver records requested intake, effective dispatcher, fallback reason, authors, review scopes, and handoff decision. Its steps:
 
-1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → Grok Bot; theme/layout → Build then Review D; product copy → MCP packet (if needed) then Grok write.
+1. **Implement seat:** Google-MCP bulk → GPT Terra, MCP *judgment* → Sol/Opus (`mcp-routing.md`); else **Grok Build**. Standing non-repo → its named Grok CLI role only when live; theme/layout → Build then Review D; product copy → MCP packet (if needed) then Grok write.
    Marketplace sold-price/competitor research → `marketplace-intelligence.md`; the Marketplace Intelligence Bot may analyze supplied approved snapshots/API outputs only and remains parked while its route is unwired. Never substitute scheduled marketplace browsing for a missing authorized source.
 2. **Brief** every job (fields above) and **stamp `review:`** at the router's floor; ambiguous risk → park + ask owner. Do not invent seats.
 3. **Route reviews** with `bin/resolve-route.py` (which reads `bin/usage-status.py` and the model registry), never by guesswork.

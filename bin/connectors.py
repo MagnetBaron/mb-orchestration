@@ -3,9 +3,9 @@
 
 config/connectors.json is the single source for which MCP/analytics/store binding
 lives where, plus the concrete live IDs (Clarity project ids, analytics login,
-Shopify stores/themes, Slack channel). Policy prose points here instead of
-hardcoding IDs that go stale. This renders the human-facing blocks (bot allowlists,
-Slack ticket templates, Clarity binding) FROM that config, so there is exactly one
+Shopify stores/themes, and Grok CLI role bindings). Policy prose points here instead of
+hardcoding IDs that go stale. This renders the human-facing blocks (agent allowlists,
+Grok CLI prompt packets, Clarity binding) FROM that config, so there is exactly one
 place to edit when a binding moves.
 
   connectors.py                         # summary of all bindings
@@ -41,19 +41,19 @@ def render_allowlist(c):
         out.append(f"- Never: {', '.join(s.get('never', []))}")
         if s.get("review_d_preview_url"):
             out.append(f"- Review D preview URL: {s['review_d_preview_url']}")
-    policy = c.get("slack", {}).get("visual_qa", {})
-    live = policy.get("routines", {}).get("live-storefront-audit", {})
-    preview = policy.get("routines", {}).get("preview-review", {})
+    policy = c.get("grok_cli", {}).get("visual_qa", {})
+    live = policy.get("modes", {}).get("live-storefront-audit", {})
+    preview = policy.get("modes", {}).get("preview-review", {})
     deny = policy.get("deny_before_navigation", {})
     out.append("\n### Mode and deny gate")
-    out.append(f"- Shared-preview event token: `{preview.get('event_contains')}`")
-    for item in preview.get("configured_host_filters") or []:
+    out.append(f"- Shared-preview host: `{preview.get('shared_preview_host')}`")
+    for item in preview.get("configured_host_rules") or []:
         out.append(
-            f"- Exact-host preview event token ({item.get('store')}): "
-            f"`{item.get('event_contains')}`; host={item.get('exact_host')}; "
+            f"- Exact-host preview rule ({item.get('store')}): "
+            f"host={item.get('exact_host')}; "
             f"requires {item.get('required_query_parameter')}"
         )
-    out.append(f"- Live-audit exact first line: `{live.get('message_must_begin_exact')}`")
+    out.append("- Live-audit packet: `role: review-d` plus `mode: live-storefront-audit`")
     out.append(f"- Live-audit host match: {live.get('host_source')} ({live.get('host_match')})")
     out.append(f"- Denied hosts: {', '.join(deny.get('hosts', []))}")
     out.append(f"- Denied path prefixes: {', '.join(deny.get('path_prefixes', []))}")
@@ -68,52 +68,47 @@ def _store(c, store):
     return stores[store]
 
 
-def _recognized_preview_trigger(c, store, url):
-    """Return the narrow event token that can wake this rendered preview ticket.
+def _validate_preview_url(c, store, url):
+    """Return the matched preview policy after validating the rendered CLI packet.
 
     Shared-domain previews must really be HTTPS subdomains of the configured wildcard.
     Live-host theme previews need an explicit per-store filter, exact configured host,
-    and preview_theme_id. Anything else fails closed instead of rendering a silent or
-    overly broad Slack ticket.
+    and preview_theme_id. Anything else fails closed before Grok CLI is launched.
     """
     s = _store(c, store)
-    preview = c.get("slack", {}).get("visual_qa", {}).get("routines", {}).get("preview-review", {})
+    preview = c.get("grok_cli", {}).get("visual_qa", {}).get("modes", {}).get("preview-review", {})
     parsed = urlsplit(url)
     host = (parsed.hostname or "").lower()
     if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
         sys.exit(f"connectors: store {store!r} preview URL must be credential-free HTTPS")
 
-    shared_token = preview.get("event_contains")
-    pattern = s.get("preview_host", "")
-    if shared_token and pattern.startswith("*."):
+    pattern = preview.get("shared_preview_host") or s.get("preview_host", "")
+    if pattern.startswith("*."):
         suffix = pattern[1:].lower()
-        if shared_token in url and host.endswith(suffix) and host != suffix.lstrip("."):
-            return shared_token
+        if host.endswith(suffix) and host != suffix.lstrip("."):
+            return "shared-preview-host"
 
     query = parse_qs(parsed.query, keep_blank_values=True)
     configured_hosts = {str(h).lower() for h in s.get("live_hosts", [])}
-    for item in preview.get("configured_host_filters") or []:
+    for item in preview.get("configured_host_rules") or []:
         required = item.get("required_query_parameter")
         exact_host = str(item.get("exact_host") or "").lower()
-        token = item.get("event_contains")
         required_values = query.get(required, []) if required else []
-        if (item.get("store") == store and token and token in url
-                and exact_host in configured_hosts and host == exact_host
+        if (item.get("store") == store and exact_host in configured_hosts and host == exact_host
                 and any(str(value).strip() for value in required_values)):
-            return token
+            return "exact-host-preview"
 
-    sys.exit(f"connectors: store {store!r} preview URL has no safe configured event trigger")
+    sys.exit(f"connectors: store {store!r} preview URL has no safe configured CLI preview rule")
 
 
 def render_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
-    chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     url = s.get("review_d_preview_url", f"https://<token>-<shop_id>.{s.get('preview_host','shopifypreview.com').lstrip('*.')}")
-    _recognized_preview_trigger(c, store, url)
+    _validate_preview_url(c, store, url)
     return (
-        f"Channel: {chan}\n\n"
-        "@Website Visual QA\n"
+        "role: review-d\n"
+        "mode: preview-review\n"
         f"site: {name}\n"
         f"url: {url}\n"
         "changed: <one line>\n"
@@ -124,23 +119,16 @@ def render_ticket(c, store):
 def render_live_ticket(c, store):
     s = _store(c, store)
     name = store.replace("-", " ").title()
-    chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     live_hosts = s.get("live_hosts") or []
     if not live_hosts:
         sys.exit(f"connectors: store {store!r} has no configured live_hosts")
-    policy = c.get("slack", {}).get("visual_qa", {})
-    routine = policy.get("routines", {}).get("live-storefront-audit", {})
-    trigger = routine.get("message_must_begin_exact")
-    if not trigger:
-        sys.exit("connectors: live-storefront-audit has no message_must_begin_exact")
     return (
-        f"{trigger}\n"
+        "role: review-d\n"
+        "mode: live-storefront-audit\n"
         f"site: {name}\n"
         f"url: https://{live_hosts[0]}/\n"
         "scope: public storefront read-only\n"
-        "pages: Home, search, collection, PDP\n\n"
-        "--- non-copy routing hint ---\n"
-        f"Destination channel: {chan}\n"
+        "pages: Home, search, collection, PDP\n"
     )
 
 
@@ -193,7 +181,8 @@ def main(argv=None):
     print("stores:", ", ".join(c.get("stores", {})))
     cl = c.get("analytics", {}).get("clarity", {})
     print("clarity login:", cl.get("login_identity"), "projects:", ", ".join(cl.get("projects", {})))
-    print("slack:", c.get("slack", {}).get("visual_qa_channel", {}).get("name"))
+    gc = c.get("grok_cli", {})
+    print("grok cli:", gc.get("binary"), gc.get("model"), "roles:", ", ".join(gc.get("roles", {})))
     print("-" * 72)
     print("effective runtime state: bin/detect-integrations.py [--json|--refresh|--check]")
     print("render blocks: --render visual-qa-allowlist | visual-qa-ticket <store> | "

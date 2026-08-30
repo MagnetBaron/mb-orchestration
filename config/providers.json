@@ -61,29 +61,29 @@
       "notes": "Default implementer. Exact selectable provider model is grok-4.6; grok-4.6-build is only the internal route key. 1 worktree / 1 branch / named file scope."
     },
     "grok-bot-review-d": {
-      "label": "Grok Bot — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "app",
-      "model": null, "functions": ["visual_qa"], "capabilities": ["browser", "visual_qa"],
+      "label": "Grok CLI Agent — Website Visual QA (Review D)", "level": "terra", "family": "xai", "kind": "cli",
+      "model": "grok-4.6", "functions": ["visual_qa"], "capabilities": ["visual_qa"],
       "prowess": { "visual_qa": 80 }, "billing": "included", "review_eligible": false,
-      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "macOS/iOS + xAI cloud computer; no CLI/API. Slack #visual-qa." },
-      "route": "grok-bot-visual-qa",
-      "notes": "Credential-free preview walks (has browser/Chrome access). Never Admin/publish/implement."
+      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-review-d profile are required. Browser/pixel capability must be observed separately before this route can become live." },
+      "route": "grok-cli-review-d",
+      "notes": "Direct named-agent CLI transport. Currently fail-closed because the installed CLI has no observed browser/pixel integration. Never Admin/publish/implement."
     },
     "grok-bot-heat-map": {
-      "label": "Grok Bot — Heat Map (Clarity analytics)", "level": "terra", "family": "xai", "kind": "app",
-      "model": null, "functions": ["analytics"], "capabilities": ["browser", "analytics"],
+      "label": "Grok CLI Agent — Heat Map (Clarity analytics)", "level": "terra", "family": "xai", "kind": "cli",
+      "model": "grok-4.6", "functions": ["analytics"], "capabilities": ["analytics"],
       "prowess": { "analytics": 78 }, "billing": "included", "review_eligible": false,
-      "backed_by": "grok-heavy", "detect": { "method": "app", "note": "Second Grok Bot identity; separate auth; shares #visual-qa by content-match." },
-      "route": "grok-bot-heat-map",
-      "notes": "Read-only Clarity heatmaps/replays via browser. Feeds Dispatch. Never a verdict."
+      "wired": false, "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-heat-map profile are required. Signed-in Clarity/browser capability must be observed separately before this route can become live." },
+      "route": "grok-cli-heat-map",
+      "notes": "Direct named-agent CLI transport. Currently fail-closed because no signed-in Clarity/browser integration is observed. Feeds Dispatch; never a verdict."
     },
     "grok-bot-marketplace-intelligence": {
-      "label": "Grok Bot — Marketplace Intelligence", "level": "terra", "family": "xai", "kind": "app",
-      "model": null, "functions": ["marketplace_intelligence"], "capabilities": ["marketplace_intelligence"],
+      "label": "Grok CLI Agent — Marketplace Intelligence", "level": "terra", "family": "xai", "kind": "cli",
+      "model": "grok-4.6", "functions": ["marketplace_intelligence"], "capabilities": ["marketplace_intelligence"],
       "prowess": { "marketplace_intelligence": 70 }, "billing": "included", "review_eligible": false,
       "wired": false, "backed_by": "grok-heavy",
-      "detect": { "method": "app", "note": "Declared Bot identity only. No CLI/API management surface; app creation and one-time test run remain unperformed." },
-      "route": "grok-bot-marketplace-intelligence",
-      "notes": "Read-only analysis of owner-supplied marketplace snapshots and positively authorized API outputs. No model picker, so model stays null. Unwired and non-live until the app Bot is created and its routine is test-run. Never browse or scrape marketplace sites without recorded platform permission."
+      "detect": { "method": "command", "cmd": "grok", "note": "CLI and mb-marketplace-intelligence profile are required; the route remains unwired until a recorded one-time role test passes." },
+      "route": "grok-cli-marketplace-intelligence",
+      "notes": "Direct named-agent CLI analysis of owner-supplied marketplace snapshots and positively authorized API outputs. Unwired until the generated profile is installed and a recorded one-time role test passes. Never browse or scrape marketplace sites without recorded platform permission."
     },
     "fable-5": {
       "label": "Fable 5 (architecture only — OUT of the gating order)", "level": "frontier", "family": "anthropic", "kind": "cli",

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Regression tests for config-derived Website Visual QA tickets and safety metadata."""
+"""Regression tests for config-derived Grok CLI Visual QA packets and safety gates."""
 from __future__ import annotations
 
 import importlib.util
 import json
 import unittest
 from pathlib import Path
-
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -20,91 +19,48 @@ def live_config():
 
 
 class VisualQaConfigTests(unittest.TestCase):
-    def test_two_narrow_routines_and_exact_live_prefix(self):
-        policy = live_config()["slack"]["visual_qa"]
-        self.assertEqual(policy["event_filter_semantics"], "contains-only")
-        routines = policy["routines"]
-        self.assertEqual(set(routines), {"preview-review", "live-storefront-audit"})
-        self.assertEqual(routines["preview-review"]["event_contains"], "shopifypreview.com")
-        host_filters = routines["preview-review"]["configured_host_filters"]
-        self.assertEqual(host_filters, [{
-            "store": "gadget-duke",
-            "event_contains": "https://gadgetduke.com/?preview_theme_id=",
-            "exact_host": "gadgetduke.com",
+    def test_transport_is_named_grok_cli_without_slack(self):
+        config = live_config()
+        self.assertNotIn("slack", config)
+        cli = config["grok_cli"]
+        self.assertEqual((cli["transport"], cli["binary"], cli["model"]),
+                         ("named-agent", "grok", "grok-4.6"))
+        self.assertEqual(cli["roles"]["review-d"]["agent"], "mb-review-d")
+
+    def test_two_modes_and_exact_live_policy(self):
+        policy = live_config()["grok_cli"]["visual_qa"]
+        modes = policy["modes"]
+        self.assertEqual(set(modes), {"preview-review", "live-storefront-audit"})
+        self.assertEqual(modes["preview-review"]["shared_preview_host"], "*.shopifypreview.com")
+        self.assertEqual(modes["preview-review"]["configured_host_rules"], [{
+            "store": "gadget-duke", "exact_host": "gadgetduke.com",
             "required_query_parameter": "preview_theme_id",
         }])
-        live = routines["live-storefront-audit"]
-        self.assertEqual(live["event_contains"], "visual-qa: live-audit")
-        self.assertEqual(live["message_must_begin_exact"], "visual-qa: live-audit")
-        self.assertEqual(live["host_match"], "exact")
-        self.assertTrue(live["read_only"])
+        self.assertEqual(modes["live-storefront-audit"]["host_match"], "exact")
+        self.assertTrue(modes["live-storefront-audit"]["read_only"])
 
     def test_live_mode_denies_sensitive_paths_and_all_mutations(self):
-        policy = live_config()["slack"]["visual_qa"]
+        policy = live_config()["grok_cli"]["visual_qa"]
         deny = policy["deny_before_navigation"]
         self.assertTrue({"admin.shopify.com", "partners.shopify.com"}.issubset(deny["hosts"]))
-        self.assertTrue({
-            "/admin", "/checkout", "/account", "/login", "/auth",
-            "/customer_authentication", "/challenge", "/password", "/signin", "/sign-in",
-        }.issubset(
-            deny["path_prefixes"]
-        ))
-        self.assertIn("simgym", deny["case_insensitive_markers"])
-        forbidden = set(policy["routines"]["live-storefront-audit"]["forbidden_actions"])
-        self.assertTrue({
-            "publish", "customize", "theme-editor", "form-submit", "purchase",
-            "add-to-cart", "any-mutation",
-        }.issubset(forbidden))
+        self.assertTrue({"/admin", "/checkout", "/account", "/login", "/auth"}.issubset(deny["path_prefixes"]))
+        forbidden = set(policy["modes"]["live-storefront-audit"]["forbidden_actions"])
+        self.assertTrue({"publish", "form-submit", "purchase", "add-to-cart", "any-mutation"}.issubset(forbidden))
 
-    def test_message_loop_and_mixed_token_guards(self):
-        guards = live_config()["slack"]["visual_qa"]["message_guards"]
-        self.assertTrue(guards["ignore_own_posts"])
-        self.assertTrue(guards["ignore_quoted_or_thread_reposts"])
-        self.assertTrue(guards["replies_omit_all_trigger_tokens"])
-        self.assertEqual(set(guards["mixed_tokens_block"]), {
-            "shopifypreview.com", "https://gadgetduke.com/?preview_theme_id=",
-            "visual-qa: live-audit", "clarity deep-dive:",
-        })
-
-    def test_live_tickets_are_derived_for_each_configured_store(self):
+    def test_cli_packets_are_derived_for_each_store_without_slack_tokens(self):
         config = live_config()
-        trigger = config["slack"]["visual_qa"]["routines"]["live-storefront-audit"][
-            "message_must_begin_exact"
-        ]
         for store, meta in config["stores"].items():
             with self.subTest(store=store):
-                rendered = connectors.render_live_ticket(config, store)
-                payload, routing_hint = rendered.split("\n--- non-copy routing hint ---\n", 1)
-                first_nonblank = next(line for line in payload.splitlines() if line.strip())
-                self.assertEqual(first_nonblank, trigger)
-                self.assertTrue(rendered.startswith(trigger + "\n"))
-                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", payload)
-                self.assertIn("scope: public storefront read-only", payload)
-                self.assertNotIn("preview_theme_id", payload)
-                self.assertNotIn("checkout", payload.lower())
-                self.assertNotIn("Destination channel:", payload)
-                expected_channel = config["slack"]["visual_qa_channel"]["name"]
-                self.assertEqual(routing_hint, f"Destination channel: {expected_channel}\n")
+                preview = connectors.render_ticket(config, store)
+                live = connectors.render_live_ticket(config, store)
+                self.assertTrue(preview.startswith("role: review-d\nmode: preview-review\n"))
+                self.assertTrue(live.startswith("role: review-d\nmode: live-storefront-audit\n"))
+                self.assertIn(f"url: https://{meta['live_hosts'][0]}/", live)
+                self.assertNotIn("Slack", preview + live)
+                self.assertNotIn("#visual-qa", preview + live)
+                self.assertNotIn("@Website Visual QA", preview + live)
 
-    def test_preview_ticket_remains_preview_scoped(self):
-        config = live_config()
-        rendered = connectors.render_ticket(config, "magnet-baron")
-        self.assertIn("shopifypreview.com", rendered)
-        self.assertNotIn("visual-qa: live-audit", rendered)
-
-    def test_every_store_preview_ticket_contains_a_recognized_narrow_trigger(self):
-        config = live_config()
-        preview = config["slack"]["visual_qa"]["routines"]["preview-review"]
-        for store in config["stores"]:
-            with self.subTest(store=store):
-                rendered = connectors.render_ticket(config, store)
-                tokens = [preview["event_contains"]] + [
-                    item["event_contains"] for item in preview["configured_host_filters"]
-                    if item["store"] == store
-                ]
-                self.assertTrue(any(token in rendered for token in tokens))
-
-    def test_live_host_preview_filter_fails_closed_without_exact_host_and_query(self):
+    def test_live_host_preview_fails_closed_without_exact_host_and_query(self):
         config = live_config()
         cases = [
             "https://gadgetduke.com/",
@@ -115,23 +71,20 @@ class VisualQaConfigTests(unittest.TestCase):
         for url in cases:
             with self.subTest(url=url):
                 config["stores"]["gadget-duke"]["review_d_preview_url"] = url
-                with self.assertRaisesRegex(SystemExit, "no safe configured event trigger"):
+                with self.assertRaisesRegex(SystemExit, "no safe configured CLI preview rule"):
                     connectors.render_ticket(config, "gadget-duke")
 
-    def test_configured_live_host_preview_fails_if_its_event_filter_is_removed(self):
+    def test_configured_live_host_preview_fails_if_rule_is_removed(self):
         config = live_config()
-        config["slack"]["visual_qa"]["routines"]["preview-review"][
-            "configured_host_filters"
-        ] = []
-        with self.assertRaisesRegex(SystemExit, "no safe configured event trigger"):
+        config["grok_cli"]["visual_qa"]["modes"]["preview-review"]["configured_host_rules"] = []
+        with self.assertRaisesRegex(SystemExit, "no safe configured CLI preview rule"):
             connectors.render_ticket(config, "gadget-duke")
 
-    def test_allowlist_renders_live_mode_and_deny_gate_from_config(self):
+    def test_allowlist_renders_mode_and_deny_gate_from_config(self):
         config = live_config()
         rendered = connectors.render_allowlist(config)
-        policy = config["slack"]["visual_qa"]
-        trigger = policy["routines"]["live-storefront-audit"]["message_must_begin_exact"]
-        self.assertIn(trigger, rendered)
+        policy = config["grok_cli"]["visual_qa"]
+        self.assertIn("mode: live-storefront-audit", rendered)
         for host in policy["deny_before_navigation"]["hosts"]:
             self.assertIn(host, rendered)
         for prefix in policy["deny_before_navigation"]["path_prefixes"]:

@@ -43,7 +43,7 @@ class LiveCatalogTests(unittest.TestCase):
     def test_live_validates(self):
         registry = live()
         providers = json.loads((REPO / "config" / "providers.json").read_text())
-        errors = mr.validate(registry, as_of=date(2026, 8, 28), providers=providers)
+        errors = mr.validate(registry, as_of=date(2026, 8, 30), providers=providers)
         self.assertEqual(errors, [])
 
     def test_required_roles_present(self):
@@ -86,11 +86,11 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(decision["routes"], [])
         self.assertIn("fail-closed", decision["reason"])
 
-    def test_grok_bot_marketplace_provider_has_no_selectable_model(self):
+    def test_marketplace_provider_uses_exact_named_agent_cli_model(self):
         provs = json.loads((REPO / "config" / "providers.json").read_text())
         provider = provs["providers"]["grok-bot-marketplace-intelligence"]
-        self.assertEqual(provider["kind"], "app")
-        self.assertIsNone(provider["model"])
+        self.assertEqual(provider["kind"], "cli")
+        self.assertEqual(provider["model"], "grok-4.6")
         self.assertFalse(provider["wired"])
         self.assertFalse(provider["review_eligible"])
 
@@ -879,7 +879,7 @@ class McpBulkConjunctionTests(unittest.TestCase):
 
     def test_live_catalog_still_validates_with_connectors(self):
         errors = mr.validate(
-            live(), as_of=date(2026, 8, 28),
+            live(), as_of=date(2026, 8, 30),
             providers=providers(), connectors=connectors(),
         )
         self.assertEqual(errors, [])
@@ -894,7 +894,7 @@ class DuplicateInvocationTests(unittest.TestCase):
         spoof["model"] = "gpt-5.6-sol"
         spoof["provider"] = "codex-sol"
         data["routes"]["spoof-openai-opus"] = spoof
-        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        errors = mr.validate(data, as_of=date(2026, 8, 30), providers=providers())
         blob = "\n".join(errors)
         self.assertTrue(
             "duplicate invocation" in blob or "official id of family" in blob,
@@ -1104,7 +1104,7 @@ class LiveEvidenceTests(unittest.TestCase):
 
     def test_as_of_override_freezes_clock(self):
         data = copy.deepcopy(live())
-        errors = mr.validate(data, as_of=date(2026, 8, 28), providers=providers())
+        errors = mr.validate(data, as_of=date(2026, 8, 30), providers=providers())
         self.assertEqual(errors, [])
         errors_fresh = mr.validate(data, as_of=date(2026, 9, 1), providers=providers())
         self.assertEqual(errors_fresh, [])

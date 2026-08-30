@@ -53,7 +53,7 @@ class RegistrySchemaTests(unittest.TestCase):
                          ["opus-5", "codex-sol", "review-e"])
         self.assertIn("marketplace-intelligence", reg["roles"])
         marketplace = reg["providers"]["providers"]["grok-bot-marketplace-intelligence"]
-        self.assertIsNone(marketplace["model"])
+        self.assertEqual(marketplace["model"], "grok-4.6")
         self.assertFalse(marketplace["wired"])
 
     def test_rejects_roles_schema_version_2(self):
@@ -231,23 +231,25 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(role["seat"], "grok-bot-marketplace-intelligence")
         self.assertIn("bid", role["deny_tools"])
 
-    def test_marketplace_seat_exec_is_app_only_evidence_input(self):
+    def test_marketplace_seat_exec_is_named_agent_cli_evidence_input(self):
         seat = json.loads((CONFIG / "seat-exec.json").read_text())
         recipe = seat["recipes"]["grok-bot-marketplace-intelligence"]
-        self.assertIsNone(recipe["bin"])
-        self.assertEqual(recipe["args_template"], [])
+        self.assertEqual(recipe["bin"], "grok")
+        self.assertEqual(recipe["required_agent"], "mb-marketplace-intelligence")
+        self.assertIn("--agent", recipe["args_template"])
+        self.assertIn("grok-4.6", recipe["args_template"])
         self.assertEqual(recipe["reads"], "marketplace-evidence")
         self.assertFalse(recipe["worktree"])
         self.assertTrue(recipe["never_metered_host"])
 
-    def test_marketplace_routine_keeps_website_automation_and_activation_parked(self):
+    def test_marketplace_cli_keeps_website_automation_and_activation_parked(self):
         text = (HERE.parent / "marketplace-intelligence.md").read_text()
-        self.assertIn("No scheduled marketplace browsing", text)
-        self.assertIn("Human-supplied snapshot only", text)
-        self.assertIn("Limited Release/restricted", text)
-        self.assertIn("Do not automate or screen-scrape the website", text)
-        self.assertIn("Activation is a separate owner app action", text)
-        self.assertIn("A separate Bot identity and prompt are not credential isolation", text)
+        self.assertIn("approved deposited snapshots/exports", text)
+        self.assertIn("Browser automation or scraping is never inferred", text)
+        self.assertIn("route is `unwired`", text)
+        self.assertIn("CLI/profile presence alone grants no", text)
+        self.assertIn("marketplace permission", text)
+        self.assertIn("Never browse/scrape eBay or Reverb", text)
 
     def test_seo_omits_codex_and_declares_named_mcp(self):
         _, outputs = self.render()
@@ -554,8 +556,8 @@ class ConnectorCoarseCollisionTests(unittest.TestCase):
     def _assert_no_coarse_browser(self, conns, provs):
         review_d = provs["providers"]["grok-bot-review-d"]
         heat = provs["providers"]["grok-bot-heat-map"]
-        self.assertIn("browser", review_d["capabilities"])
-        self.assertIn("browser", heat["capabilities"])
+        self.assertNotIn("browser", review_d["capabilities"])
+        self.assertNotIn("browser", heat["capabilities"])
         self.assertNotIn("browser", routing.capabilities_of("grok-bot-review-d", review_d, conns))
         self.assertNotIn("browser", routing.capabilities_of("grok-bot-heat-map", heat, conns))
         self.assertFalse(gen.seat_has_capability("grok-bot-review-d", "browser", provs, conns))
@@ -654,7 +656,7 @@ class ConnectorCoarseCollisionTests(unittest.TestCase):
         derived = routing.connector_derived_labels(conns)
         self.assertNotIn("browser", derived)
         grok_bot = live_providers()["providers"]["grok-bot-review-d"]
-        self.assertIn(
+        self.assertNotIn(
             "browser",
             routing.capabilities_of("grok-bot-review-d", grok_bot, conns),
         )

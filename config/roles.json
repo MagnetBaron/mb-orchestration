@@ -3,7 +3,7 @@
   "schema_version": 3,
   "roles": {
     "review-d": {
-      "description": "Review D: storefront visual QA through the existing Grok Bot seat.",
+      "description": "Review D: storefront visual QA through the named Grok CLI agent.",
       "level": "terra",
       "seat": "grok-bot-review-d",
       "read_only": true,
@@ -13,10 +13,10 @@
         "codex": ["read_file", "list_dir", "search"]
       },
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish", "mcpServers"],
-      "prompt": "Review only a visitor storefront preview for visual defects. Return ship, fix-list, or blocked. Never use Admin, publish, SimGym, or modify files."
+      "prompt": "Review only a validated visitor storefront preview or supplied storefront screenshots for visual defects. The launcher, CLI profile, and an observed browser/pixel source are all prerequisites; if screenshots or browser capability are absent, return blocked and do not infer a pixel verdict. Return ship, fix-list, or blocked. Never use Admin, publish, SimGym, or modify files."
     },
     "heat-map": {
-      "description": "Heat Map: read-only Clarity analytics input for Dispatch.",
+      "description": "Heat Map: read-only Clarity analytics input through the named Grok CLI agent.",
       "level": "terra",
       "seat": "grok-bot-heat-map",
       "read_only": true,
@@ -26,10 +26,10 @@
         "codex": ["read_file", "list_dir", "search"]
       },
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "settings", "member-management", "mcpServers"],
-      "prompt": "Read-only Microsoft Clarity heatmaps, replays, and summaries. Report evidence to Dispatch. Never administer Clarity, change settings, manage members, implement, or issue a review verdict."
+      "prompt": "Read-only Microsoft Clarity heatmaps, replays, and summaries. The launcher, CLI profile, and observed signed-in Clarity/browser source are prerequisites; if the source is absent, return unavailable and do not fabricate evidence. Report evidence to Dispatch. Never administer Clarity, change settings, manage members, implement, or issue a review verdict."
     },
     "marketplace-intelligence": {
-      "description": "Grok Bot Marketplace Intelligence: read-only sold-price, active-ask, and visual competitor evidence analysis from approved inputs.",
+      "description": "Grok CLI Marketplace Intelligence: read-only sold-price, active-ask, and visual competitor evidence analysis from approved inputs.",
       "level": "terra",
       "seat": "grok-bot-marketplace-intelligence",
       "read_only": true,

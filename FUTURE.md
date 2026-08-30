@@ -15,7 +15,7 @@ Hardware: several baseline M4 16 GB Minis; same quota pool, not 3×.
 1. **Control Mini** — Codex/CLI + phone pairing only.
 2. **Worker Mini as implementer** — implement + exactly one test suite on a dedicated box (QA smoke is what shipped; Grok Build still runs on the active host).
 3. **Active host** — Codex Remote connected host or console user. Not free-RAM guessing.
-4. **Official Grok Bot HTTP API** — when xAI ships one, replace Slack drop if it is cleaner. Do not adopt `:1340` or require Grok Bot.app on the worker.
+4. **Browser/pixel adapter for Grok CLI** — adopt only an official or tightly scoped observed integration; role-test it before promoting Review D/Heat Map. Do not invent localhost Bot APIs.
 5. **Product-edit factory** — batch Shopify MCP catalog jobs under Codex; still no Review D per SKU.
 
 Implement work: still pick one worker Mini by hand and copy `AGENTS.md` onto that box. QA smoke is the exception — Dispatch clicks **Run workflow** on `qa-idle-handoff`.

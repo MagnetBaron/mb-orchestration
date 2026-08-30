@@ -11,7 +11,7 @@ Resolve the setup run with the actual intake provider. The effective dispatcher 
 
 ## Grok Build — implement install
 
-Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md`, `usage-metering.md`.
+Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli.md`, `EDGE-CASES.md`, `usage-metering.md`.
 
 - Confirm clones: `mb-orchestration`, `teamclaude` (MagnetBaron org).
 - Confirm `AGENTS.md` / `CLAUDE.md` at orchestration root so Codex/Cursor/Claude see them.
@@ -33,7 +33,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-sla
 
 ## Setup review — conflict-aware chain from `resolve-route.py`
 
-- Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-slack.md`, `EDGE-CASES.md` against what Grok/Cursor did.
+- Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli.md`, `EDGE-CASES.md` against what Grok/Cursor did.
 - Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change. Delegate an OpenAI-family second look to Codex Sol if the risk gate calls for it.
 - Pin claude-opus-5. teamclaude across the five Claude seats. No Fable as installer.
 
@@ -41,7 +41,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-sla
 
 Once per account.
 
-1. **Website Visual QA + Slack** — full two-mode, per-event-token routine setup (visitor-preview review plus exact-trigger, read-only live-storefront audit) in [visual-qa-slack.md](./visual-qa-slack.md). Quit Bot.app on the worker Mini.
+1. **Website Visual QA CLI** — config-rendered visitor-preview and read-only live-storefront packets through `mb-review-d`; see [visual-qa-cli.md](./visual-qa-cli.md). Park until browser/pixels are observed.
 2. **Google MCP on Codex/Claude** — ensure Search Console, Drive, DataForSEO (or equivalent) are connected on the seats that run GPT Terra / Opus so `mcp-routing.md` is real, not aspirational.
 3. **Dispatcher close-loop** — paste standing add-on from [close-the-loop](./luna-close-loop.md) if you want finish reports forwarded.
 4. **Usage metering** — set the `config/usage-windows.json` anchors you know (Grok weekly weekday/time, Cursor billing day) so `bin/usage-status.py` computes resets; wrappers/owner write `config/usage-ledger.json`. See `usage-metering.md`.
@@ -55,7 +55,7 @@ must_read:
 - AGENTS.md
 - mcp-routing.md
 - visual-qa.md
-- visual-qa-slack.md
+- visual-qa-cli.md
 - EDGE-CASES.md
 - SETUP-BOTS.md
 
@@ -63,6 +63,6 @@ must_not_touch: Shopify Admin, theme publish, Grok Bot.app left running, four Cl
 
 output_path: a short report in the session (clone paths, clients that see the folders, owner-only leftover including MCP connector check)
 
-done_when: both repos openable; AGENTS.md loaded; `python3 bin/doctor.py` and `python3 bin/smoketest.py` green; Visual QA Slack path documented; MCP routing docs present; Grok Bot.app not required on the Mini for daily dispatch; `bin/usage-status.py` runs and reports seat resets
+done_when: both repos openable; AGENTS.md loaded; `python3 bin/doctor.py` and `python3 bin/smoketest.py` green; Visual QA CLI path documented and fail-closed; MCP routing docs present; `bin/usage-status.py` runs and reports seat resets
 
 effort: setup

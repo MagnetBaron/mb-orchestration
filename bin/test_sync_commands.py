@@ -56,6 +56,8 @@ class SyncCommandsTests(unittest.TestCase):
             self.assertEqual(CANON.read_bytes(), (home / ".codex/prompts/orca.md").read_bytes())
             self.assertEqual(SKILL.read_bytes(), (home / ".agents/skills/orca/SKILL.md").read_bytes())
             self.assertTrue((profile / "commands/orca.md").samefile(CANON))
+            for name in ("mb-review-d.md", "mb-heat-map.md", "mb-marketplace-intelligence.md"):
+                self.assertTrue((home / ".grok/agents" / name).is_file(), name)
 
             checked = self.run_sync(home, "--check")
             self.assertEqual(0, checked.returncode, checked.stderr)
@@ -80,6 +82,13 @@ class SyncCommandsTests(unittest.TestCase):
             failed = self.run_sync(home, "--check")
             self.assertNotEqual(0, failed.returncode)
             self.assertEqual(before, drifted.read_bytes(), "--check mutated a stale copy")
+
+            agent = home / ".grok/agents/mb-marketplace-intelligence.md"
+            agent.write_text("stale\n")
+            before_agent = agent.read_bytes()
+            failed_agent = self.run_sync(home, "--check")
+            self.assertNotEqual(0, failed_agent.returncode)
+            self.assertEqual(before_agent, agent.read_bytes(), "--check mutated a stale agent profile")
 
     def test_noncanonical_checkout_is_refused_before_host_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
