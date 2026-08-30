@@ -100,3 +100,10 @@ Port to a different user: edit `config/subscriptions.json` (your plans), `config
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
 Daily: invoke `/orca` (or the identical `/orchestrate` compatibility alias), then pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.
+
+Website Visual QA has two config-derived Slack routines: visitor-preview review and exact-trigger,
+read-only live-storefront audit. Render them with `bin/connectors.py --render visual-qa-ticket
+<store>` and `bin/connectors.py --render visual-qa-live-ticket <store>`. The live mode observes only
+an exact configured public host and cannot log in, add to cart, submit, purchase, publish, or mutate.
+See `visual-qa.md` and `visual-qa-slack.md`; do not replace the two narrow event filters with a broad
+listener.

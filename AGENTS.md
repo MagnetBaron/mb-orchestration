@@ -51,7 +51,7 @@ model/route identity). Capability levels frontier · sole · terra · luna are t
 | **Implement** | terra | Grok Build | Google MCP without a connector; Grok Bot change-sets |
 | **MCP volume** | terra | Codex GPT Terra (· Luna coordination) | Default coder; MCP without a live connector |
 | **MCP / review judgment** | sole/frontier | Codex Sol · Opus 5 | Row-dump fetch loops |
-| **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement |
+| **Cloud standing / Review D** | terra | Grok Bot Website Visual QA | Admin, SimGym, publish, implement, or mutate a live storefront |
 | **Analytics input** | terra | Grok Bot Heat Map | Review verdicts, implement, settings |
 | **Gate 1 (Anthropic)** | frontier | Opus 5 (routed across Claude seats by teamclaude) | Default implementer |
 | **Gate 2 (OpenAI)** | sole | Codex Sol (under reserve line) | Cursor Sol (different meter) |
@@ -136,7 +136,10 @@ sole-gates a risk class — its `ship` there is advisory, owner lands; unwired �
 
 When Sol is needed for **both** code review and MCP judgment the same week: code-review risk gate wins the Sol slot; MCP judgment goes to Opus if Sol is spent or already used on that change-set.
 
-**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel binding in `config/connectors.json`).
+**Review D** when storefront *pixels* change. Slack `#visual-qa` (channel and two narrow routine
+bindings in `config/connectors.json`). Unpublished changes use visitor-preview review. A separate
+exact-trigger live-audit mode may inspect an allowlisted public storefront read-only, but never
+substitutes for the preview gate and never adds to cart, submits, logs in, purchases, or mutates.
 
 **Autonomy limits (disclosed).** Cross-family autonomy needs **≥2 review families**: with fewer (a downgrade or a solo/one-family setup) risk-class work — money, auth, PII, secrets — **parks pending a human** rather than auto-shipping (the routing collapses toward one seat; the discipline holds). And **unattended land-to-prod is a current non-goal** — the executor is gated: `bin/run-brief.py` is **dry-run only** (it plans, shells nothing) and fails closed without an explicit run; landing/publish/send stay behind owner gates (`DOCTRINE.md` §non-goals).
 
@@ -157,7 +160,13 @@ Resolver records requested intake, effective dispatcher, fallback reason, author
 
 ## Review (Opus 5 / Codex Sol / Review E / Website Visual QA)
 
-Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Max two fix loops then park unless a novel defect. Cross-family = one pass each from two families, **sequential**, one machine reviewer at a time. Implementer is excluded. Dispatcher review is artifact-only and cannot independently attest to its own brief/risk decision. Review E is an off-box HTTP call, never a Mini process.
+Code seats read **git diff**. Visual QA reads either a config-allowlisted visitor preview or, only
+under its distinct exact live-audit trigger, an exact configured public live host read-only. Output:
+`ship` | `fix-list` | `blocked`. **`blocked` wins** if reviews disagree. Live audit cannot attest to
+unpublished pixels. Max two fix loops then park unless a novel defect. Cross-family = one pass each
+from two families, **sequential**, one machine reviewer at a time. Implementer is excluded.
+Dispatcher review is artifact-only and cannot independently attest to its own brief/risk decision.
+Review E is an off-box HTTP call, never a Mini process.
 
 ## Standing-config changes (this repo included)
 

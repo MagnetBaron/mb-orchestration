@@ -11,6 +11,7 @@ place to edit when a binding moves.
   connectors.py                         # summary of all bindings
   connectors.py --render visual-qa-allowlist
   connectors.py --render visual-qa-ticket <store>
+  connectors.py --render visual-qa-live-ticket <store>
   connectors.py --render clarity
   connectors.py --json
 """
@@ -39,14 +40,27 @@ def render_allowlist(c):
         out.append(f"- Never: {', '.join(s.get('never', []))}")
         if s.get("review_d_preview_url"):
             out.append(f"- Review D preview URL: {s['review_d_preview_url']}")
+    policy = c.get("slack", {}).get("visual_qa", {})
+    live = policy.get("routines", {}).get("live-storefront-audit", {})
+    deny = policy.get("deny_before_navigation", {})
+    out.append("\n### Mode and deny gate")
+    out.append(f"- Live-audit exact first line: `{live.get('message_must_begin_exact')}`")
+    out.append(f"- Live-audit host match: {live.get('host_source')} ({live.get('host_match')})")
+    out.append(f"- Denied hosts: {', '.join(deny.get('hosts', []))}")
+    out.append(f"- Denied path prefixes: {', '.join(deny.get('path_prefixes', []))}")
+    out.append(f"- Denied markers: {', '.join(deny.get('case_insensitive_markers', []))}")
     return "\n".join(out)
 
 
-def render_ticket(c, store):
+def _store(c, store):
     stores = c.get("stores", {})
     if store not in stores:
         sys.exit(f"connectors: unknown store {store!r}; known: {', '.join(stores)}")
-    s = stores[store]
+    return stores[store]
+
+
+def render_ticket(c, store):
+    s = _store(c, store)
     name = store.replace("-", " ").title()
     chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
     url = s.get("review_d_preview_url", f"https://<token>-<shop_id>.{s.get('preview_host','shopifypreview.com').lstrip('*.')}")
@@ -57,6 +71,28 @@ def render_ticket(c, store):
         f"url: {url}\n"
         "changed: <one line>\n"
         "pages: Home, collection, PDP, cart\n"
+    )
+
+
+def render_live_ticket(c, store):
+    s = _store(c, store)
+    name = store.replace("-", " ").title()
+    chan = c.get("slack", {}).get("visual_qa_channel", {}).get("name", "#visual-qa")
+    live_hosts = s.get("live_hosts") or []
+    if not live_hosts:
+        sys.exit(f"connectors: store {store!r} has no configured live_hosts")
+    policy = c.get("slack", {}).get("visual_qa", {})
+    routine = policy.get("routines", {}).get("live-storefront-audit", {})
+    trigger = routine.get("message_must_begin_exact")
+    if not trigger:
+        sys.exit("connectors: live-storefront-audit has no message_must_begin_exact")
+    return (
+        f"Channel: {chan}\n\n"
+        f"{trigger}\n"
+        f"site: {name}\n"
+        f"url: https://{live_hosts[0]}/\n"
+        "scope: public storefront read-only\n"
+        "pages: Home, search, collection, PDP\n"
     )
 
 
@@ -72,7 +108,9 @@ def render_clarity(c):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Render live connector bindings.")
-    ap.add_argument("--render", choices=["visual-qa-allowlist", "visual-qa-ticket", "clarity"])
+    ap.add_argument("--render", choices=[
+        "visual-qa-allowlist", "visual-qa-ticket", "visual-qa-live-ticket", "clarity"
+    ])
     ap.add_argument("store", nargs="?", help="store id for visual-qa-ticket")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
@@ -89,6 +127,11 @@ def main(argv=None):
             sys.exit("connectors: visual-qa-ticket needs a store id (e.g. gadget-duke)")
         print(render_ticket(c, args.store))
         return 0
+    if args.render == "visual-qa-live-ticket":
+        if not args.store:
+            sys.exit("connectors: visual-qa-live-ticket needs a store id (e.g. magnet-baron)")
+        print(render_live_ticket(c, args.store))
+        return 0
     if args.render == "clarity":
         print(render_clarity(c))
         return 0
@@ -104,7 +147,8 @@ def main(argv=None):
     print("clarity login:", cl.get("login_identity"), "projects:", ", ".join(cl.get("projects", {})))
     print("slack:", c.get("slack", {}).get("visual_qa_channel", {}).get("name"))
     print("-" * 72)
-    print("render blocks: --render visual-qa-allowlist | visual-qa-ticket <store> | clarity")
+    print("render blocks: --render visual-qa-allowlist | visual-qa-ticket <store> | "
+          "visual-qa-live-ticket <store> | clarity")
     return 0
 
 
