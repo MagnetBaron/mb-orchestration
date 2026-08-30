@@ -264,10 +264,14 @@ def c_unit_tests():
     a = run([PY, "bin/test_generate.py"])
     b = run([PY, "bin/test_model_registry.py"])
     c = run([PY, "bin/test_observability.py"])
-    ok = a.returncode == 0 and b.returncode == 0 and c.returncode == 0
+    d = run([PY, "bin/test_doctor.py"])
+    e = run([PY, "bin/test_sync_commands.py"])
+    ok = all(x.returncode == 0 for x in (a, b, c, d, e))
     detail = "generate=" + (a.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " registry=" + (b.stderr.strip().splitlines() or ["ok"])[-1]
     detail += " observability=" + (c.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " doctor=" + (d.stderr.strip().splitlines() or ["ok"])[-1]
+    detail += " sync=" + (e.stderr.strip().splitlines() or ["ok"])[-1]
     return ok, detail
 
 

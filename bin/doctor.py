@@ -640,7 +640,23 @@ STALE_PATHS = [
     "roles/generate.py", "roles/roles.json", "roles/record-429.sh", "roles/test_generate.py",
     "roles/README.md", "roles/PROPOSAL.md",
 ]
+STALE_POLICY_PATTERNS = [
+    (re.compile(r"(?:^|[~/])git/orcastrate(?:/|\b)", re.IGNORECASE),
+     "retired orchestration checkout"),
+    (re.compile(r"\bopus[ -]?5\b.{0,32}\b(?:is|remains|must be)\s+(?:strictly\s+)?(?:forbidden|banned)\b", re.IGNORECASE),
+     "retired Opus 5 prohibition"),
+    (re.compile(r"\b(?:forbid|forbidden|ban|banned)\b.{0,32}\bopus[ -]?5\b", re.IGNORECASE),
+     "retired Opus 5 prohibition"),
+    (re.compile(r"\bnot\s+opus[ -]?5\b", re.IGNORECASE),
+     "retired Opus 4.8-only pin"),
+]
 RAW_IDS = ["wpxqdpcski", "wpxjicd0hx", "151997710406", "151997775942", "151997743174", "C0BS66SEV0R"]
+
+
+def stale_policy_matches(text):
+    """Return retired operational-policy references found in active prose."""
+    return [(pattern.pattern, meaning) for pattern, meaning in STALE_POLICY_PATTERNS
+            if pattern.search(text)]
 
 
 def prose_hygiene():
@@ -665,6 +681,8 @@ def prose_hygiene():
         for sp in STALE_PATHS:
             if sp in text:
                 warn(f"{rel}: references removed path '{sp}' (moved under bin/ or config/)")
+        for stale, meaning in stale_policy_matches(text):
+            err(f"{rel}: contains {meaning} text matching {stale!r}")
         for rid in RAW_IDS:
             if rid in text:
                 warn(f"{rel}: contains raw live id '{rid}' — should come from config/connectors.json via bin/connectors.py")

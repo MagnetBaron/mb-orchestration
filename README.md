@@ -92,11 +92,11 @@ cd mb-orchestration
 python3 bin/doctor.py        # validate config integrity + prose hygiene
 python3 bin/smoketest.py     # walk the whole path
 python3 bin/usage-status.py  # live seat map
-./sync-commands.sh           # distribute /orchestrate to Claude Code, Codex, Cursor
+./sync-commands.sh           # distribute /orca (+ /orchestrate alias) to every host
 ```
 
 Port to a different user: edit `config/subscriptions.json` (your plans), `config/entrypoints.json`
 (your profiles/surfaces/fallbacks), `config/connectors.json` (your MCP/stores), set anchors in
 `config/usage-windows.json`, then `python3 bin/doctor.py`. See `install.md` and `USER-GUIDE.md`.
 
-Daily: pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.
+Daily: invoke `/orca` (or the identical `/orchestrate` compatibility alias), then pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.

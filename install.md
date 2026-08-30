@@ -62,25 +62,43 @@ Owner connects Search Console, Drive, and DataForSEO (or equivalent) on the prov
 `config/connectors.json` `mcp_connectors.*.available_on` (today Codex GPT + Claude/Opus). Grok is not
 assumed to have these. Route per `mcp-routing.md`.
 
-## 6. Slash command `/orchestrate` (Claude Code · Codex · Cursor)
+## 6. `/orca` command and skill (Claude Code · Codex · Cursor · native agent loaders)
 
-One canonical file, symlinked into each CLI's command dir — **edit the canonical, never the copies**.
+One canonical file is distributed under `/orca` (preferred) and `/orchestrate` (compatibility alias) — **edit the canonical, never the copies**.
 
 - Canonical (edit here): `.claude/commands/orchestrate.md`
-- Claude Code — repo `.claude/commands/` (+ `~/.claude/commands/` global). `/orchestrate <task>`
-- Codex — `~/.codex/prompts/orchestrate.md`. `/orchestrate <task>`
-- Cursor — `.cursor/commands/orchestrate.md` (relative symlink; travels with the repo). `/orchestrate <task>`
+- Claude Code — `~/.claude/commands/{orca,orchestrate}.md` plus discovered `~/.claude-*` profiles (symlinks)
+- Codex — `~/.codex/prompts/{orca,orchestrate}.md` (real copies for loader compatibility)
+- Cursor — `.cursor/commands/{orca,orchestrate}.md` (relative symlinks that travel with the repo)
+- Native skill loaders — `~/.agents/skills/orca/SKILL.md` (real copy)
+
+`sync-commands.sh` accepts `MB_ORCHESTRATION_HOME` only as a test/install-root override. An explicit
+`CLAUDE_CONFIG_DIR` must be absolute. Automatic `~/.claude-*` discovery includes only directories
+with `settings.json`; skipped directories are reported rather than silently treated as profiles.
+GitHub forks set `ORCA_TRUSTED_ORIGIN` to their expected clone URL; common HTTPS, scp-style SSH, and
+`ssh://` GitHub forms normalize to the same identity. Without that explicit override, only
+`MagnetBaron/mb-orchestration` is trusted.
 
 Provision or repair the symlinks on any machine:
 
 ```bash
 ./sync-commands.sh
+./sync-commands.sh --check
 ```
 
-No-arg `/orchestrate` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
+The command resolves its control checkout from `ORCA_REPO`, defaulting to `~/git/mb-orchestration`; this prevents another local checkout from silently restoring retired policy. No-arg `/orca` prints the live seat map (`bin/usage-status.py`); with a task it classifies,
 stamps depth (`bin/resolve-route.py`), and routes. **Only the effective per-run dispatcher assigns
 seats** — any other host (Codex included) shows status and drafts a brief, then hands it to the
 effective dispatcher.
+
+If a pre-registry Codex wrapper auto-refreshes `/orca`, update its `ORCA_REPO` default to
+`$HOME/git/mb-orchestration` or remove that refresh block before running the sync. Otherwise the
+wrapper can restore a retired prompt on the next Codex launch; `./sync-commands.sh --check` detects
+the resulting copy drift.
+
+Because Codex prompts and the native skill are loader-compatible real copies, every edit to the
+canonical command requires `./sync-commands.sh` followed by `./sync-commands.sh --check` before the
+standing-config change lands.
 
 ## 7. Ordered adoption
 

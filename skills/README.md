@@ -21,6 +21,12 @@ descriptions, and paths, while full `SKILL.md` bodies load only after selection.
 Keeping leaves outside user and repository discovery roots avoids description
 truncation and accidental broad activation as the library grows.
 
+`orca` is the orchestration entry skill, not a role-loaded specialty router. Its
+tracked source is `skills/orca/SKILL.md`; `sync-commands.sh` copies it to
+`~/.agents/skills/orca/SKILL.md`. It intentionally remains outside
+`skills/registry.json`, whose allowlist governs skills that may be bound inside
+implementation and review roles.
+
 ## Installation and reconciliation
 
 Upstream sources and exact revisions are in `registry.json`; evaluation and

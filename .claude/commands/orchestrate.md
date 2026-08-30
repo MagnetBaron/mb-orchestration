@@ -3,23 +3,49 @@ description: Dispatch a task through the Magnet Baron multi-CLI orchestration �
 argument-hint: "[task] (omit to show the live seat map)"
 ---
 
-You are running the Magnet Baron orchestration **per-run dispatch policy**. This command is shared across Claude Code, Codex, and Cursor. Identify the provider/model that received the user's request and pass it as `--intake-provider`: `opus-5`, `opus-4.8`, `fable-5`, `codex-sol`, `codex-terra`, `codex-luna`, `grok-build`, or a registered known non-dispatch surface such as `cursor-grok`.
+You are running the Magnet Baron orchestration **per-run dispatch policy**. `/orca` is the preferred trigger; `/orchestrate` is an identical compatibility alias. Establish and validate the authoritative control checkout before doing anything else:
+
+```bash
+test -f "${ORCA_REPO:-$HOME/git/mb-orchestration}/AGENTS.md" &&
+test -f "${ORCA_REPO:-$HOME/git/mb-orchestration}/.claude/commands/orchestrate.md" &&
+orca_origin="$(git -C "${ORCA_REPO:-$HOME/git/mb-orchestration}" remote get-url origin)" &&
+orca_trusted="${ORCA_TRUSTED_ORIGIN:-https://github.com/MagnetBaron/mb-orchestration}" &&
+orca_origin="${orca_origin%/}" && orca_origin="${orca_origin%.git}" &&
+orca_trusted="${orca_trusted%/}" && orca_trusted="${orca_trusted%.git}" &&
+case "$orca_origin" in
+  https://github.com/*) orca_origin="github.com/${orca_origin#https://github.com/}" ;;
+  git@github.com:*) orca_origin="github.com/${orca_origin#git@github.com:}" ;;
+  ssh://git@github.com/*) orca_origin="github.com/${orca_origin#ssh://git@github.com/}" ;;
+  *) false ;;
+esac &&
+case "$orca_trusted" in
+  https://github.com/*) orca_trusted="github.com/${orca_trusted#https://github.com/}" ;;
+  git@github.com:*) orca_trusted="github.com/${orca_trusted#git@github.com:}" ;;
+  ssh://git@github.com/*) orca_trusted="github.com/${orca_trusted#ssh://git@github.com/}" ;;
+  *) false ;;
+esac &&
+test "$orca_origin" = "$orca_trusted"
+```
+
+Run every orchestration script from that checkout. Do not substitute another orchestration repository merely because it exists locally.
+
+This command is shared across Claude Code, Codex, Cursor, and the native agent skill tree. Identify the provider/model that received the user's request and pass it as `--intake-provider`: `opus-5`, `opus-4.8`, `fable-5`, `codex-sol`, `codex-terra`, `codex-luna`, `grok-build`, or a registered known non-dispatch surface such as `cursor-grok`.
 
 Resolver honors a tested dispatch-qualified intake while live and usable. Recorded unavailability activates configured fallback. A known non-dispatch intake relays an ordinary brief to a qualified provider without gaining authority. Unknown identities park. Exactly one effective dispatcher is recorded per run.
 
 Prefer another implementer when usable. Implementers/authors cannot review their own artifact. Effective dispatcher may review an artifact it did not author, but that pass is artifact-only; another reviewer independently checks dispatch intent/risk. Ordinary minimum-necessary repo artifacts are preauthorized by `config/handoff-policy.json`; restricted/unknown data parks without a permission loop.
 
-Contract: read `AGENTS.md`; for routing, `config/review-depth.json` (machine floor) with `DOCTRINE.md` §Review depth (the human explanation). Live model/route identity is `config/model-registry.json` via `bin/model-registry.py` and `bin/resolve-route.py`. Domain files load by domain: `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md` · `skills/README.md` · `skills/registry.json` · `EDGE-CASES.md`.
+Contract: read the authoritative checkout's `AGENTS.md`; for routing, `config/review-depth.json` (machine floor) with `DOCTRINE.md` §Review depth (the human explanation). Live model/route identity is `config/model-registry.json` via `bin/model-registry.py` and `bin/resolve-route.py`. Domain files load from that same checkout by domain: `mcp-routing.md` · `sol-usage.md` · `cursor-usage.md` · `fireworks-usage.md` · `usage-metering.md` · `visual-qa.md` · `grokbot-connection.md` · `analytics-clarity.md` · `skills/README.md` · `skills/registry.json` · `EDGE-CASES.md`.
 
 TASK: $ARGUMENTS
 *(If the line above shows the literal token `$ARGUMENTS`, the task is the message the user sent with this command. If no task was given, show status.)*
 
 ## If no TASK
-Run `python3 bin/usage-status.py`, print the seat map (live / spent / next reset) and the backlog (per `EDGE-CASES.md`, if one is configured), ask what to dispatch, then stop.
+Run `python3 "${ORCA_REPO:-$HOME/git/mb-orchestration}/bin/usage-status.py"`, print the seat map (live / spent / next reset) and the backlog (per `EDGE-CASES.md`, if one is configured), ask what to dispatch, then stop.
 
 ## Otherwise (resolve requested intake to one effective dispatcher)
 1. **Classify** by task class. Run the router instead of eyeballing prose:
-   `python3 bin/resolve-route.py --class <class> --scale routine|elevated --intake-provider <provider> --artifacts <comma-separated-classes> [--risk auth,money,PII,prod,irreversible,multi-service,grok-conflict,flaky-tests,secrets,untrusted-shell] [--implement] [--pixels]`
+   `python3 "${ORCA_REPO:-$HOME/git/mb-orchestration}/bin/resolve-route.py" --class <class> --scale routine|elevated --intake-provider <provider> --artifacts <comma-separated-classes> [--risk auth,money,PII,prod,irreversible,multi-service,grok-conflict,flaky-tests,secrets,untrusted-shell] [--implement] [--pixels]`
    It returns requested/effective dispatcher, fallback/relay reason, handoff gate, authors, depth, conflict-aware review chain, implement seat, and gates. Use `brief,repo-source,diff,test-output` for ordinary repo implementation. Only `live_verified` registry routes resolve.
 2. **Stamp `review:`** at the floor the router reports (none · self-check · single-frontier · cross-family). The `AGENTS.md` risk gate only raises it. `user said ship` = land, not spend a frontier.
 3. **Pick the implement seat** per `AGENTS.md` §Seats / the router's `--implement` plan: **Grok Build** by default · **GPT Terra** for Google-MCP bulk · **Sol/Opus** for MCP *judgment* only (`mcp-routing.md`). Storefront pixels → **Grok Build implements, then** a Review D Slack ticket once a visitor preview URL exists (`visual-qa.md`; render the ticket with `bin/connectors.py`). Review D and Heat Map are review/input seats — **never implementers**. Legwork-or-stop: never dump volume on Sol/Opus/Cursor $.

@@ -163,6 +163,9 @@ Code seats read **git diff**. Visual QA reads the **preview URL**. Output: `ship
 
 A change to `config/`, a cron/LaunchAgent, an MCP config, or a Bot routine is `standing-config` (floor
 `single-frontier`, never lower). **Run `bin/doctor.py` (+ `bin/smoketest.py` if scripts changed) before landing** — a broken registry mis-routes every later job.
+An edit to `.claude/commands/orchestrate.md` or `sync-commands.sh` also requires
+`./sync-commands.sh` followed by `./sync-commands.sh --check`; Codex and native-skill copies do not
+self-update merely because the canonical file changed.
 
 ## Hard bans
 
