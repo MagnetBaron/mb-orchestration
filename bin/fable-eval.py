@@ -89,14 +89,15 @@ import mborch  # noqa: E402  (shared config/data resolution — used for data_di
 #   derived from the resolved model id (never hardcoded as Opus 4.8).
 #
 # Default command template (edit here if your teamclaude differs):
-#       teamclaude run -- -p "<prompt>" --model <model-id> --output-format stream-json
+#       teamclaude run -- -p "<prompt>" --model <model-id> --output-format stream-json --verbose
 # The stream-json receipt is mandatory: its system/init model proves which exact
 # model served the request and prevents a Fable→Opus safety switch from being
-# misreported as a Fable evaluation.
+# misreported as a Fable evaluation. Claude Code requires exactly one `--verbose`
+# when print mode requests stream-json output.
 TEAMCLAUDE_BIN = os.environ.get("TEAMCLAUDE_BIN", "teamclaude")
 TEAMCLAUDE_ARGV = os.environ.get(
     "TEAMCLAUDE_ARGV",
-    "run,--,-p,{prompt},--model,{model},--output-format,stream-json,--no-session-persistence",
+    "run,--,-p,{prompt},--model,{model},--output-format,stream-json,--verbose,--no-session-persistence",
 )
 DEFAULT_TIMEOUT = int(os.environ.get("FABLE_EVAL_TIMEOUT", "300"))
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
@@ -351,6 +352,12 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
             or template.index("--output-format") + 1 >= len(template)
             or template[template.index("--output-format") + 1] != "stream-json"):
         raise TeamclaudeError("TEAMCLAUDE_ARGV must request stream-json output")
+    if template.count("--verbose") != 1 \
+            or any(part.startswith("--verbose=") for part in template):
+        raise TeamclaudeError(
+            "TEAMCLAUDE_ARGV must include exactly one whole-argument --verbose "
+            "for print-mode stream-json"
+        )
     if template.count("--no-session-persistence") != 1:
         raise TeamclaudeError("TEAMCLAUDE_ARGV must disable session persistence exactly once")
     argv = [model if part == "{model}" else prompt if part == "{prompt}" else part

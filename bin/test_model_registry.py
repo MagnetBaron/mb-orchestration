@@ -647,6 +647,32 @@ class FableEvalLabelTests(unittest.TestCase):
                     self.fe.run_via_teamclaude("claude-opus-5", "test prompt")
                 run.assert_not_called()
 
+    def test_teamclaude_stream_json_requires_exactly_one_verbose_flag(self):
+        otherwise_valid = (
+            "run,--,-p,{prompt},--model,{model},--output-format,stream-json,"
+            "--no-session-persistence"
+        )
+        invalid = (
+            otherwise_valid,
+            otherwise_valid.replace(
+                "--no-session-persistence",
+                "--verbose,--verbose,--no-session-persistence",
+            ),
+            otherwise_valid.replace(
+                "--no-session-persistence",
+                "--verbose,--verbose=true,--no-session-persistence",
+            ),
+        )
+        for template in invalid:
+            with self.subTest(template=template), mock.patch.object(
+                self.fe, "TEAMCLAUDE_ARGV", template
+            ), mock.patch.object(self.fe, "_run_bounded_teamclaude") as run:
+                with self.assertRaisesRegex(
+                    self.fe.TeamclaudeError, "exactly one.*--verbose"
+                ):
+                    self.fe.run_via_teamclaude("claude-opus-5", "test prompt")
+                run.assert_not_called()
+
     def test_teamclaude_status_zero_requires_clean_nonempty_bounded_stdout(self):
         outcomes = (
             ("", "", "empty stdout"),
@@ -680,6 +706,7 @@ class FableEvalLabelTests(unittest.TestCase):
         argv = run.call_args.args[0]
         self.assertEqual(argv.count("claude-opus-5"), 1)
         self.assertEqual(argv.count("prompt,with,commas"), 1)
+        self.assertEqual(argv.count("--verbose"), 1)
 
     def test_teamclaude_runner_streams_output_bound_and_kills_timeout_descendants(self):
         overflow = (
