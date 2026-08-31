@@ -89,10 +89,15 @@ import mborch  # noqa: E402  (shared config/data resolution — used for data_di
 #   derived from the resolved model id (never hardcoded as Opus 4.8).
 #
 # Default command template (edit here if your teamclaude differs):
-#       teamclaude run -- -p "<prompt>" --model <model-id>
-# Common tweaks: add `--output-format text`, `--max-turns 1`, or a per-seat `--profile`.
+#       teamclaude run -- -p "<prompt>" --model <model-id> --output-format stream-json
+# The stream-json receipt is mandatory: its system/init model proves which exact
+# model served the request and prevents a Fable→Opus safety switch from being
+# misreported as a Fable evaluation.
 TEAMCLAUDE_BIN = os.environ.get("TEAMCLAUDE_BIN", "teamclaude")
-TEAMCLAUDE_ARGV = os.environ.get("TEAMCLAUDE_ARGV", "run,--,-p,{prompt},--model,{model}")
+TEAMCLAUDE_ARGV = os.environ.get(
+    "TEAMCLAUDE_ARGV",
+    "run,--,-p,{prompt},--model,{model},--output-format,stream-json,--no-session-persistence",
+)
 DEFAULT_TIMEOUT = int(os.environ.get("FABLE_EVAL_TIMEOUT", "300"))
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 PROVIDER_OUTPUT_CHUNK_BYTES = 65_536
@@ -101,6 +106,52 @@ PROVIDER_TERMINATE_GRACE_SECONDS = 1.0
 
 class TeamclaudeError(RuntimeError):
     pass
+
+
+def _parse_exact_model_stream(stdout: str, requested_model: str) -> str:
+    """Validate Claude stream-json provenance and return the terminal result text."""
+    init_models = []
+    response_models = []
+    results = []
+    for line_no, raw in enumerate(stdout.splitlines(), 1):
+        if not raw.strip():
+            continue
+        try:
+            event = json.loads(raw)
+        except Exception:
+            raise TeamclaudeError(
+                f"teamclaude stream-json line {line_no} is malformed"
+            ) from None
+        if not isinstance(event, dict):
+            raise TeamclaudeError(
+                f"teamclaude stream-json line {line_no} is not an object"
+            )
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            init_models.append(event.get("model"))
+        if event.get("type") == "assistant":
+            message = event.get("message")
+            if isinstance(message, dict) and message.get("model") is not None:
+                response_models.append(message.get("model"))
+        if event.get("type") == "result":
+            if event.get("is_error") is True or event.get("subtype") not in (None, "success"):
+                raise TeamclaudeError("teamclaude stream-json terminal result is an error")
+            results.append(event.get("result"))
+    if init_models != [requested_model]:
+        raise TeamclaudeError(
+            f"teamclaude exact-model mismatch: requested {requested_model!r}, "
+            f"system/init reported {init_models!r}"
+        )
+    if not response_models:
+        raise TeamclaudeError(
+            "teamclaude stream-json did not attest an assistant response model"
+        )
+    if any(model != requested_model for model in response_models):
+        raise TeamclaudeError(
+            f"teamclaude response model switched away from {requested_model!r}"
+        )
+    if len(results) != 1 or not isinstance(results[0], str) or not results[0].strip():
+        raise TeamclaudeError("teamclaude stream-json needs one non-empty terminal result")
+    return results[0].strip()
 
 
 def teamclaude_available() -> bool:
@@ -256,14 +307,16 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
     the blind voice grader come through here. The taker/grader sees ONLY the string in
     `prompt` — no rubric, no answer key, no arm identity, no test metadata.
 
-    Returns the model's stdout (stripped). Raises TeamclaudeError on any non-zero exit,
-    stderr output, empty/oversized stdout, malformed template, or launch failure so the
-    caller fails closed rather than grading a transport failure as an answer.
+    Returns the terminal result after verifying the stream's exact model receipt.
+    Raises TeamclaudeError on any non-zero exit, stderr output, empty/oversized or
+    malformed stream, model switch, malformed template, or launch failure.
     """
     if not isinstance(model, str) or not model.strip():
         raise TeamclaudeError("teamclaude model id must be non-empty")
     if not isinstance(prompt, str) or not prompt.strip():
         raise TeamclaudeError("teamclaude prompt must be non-empty")
+    if os.environ.get("TC_ACCT"):
+        raise TeamclaudeError("TC_ACCT pins one account and disables TeamClaude rotation")
     template = TEAMCLAUDE_ARGV.split(",")
     if template.count("{model}") != 1 or template.count("{prompt}") != 1:
         raise TeamclaudeError(
@@ -281,6 +334,25 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
             )
         if any(field not in {"model", "prompt"} for field in fields):
             raise TeamclaudeError("TEAMCLAUDE_ARGV contains an unknown placeholder")
+    if template[:2] != ["run", "--"]:
+        raise TeamclaudeError("TEAMCLAUDE_ARGV must invoke `teamclaude run --`")
+    if (template.count("--model") != 1
+            or template.index("--model") + 1 >= len(template)
+            or template[template.index("--model") + 1] != "{model}"
+            or any(part.startswith("--model=") for part in template)):
+        raise TeamclaudeError("TEAMCLAUDE_ARGV must bind exactly one --model to {model}")
+    if (template.count("-p") != 1
+            or template.index("-p") + 1 >= len(template)
+            or template[template.index("-p") + 1] != "{prompt}"):
+        raise TeamclaudeError("TEAMCLAUDE_ARGV must bind exactly one -p to {prompt}")
+    if "--fallback-model" in template or any(part.startswith("--fallback-model=") for part in template):
+        raise TeamclaudeError("TEAMCLAUDE_ARGV may not enable automatic model fallback")
+    if (template.count("--output-format") != 1
+            or template.index("--output-format") + 1 >= len(template)
+            or template[template.index("--output-format") + 1] != "stream-json"):
+        raise TeamclaudeError("TEAMCLAUDE_ARGV must request stream-json output")
+    if template.count("--no-session-persistence") != 1:
+        raise TeamclaudeError("TEAMCLAUDE_ARGV must disable session persistence exactly once")
     argv = [model if part == "{model}" else prompt if part == "{prompt}" else part
             for part in template]
     cmd = [TEAMCLAUDE_BIN, *argv]
@@ -296,10 +368,9 @@ def run_via_teamclaude(model: str, prompt: str, *, timeout: int = DEFAULT_TIMEOU
         raise TeamclaudeError("teamclaude exceeded the bounded output limit")
     if stderr:
         raise TeamclaudeError("teamclaude emitted stderr on a status-0 provider call")
-    output = stdout.strip()
-    if not output:
+    if not stdout.strip():
         raise TeamclaudeError("teamclaude returned empty stdout")
-    return output
+    return _parse_exact_model_stream(stdout, model)
 
 
 # ======================================================================================

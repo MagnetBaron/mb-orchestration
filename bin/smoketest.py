@@ -11,7 +11,8 @@ clone, or a new user's MB_CONFIG_DIR, is wired correctly.
   bin/smoketest.py --strict   also require doctor warning-clean
 """
 from __future__ import annotations
-import argparse, importlib.util, json, os, subprocess, sys, tempfile
+import argparse, importlib.util, json, os, subprocess, shlex, sys, tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -50,6 +51,63 @@ def seed_ledger(tmp, data):
     return str(p)
 
 
+def teamclaude_fixture_env(tmp, *, fable_eligible=False):
+    """Deterministic anonymous rotation receipt for routing invariants.
+
+    These smoke checks exercise quota combinations, not the operator host's
+    current account state.  They still cross the real bounded status adapter and
+    resolver CLI; only the native TeamClaude status process is replaced.
+    """
+    probed_at = datetime.now(timezone.utc).isoformat()
+    accounts = []
+    for index in range(3):
+        accounts.append({
+            "name": f"smoke-{index}",
+            "type": "oauth",
+            "disabled": False,
+            "status": "active",
+            "quota": {
+                "unified5h": 0.1,
+                "unified7d": 0.2,
+                "unified7dFable": 0.2 if fable_eligible else 1.0,
+                "unified7dSonnet": None,
+                "unifiedStatus": "allowed",
+                "unified5hStatus": None,
+                "unified7dStatus": None,
+                "unified7dFableStatus": None,
+                "unified7dSonnetStatus": None,
+            },
+        })
+    document = {
+        "switchThreshold": 0.98,
+        "blockedModels": [],
+        "accounts": accounts,
+        "routes": [],
+        "probe": {
+            "enabled": True,
+            "intervalSeconds": 300,
+            "accounts": [
+                {"name": row["name"], "status": "ok", "lastProbedAt": probed_at}
+                for row in accounts
+            ],
+        },
+        "persistence": {
+            "healthy": True,
+            "lastSuccessAt": probed_at,
+            "lastErrorAt": None,
+            "errorCode": None,
+        },
+    }
+    binary = Path(tmp) / "teamclaude-status-fixture"
+    binary.write_text(
+        "#!/bin/sh\n"
+        "test \"$1\" = status && test \"$2\" = --json || exit 2\n"
+        f"printf '%s\\n' {shlex.quote(json.dumps(document))}\n"
+    )
+    binary.chmod(0o700)
+    return {"TEAMCLAUDE_STATUS_BIN": str(binary)}
+
+
 HARD = {"spent_until": "2099-01-01T00:00:00-05:00"}
 
 
@@ -86,7 +144,8 @@ def c_never_strand():
         with tempfile.TemporaryDirectory() as tmp:
             led = seed_ledger(tmp, {"claude-max": HARD, "claude-team-a": HARD, "claude-team-b": HARD})
             d = json.loads(run([PY, "bin/resolve-route.py", "--class", "money-data", "--scale", "elevated",
-                                "--ledger", led, "--json"]).stdout)
+                                "--ledger", led, "--json"],
+                               env=teamclaude_fixture_env(tmp)).stdout)
             fams = {c["family"] for c in d["review"]["chain"]}
             return d["review"]["satisfied"] and fams == {"anthropic", "openai"}, \
                 f"satisfied={d['review']['satisfied']} via {sorted(fams)} (reserve Sol released)"
@@ -99,9 +158,11 @@ def c_genuine_park():
         with tempfile.TemporaryDirectory() as tmp:
             led = seed_ledger(tmp, {"claude-max": HARD, "claude-team-a": HARD, "claude-team-b": HARD, "codex-sol": HARD})
             cf = json.loads(run([PY, "bin/resolve-route.py", "--class", "money-data", "--scale", "elevated",
-                                 "--ledger", led, "--json"]).stdout)
+                                 "--ledger", led, "--json"],
+                                env=teamclaude_fixture_env(tmp)).stdout)
             sf = json.loads(run([PY, "bin/resolve-route.py", "--class", "catalog-data", "--scale", "elevated",
-                                 "--ledger", led, "--json"]).stdout)
+                                 "--ledger", led, "--json"],
+                                env=teamclaude_fixture_env(tmp)).stdout)
             chain = sf["review"]["chain"]
             ok = (not cf["review"]["satisfied"] and not sf["review"]["satisfied"]
                   and bool(chain) and not chain[0].get("dispatch_independent", True))
@@ -173,17 +234,19 @@ def c_detect_agents():
 
 
 def c_rotation_status():
-    """Graceful degradation: teamclaude is a runtime dep that is ABSENT here (as in CI). detect-agents
-    must still exit 0 and REPORT a rotation status (available/unavailable) rather than error — the
-    missing multi-seat rotation is a detected degraded mode, never a suite failure. Proves A1: the
-    gap is surfaced, not silent, and its detection stays informational."""
+    """Accept either live verified rotation or explicit portable degradation.
+
+    TeamClaude is optional on CI but may be healthy on an operator host. Detection
+    must exit 0 and report a schema-bound state in both cases; neither presence nor
+    absence may be silently inferred from the binary alone.
+    """
     r = run([PY, "bin/detect-agents.py", "--json"])
     d = json.loads(r.stdout)
     rot = d.get("rotation")
     ok = (r.returncode == 0 and isinstance(rot, dict)
           and isinstance(rot.get("transport_present"), bool)
           and rot.get("available") in (True, False, None)
-          and rot.get("readiness") in ("not evaluated", "blocked")
+          and rot.get("readiness") in ("ready", "not evaluated", "blocked")
           and isinstance(rot.get("status"), str) and bool(rot["status"]))
     avail = rot.get("available") if isinstance(rot, dict) else None
     return ok, f"rc={r.returncode}, rotation reported (available={avail}), no-error={r.returncode == 0}"
@@ -192,8 +255,12 @@ def c_rotation_status():
 def c_detect_capability():
     r = run([PY, "bin/detect-capability.py", "--json"])
     d = json.loads(r.stdout)
-    return len(d["effective_fable_seats"]) == 3 and not d["declaration_conflict"], \
-        f"{len(d['effective_fable_seats'])} fable effective, conflict={d['declaration_conflict']}"
+    declared = d["declared_fable_seats_after_markers"]
+    capability = d["live_check"]["capability_present"]
+    coherent = capability in (True, False, None)
+    return len(declared) == 3 and coherent and not d["declaration_conflict"], \
+        (f"{len(declared)} fable declared after markers, "
+         f"aggregate capability={capability}, conflict={d['declaration_conflict']}")
 
 
 def c_connectors():
@@ -522,7 +589,7 @@ def main(argv=None):
     check("run-ledger append→fold round-trip", c_runledger)
     check("drain-plan: metered last + reserve sizing", c_drain_plan)
     check("detect-agents", c_detect_agents)
-    check("rotation status (graceful degradation: teamclaude absent)", c_rotation_status)
+    check("rotation status (live-ready or explicit graceful degradation)", c_rotation_status)
     check("detect-capability", c_detect_capability)
     check("integration inventory (dynamic fail-closed grants)",
           lambda: (run([PY, "bin/test_integrations.py"]).returncode == 0,

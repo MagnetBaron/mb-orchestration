@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
+import teamclaude_status  # noqa: E402
 
 # Binaries that are plausibly CLI coding/agent tools worth registering if found.
 KNOWN_AGENT_BINARIES = {
@@ -222,28 +223,8 @@ def register_template(cmd: str) -> str:
 
 
 def detect_rotation() -> dict:
-    """Report TeamClaude transport presence without inventing live rotation readiness. teamclaude rotates the several
-    Claude seats and tracks per-model caps; WITHOUT it there is no rotation — a single Claude
-    account serves, and a real 429 on it parks the Anthropic pipe (dispatch + Opus review) until
-    its 5h window resets, with no failover. Absence is a DEGRADED MODE, not an error: teamclaude
-    is a runtime dependency (wired on the worker Mini, per install.md §3), NOT repo config, so this
-    stays informational and never fails doctor/smoketest. See EDGE-CASES.md §'teamclaude absent'."""
-    tc = shutil.which("teamclaude")
-    if tc:
-        return {
-            "tool": "teamclaude", "transport_present": True, "available": None,
-            "readiness": "not evaluated", "path": tc,
-            "status": (
-                "transport present; authenticated/configured multi-seat rotation readiness "
-                "not evaluated"
-            ),
-        }
-    return {
-        "tool": "teamclaude", "transport_present": False, "available": False,
-        "readiness": "blocked", "path": None,
-        "status": ("transport absent (single-account; no rotation — a real 429 parks the seat "
-                   "until its 5h window resets, no failover)"),
-    }
+    """Report aggregate live rotation state; never copy native account identities."""
+    return teamclaude_status.inspect_status()
 
 
 def main(argv=None):

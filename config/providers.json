@@ -124,18 +124,18 @@
       "notes": "REPLACEABLE independent-family slot: Fireworks today, a local open-weight LLM later. Metered $ → drain LAST. Value is independence, not capacity. Never sees secrets/PII."
     },
     "cursor-grok": {
-      "label": "Cursor Grok 4.6 / Composer (IDE)", "level": "terra", "family": "cursor-pool", "kind": "ide",
+      "label": "Cursor Grok 4.6 xhigh (implementation overflow)", "level": "terra", "family": "cursor-pool", "kind": "ide",
       "model": "grok-4.6", "functions": ["ide"], "capabilities": ["code", "ide"],
       "prowess": { "ide": 78 }, "billing": "included", "review_eligible": false,
-      "backed_by": "cursor-ultra", "usage_seat": "cursor-models", "detect": { "method": "command", "cmd": "cursor" },
+      "backed_by": "cursor-ultra", "usage_seat": "cursor-models", "detect": { "method": "command", "cmd": "cursor-agent" },
       "route": "grok-4.6-cursor",
-      "notes": "First-party Cursor Models pool (included). Drain for IDE edits before Grok Build Heavy."
+      "notes": "Included implementation-only overflow after a provider-confirmed Grok Build quota exhaustion. Never dispatches, reviews, or substitutes for a specialized Grokbot. Exact Cursor model selection is bound by the route and seat-exec recipe."
     },
     "cursor-other-400": {
       "label": "Cursor Other Models $400 (Last $)", "level": "terra", "family": "cursor-pool", "kind": "ide",
       "model": null, "functions": ["ide", "last_dollar"], "capabilities": ["code", "ide"],
       "prowess": { "ide": 80 }, "billing": "metered", "review_eligible": false,
-      "backed_by": "cursor-ultra", "usage_seat": "cursor-other-400", "detect": { "method": "command", "cmd": "cursor" },
+      "backed_by": "cursor-ultra", "usage_seat": "cursor-other-400", "detect": { "method": "command", "cmd": "cursor-agent" },
       "notes": "Metered $/month third-party pool → drain LAST. Never a default worker or cross-family reviewer."
     },
     "local-llm-example": {

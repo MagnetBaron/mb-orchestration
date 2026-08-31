@@ -15,6 +15,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import stat
 import tempfile
 import threading
@@ -37,7 +38,43 @@ SESSION_MAX_AGE_SECONDS = 60.0
 SESSION_MAX_TTL_SECONDS = 120.0
 SESSION_FUTURE_SKEW_SECONDS = 5.0
 SESSION_MAX_BYTES = 262_144
+RUNTIME_TOOLS_MAX_BYTES = 65_536
+RUNTIME_TOOLS_MAX_COUNT = 2_000
+RUNTIME_TOOL_NAME_MAX_CHARS = 512
+RUNTIME_SESSION_TTL_SECONDS = 30
 _SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$")
+_SAFE_RUNTIME_TOOL_NAME = re.compile(r"^[A-Za-z0-9_:@./-]+$")
+_CODEX_MCP_TOOL = re.compile(r"^mcp__([A-Za-z0-9_]+)__([A-Za-z0-9_]+)$")
+_RUNTIME_TOOL_MCP_RULES = {
+    "codex": {
+        # A namespace alone is not capability evidence. Each connector has a
+        # small exact representative surface which a trusted runtime inventory
+        # must report callable in full. Mutation-only or documentation-only
+        # subsets therefore cannot masquerade as a generally usable connector.
+        "dfs_mcp": {
+            "connector": "dataforseo",
+            "required_tools": {"api_request"},
+        },
+        "github": {
+            "connector": "github",
+            "required_tools": {"get_me", "get_file_contents"},
+        },
+        "google_workspace": {
+            "connector": "google-drive",
+            "required_tools": {"get_status", "search", "download_file", "upload_file"},
+        },
+        # The Codex gsc_indexing server exposes both read and mutation tools.
+        # Only its exact read surface can prove google-search-console; mutation
+        # names are ignored and never grant the policy-scoped indexing lane.
+        "gsc_indexing": {
+            "connector": "google-search-console",
+            "required_tools": {
+                "get_indexing_status", "get_search_analytics",
+                "get_sitemaps", "list_gsc_sites",
+            },
+        },
+    },
+}
 _SESSION_BOOL_KEYS = frozenset({"enabled", "configured", "blocked", "callable"})
 _SESSION_RECORD_KEYS = frozenset({
     "runtime", "kind", "id", "observed_id", "installed", *_SESSION_BOOL_KEYS, "health",
@@ -45,6 +82,8 @@ _SESSION_RECORD_KEYS = frozenset({
 _PROCESS_INVENTORY = None
 _PROCESS_SESSION = None
 _CONSUMED_SESSION_DIGESTS: dict[str, datetime] = {}
+_VALIDATED_OVERLAYS: dict[str, tuple[datetime, str]] = {}
+_CLAIMED_OVERLAY_DIGESTS: dict[str, datetime] = {}
 _SESSION_CONSUME_LOCK = threading.Lock()
 _SESSION_LOAD_LOCK = threading.Lock()
 
@@ -481,6 +520,18 @@ def reset_process_cache() -> None:
     _PROCESS_SESSION = None
 
 
+def _overlay_fingerprint(overlay: dict) -> str:
+    encoded = json.dumps(overlay, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def clear_process_session() -> None:
+    """Withdraw process-global session evidence without touching inventory state."""
+    global _PROCESS_SESSION
+    with _SESSION_LOAD_LOCK:
+        _PROCESS_SESSION = None
+
+
 def inventory() -> dict:
     global _PROCESS_INVENTORY
     if _PROCESS_INVENTORY is None:
@@ -639,7 +690,8 @@ def _read_session_source(source: str | None) -> str | None:
     return raw
 
 
-def _validate_session_envelope(data: dict, now: datetime | None = None) -> tuple[datetime, datetime, str]:
+def _validate_session_envelope(data: dict, now: datetime | None = None,
+                               nonce: str | None = None) -> tuple[datetime, datetime, str]:
     if set(data) != {"schema_version", "runtime", "records", "attestation"}:
         raise InventoryError("session overlay has unknown or missing top-level fields")
     if data.get("schema_version") != SESSION_SCHEMA_VERSION:
@@ -666,7 +718,7 @@ def _validate_session_envelope(data: dict, now: datetime | None = None) -> tuple
     lifetime = (expires_at - observed_at).total_seconds()
     if lifetime <= 0 or lifetime > SESSION_MAX_TTL_SECONDS or expires_at <= now:
         raise InventoryError("session attestation expiry is invalid or stale")
-    nonce = os.environ.get("MB_INTEGRATION_SESSION_NONCE")
+    nonce = nonce if nonce is not None else os.environ.get("MB_INTEGRATION_SESSION_NONCE")
     if not isinstance(nonce, str) or not 32 <= len(nonce) <= 512:
         raise InventoryError("fresh MB_INTEGRATION_SESSION_NONCE is required")
     expected_nonce = "sha256:" + hashlib.sha256(nonce.encode("utf-8")).hexdigest()
@@ -713,34 +765,165 @@ def _load_session_raw(raw: str) -> dict:
         data = json.loads(raw)
     except Exception:
         raise InventoryError("session overlay is malformed JSON") from None
+    loaded = _validated_session(data)
+    _PROCESS_SESSION = loaded
+    return loaded
+
+
+def validated_session_from_source(source: str) -> dict:
+    """Read and consume an explicit session source without publishing it globally."""
+    raw = _read_session_source(source)
+    if raw is None:
+        raise InventoryError("an explicit session source is required")
+    try:
+        data = json.loads(raw)
+    except Exception:
+        raise InventoryError("session overlay is malformed JSON") from None
+    return _validated_session(data)
+
+
+def _reject_duplicate_runtime_tool_name(pairs):
+    out = {}
+    for name, value in pairs:
+        if name in out:
+            raise InventoryError("runtime tool inventory contains duplicate names")
+        out[name] = value
+    return out
+
+
+def parse_runtime_tool_states(raw: str | bytes) -> dict[str, bool]:
+    """Parse a bounded names-to-booleans inventory from a trusted dispatcher.
+
+    The accepted JSON shape is deliberately only ``{tool_name: boolean}``. No
+    arguments, descriptions, URLs, paths, values, or nested metadata have an input
+    channel, and error messages never echo a supplied name.
+    """
+    if isinstance(raw, bytes):
+        if len(raw) > RUNTIME_TOOLS_MAX_BYTES:
+            raise InventoryError("runtime tool inventory exceeds the bounded size limit")
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeError:
+            raise InventoryError("runtime tool inventory must be valid UTF-8") from None
+    elif isinstance(raw, str):
+        if len(raw.encode("utf-8")) > RUNTIME_TOOLS_MAX_BYTES:
+            raise InventoryError("runtime tool inventory exceeds the bounded size limit")
+    else:
+        raise InventoryError("runtime tool inventory must be JSON text")
+    try:
+        states = json.loads(raw, object_pairs_hook=_reject_duplicate_runtime_tool_name)
+    except InventoryError:
+        raise
+    except Exception:
+        raise InventoryError("runtime tool inventory must be a JSON object") from None
+    if not isinstance(states, dict) or len(states) > RUNTIME_TOOLS_MAX_COUNT:
+        raise InventoryError("runtime tool inventory must be a bounded JSON object")
+    clean = {}
+    for name, callable_value in states.items():
+        if type(callable_value) is not bool:
+            raise InventoryError("runtime tool inventory values must be booleans")
+        if (not isinstance(name, str) or not name
+                or len(name) > RUNTIME_TOOL_NAME_MAX_CHARS
+                or not _SAFE_RUNTIME_TOOL_NAME.fullmatch(name)):
+            # Unknown or near-collision names are data, not authority. Ignore them
+            # without reflecting them into output or diagnostics.
+            continue
+        clean[name] = callable_value
+    return clean
+
+
+def runtime_tool_records(runtime: str, states: dict[str, bool]) -> list[dict]:
+    """Reduce exact runtime tool namespaces to value-free connector records."""
+    if runtime not in _RUNTIME_TOOL_MCP_RULES:
+        raise InventoryError("runtime tool inventory is not registered for this runtime")
+    rules = _RUNTIME_TOOL_MCP_RULES[runtime]
+    observed: dict[str, dict[str, bool]] = {}
+    for name, callable_value in states.items():
+        match = _CODEX_MCP_TOOL.fullmatch(name) if runtime == "codex" else None
+        if not match:
+            continue
+        namespace = match.group(1)
+        tool_name = match.group(2)
+        rule = rules.get(namespace)
+        if rule is None or tool_name not in rule["required_tools"]:
+            continue
+        observed.setdefault(namespace, {})[tool_name] = callable_value
+    records = []
+    for namespace in sorted(observed):
+        rule = rules[namespace]
+        observed_id = rule["connector"]
+        required = rule["required_tools"]
+        # Omission or an explicit false for any representative tool fails closed.
+        # Unrelated mutation tools cannot create or withdraw read evidence.
+        callable_value = required.issubset(observed[namespace]) and all(
+            observed[namespace][tool] for tool in required
+        )
+        records.append({
+            "kind": "mcp",
+            "id": observed_id,
+            "installed": callable_value,
+            "enabled": callable_value,
+            "configured": callable_value,
+            "blocked": not callable_value,
+            "health": "verified" if callable_value else "unavailable",
+            "callable": callable_value,
+        })
+    return records
+
+
+def build_runtime_tool_overlay(runtime: str, raw: str | bytes, *,
+                               observed_at: datetime | None = None) -> dict:
+    """Build and consume one fresh in-memory envelope for one resolver call.
+
+    Neither the raw tool names nor the random challenge are returned or persisted.
+    The returned overlay contains only cleaned connector records plus value-free
+    provenance and must be threaded explicitly into the resolver.
+    """
+    states = parse_runtime_tool_states(raw)
+    records = runtime_tool_records(runtime, states)
+    observed_at = observed_at or datetime.now(timezone.utc)
+    nonce = secrets.token_urlsafe(32)
+    document = build_session_document(
+        runtime,
+        records,
+        nonce,
+        observed_at=observed_at,
+        expires_at=observed_at + timedelta(seconds=RUNTIME_SESSION_TTL_SECONDS),
+    )
+    # Validate and consume without publishing to _PROCESS_SESSION. This keeps the
+    # one-use attestation local to its caller even when planners share a process.
+    return _validated_session(document, nonce=nonce)
+
+
+def _validated_session(data: dict, *, nonce: str | None = None) -> dict:
+    """Validate and clean a decoded envelope without publishing process state."""
     if not isinstance(data, dict):
         raise InventoryError("session overlay must be a JSON object")
-    observed_at, expires_at, digest = _validate_session_envelope(data)
+    observed_at, expires_at, digest = _validate_session_envelope(data, nonce=nonce)
     runtime = data["runtime"]
-    records = data["records"]
     clean = []
-    for raw_rec in records:
+    for raw_rec in data["records"]:
         if not isinstance(raw_rec, dict) or not set(raw_rec).issubset(_SESSION_RECORD_KEYS):
             raise InventoryError("session record has unknown fields")
-        merged = dict(raw_rec) if isinstance(raw_rec, dict) else raw_rec
-        if isinstance(merged, dict):
-            if merged.get("runtime") not in (None, runtime):
-                raise InventoryError("session records may not cross runtime boundaries")
-            merged["runtime"] = runtime
-            observed_id = merged.get("observed_id") or merged.get("id")
-            if not isinstance(observed_id, str) or not _SAFE_SESSION_ID.fullmatch(observed_id):
-                raise InventoryError("session record id is malformed")
-            for key in _SESSION_BOOL_KEYS:
-                if key in merged and not isinstance(merged[key], bool):
-                    raise InventoryError(f"session record {observed_id}: {key} must be boolean")
-            if "installed" in merged and merged["installed"] is not None and not isinstance(merged["installed"], bool):
-                raise InventoryError(f"session record {observed_id}: installed must be boolean or null")
+        merged = dict(raw_rec)
+        if merged.get("runtime") not in (None, runtime):
+            raise InventoryError("session records may not cross runtime boundaries")
+        merged["runtime"] = runtime
+        observed_id = merged.get("observed_id") or merged.get("id")
+        if not isinstance(observed_id, str) or not _SAFE_SESSION_ID.fullmatch(observed_id):
+            raise InventoryError("session record id is malformed")
+        for key in _SESSION_BOOL_KEYS:
+            if key in merged and not isinstance(merged[key], bool):
+                raise InventoryError(f"session record {observed_id}: {key} must be boolean")
+        if ("installed" in merged and merged["installed"] is not None
+                and not isinstance(merged["installed"], bool)):
+            raise InventoryError(f"session record {observed_id}: installed must be boolean or null")
         rec = _validate_record(merged, session=True)
         canonical = _canonical(load_adapters(), runtime, rec["kind"], rec["observed_id"], session=True)
         rec["canonical_id"] = canonical
         rec["registered"] = canonical is not None
         clean.append(rec)
-    loaded = {
+    overlay = {
         "runtime": runtime,
         "process_scope": True,
         "records": clean,
@@ -751,8 +934,34 @@ def _load_session_raw(raw: str) -> dict:
             "digest": digest,
         },
     }
-    _PROCESS_SESSION = loaded
-    return loaded
+    with _SESSION_CONSUME_LOCK:
+        _VALIDATED_OVERLAYS[digest] = (expires_at, _overlay_fingerprint(overlay))
+    return overlay
+
+
+def claim_overlay_for_resolution(overlay: dict) -> dict:
+    """Consume one internally validated overlay for exactly one resolver call."""
+    if not isinstance(overlay, dict) or not _overlay_is_fresh(overlay):
+        raise InventoryError("integration overlay is absent, malformed, or expired")
+    attestation = overlay.get("attestation") or {}
+    digest = attestation.get("digest")
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
+        raise InventoryError("integration overlay digest is malformed")
+    now = datetime.now(timezone.utc)
+    fingerprint = _overlay_fingerprint(overlay)
+    with _SESSION_CONSUME_LOCK:
+        for store in (_VALIDATED_OVERLAYS, _CLAIMED_OVERLAY_DIGESTS):
+            for old_digest, value in list(store.items()):
+                expiry = value[0] if isinstance(value, tuple) else value
+                if expiry <= now:
+                    del store[old_digest]
+        validated = _VALIDATED_OVERLAYS.get(digest)
+        if validated is None or validated[1] != fingerprint:
+            raise InventoryError("integration overlay was not validated in this process")
+        if digest in _CLAIMED_OVERLAY_DIGESTS:
+            raise InventoryError("integration overlay was already consumed by a resolver")
+        _CLAIMED_OVERLAY_DIGESTS[digest] = validated[0]
+    return overlay
 
 
 def session() -> dict | None:

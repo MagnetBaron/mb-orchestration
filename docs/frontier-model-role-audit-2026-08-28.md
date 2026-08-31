@@ -11,8 +11,12 @@ This document is evidence, not an operational contract. Routing is `config/model
 **Current-state correction (2026-08-30):** the legacy Grok Bot Review D and Heat Map app routes are
 retired. Their replacement named CLI routes are `unwired` and normal execution hard-parks before
 prompt/evidence reads until the corresponding code-owned pixel or Clarity input binding exists;
-browser/Clarity observation, profile sync, and role tests are additional gates. Historical snapshot
-language below does not authorize promotion.
+browser/Clarity observation, profile sync, and role tests are additional gates. Cursor Agent's live
+model listing established the exact selectable id `cursor-grok-4.6-xhigh`, but the exact inference
+attempt returned no terminal receipt or edit. Therefore `grok-4.6-cursor` is now
+`catalog_verified`, not `live_verified`, and its local-access smoke is missing. All historical
+standing/live language for Cursor and the retired Bots below is superseded by this correction and
+does not authorize promotion.
 
 ## Limitations
 

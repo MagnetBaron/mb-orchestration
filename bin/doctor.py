@@ -361,17 +361,34 @@ def check_integration_adapters(adapters, providers_data):
             "integration-adapters: grok capability aliases must exactly define the "
             f"launcher preflight vocabulary {expected_grok_capabilities!r}"
         )
-    grokbot_caps = set((((session_aliases.get("grokbot-cursor") or {}).get("capability")) or {}).values())
-    grokbot_providers = {
+    expected_cursor_aliases = {"capability": {"code": "code", "ide": "ide"}}
+    actual_cursor_aliases = session_aliases.get("cursor")
+    if actual_cursor_aliases != expected_cursor_aliases:
+        err(
+            "integration-adapters: cursor session-only aliases must be exactly "
+            "code+ide; generic Cursor must not claim specialized Grokbot capabilities"
+        )
+    cursor_caps = set(((actual_cursor_aliases or {}).get("capability") or {}).values())
+    cursor_providers = {
         pid: p for pid, p in provs.items()
-        if (adapters.get("provider_runtimes") or {}).get(pid) == "grokbot-cursor"
+        if (adapters.get("provider_runtimes") or {}).get(pid) == "cursor"
     }
-    if grokbot_providers and not (session_aliases.get("grokbot-cursor") or {}):
-        err("integration-adapters: grokbot-cursor requires explicit session-only aliases")
-    for pid, provider in sorted(grokbot_providers.items()):
-        missing = sorted(set(provider.get("capabilities") or []) - grokbot_caps)
-        if missing:
-            err(f"integration-adapters: grokbot-cursor session capability aliases do not cover {pid}: {missing}")
+    for pid, provider in sorted(cursor_providers.items()):
+        excess = sorted(set(provider.get("capabilities") or []) - cursor_caps)
+        if excess:
+            err(
+                f"integration-adapters: generic cursor runtime provider {pid} claims "
+                f"non-code/ide capability aliases: {excess}"
+            )
+    specialized_grokbots = {
+        "grok-bot-review-d", "grok-bot-heat-map", "grok-bot-marketplace-intelligence",
+    }
+    for pid in sorted(specialized_grokbots):
+        if (adapters.get("provider_runtimes") or {}).get(pid) != "grok":
+            err(
+                f"integration-adapters: specialized provider {pid} must stay on the "
+                "grok runtime and may not be satisfied by generic Cursor"
+            )
     try:
         records, events = integ.discover(adapters)
         unregistered = sum(1 for r in records if not r.get("registered"))
@@ -907,6 +924,93 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                     f"approved argv {approved_args!r}; got {args!r}. Unknown, duplicate, "
                     "positional, reordered, and permission-bypassing flags are forbidden"
                 )
+        if pid == "cursor-grok":
+            route_id = p.get("route")
+            route = routes.get(route_id) if route_id else None
+            detect = p.get("detect") or {}
+            expected_invocation = "cursor-grok-4.6-xhigh"
+            prompt = (
+                "Read the scoped brief at {brief_path}. Implement only the authorized file "
+                "scope in that brief inside this workspace; preserve unrelated changes and "
+                "stop on any conflict."
+            )
+            approved_args = [
+                "--trust", "--print", "--workspace", "{worktree}",
+                "--model", expected_invocation, prompt,
+            ]
+            if detect != {"method": "command", "cmd": "cursor-agent"}:
+                err(
+                    "provider 'cursor-grok': detect must be exact command "
+                    "'cursor-agent' (the `cursor` app binary does not prove Agent CLI access)"
+                )
+            if set(p.get("functions") or []) - {"implement", "ide"} \
+                    or not ({"implement", "ide"} & set(p.get("functions") or [])):
+                err("provider 'cursor-grok': overflow must be implementation-only (implement/ide)")
+            if p.get("review_eligible") is not False or p.get("dispatch_eligible") is True:
+                err("provider 'cursor-grok': overflow must never review or dispatch")
+            if {"review", "dispatch"} & set(p.get("capabilities") or []):
+                err("provider 'cursor-grok': overflow capabilities must not grant review/dispatch")
+            if bin_ != "cursor-agent":
+                err("seat-exec recipe 'cursor-grok': bin must be exact 'cursor-agent'")
+            if r.get("args_template") != approved_args:
+                err(
+                    "seat-exec recipe 'cursor-grok': args_template must match the exact "
+                    f"approved argv {approved_args!r}; invalid --workdir/--brief, --yolo, "
+                    "missing --trust/--print, wrong model, extra positionals, duplicates, "
+                    "and reordered flags are forbidden"
+                )
+            if not isinstance(route, dict):
+                err(f"provider 'cursor-grok': route {route_id!r} is missing")
+            else:
+                expected_identity = {
+                    "model": "grok-4.6", "provider": "cursor-grok", "host": "cursor",
+                    "harness": "cursor-agent", "invocation_id": expected_invocation,
+                    "route_state": "catalog_verified",
+                }
+                for key, want in expected_identity.items():
+                    if route.get(key) != want:
+                        err(
+                            f"provider 'cursor-grok': route {route_id!r} {key} must be "
+                            f"exact {want!r}, got {route.get(key)!r}"
+                        )
+                if route.get("evidence_strength") != "cli_listing":
+                    err(
+                        "provider 'cursor-grok': corrected invocation must remain "
+                        "cli_listing/catalog-only until an inference smoke is recorded"
+                    )
+                local_smoke = (route.get("attestations") or {}).get("local_access_smoke") or {}
+                if local_smoke.get("state") != "missing":
+                    err(
+                        "provider 'cursor-grok': local_access_smoke must remain missing "
+                        "until the exact Cursor invocation returns a terminal receipt"
+                    )
+                listed = [
+                    ev for ev in (route.get("evidence") or [])
+                    if isinstance(ev, dict) and ev.get("kind") == "cli_listing"
+                ]
+                if not listed:
+                    err("provider 'cursor-grok': exact invocation needs dated cli_listing evidence")
+                else:
+                    latest = sorted(listed, key=lambda ev: str(ev.get("date") or ""))[-1]
+                    source = str(latest.get("source") or "")
+                    if ("cursor-agent --list-models" not in source
+                            or expected_invocation not in source
+                            or "no inference" not in source.lower()
+                            or latest.get("signal") in {"direct_invocation", "standing_provider"}):
+                        err(
+                            "provider 'cursor-grok': cli_listing evidence must name the live "
+                            "listing command and exact model id, state that no inference ran, "
+                            "and must not masquerade as a live invocation signal"
+                        )
+        if pid == "cursor-other-400":
+            detect = p.get("detect") or {}
+            if detect != {"method": "command", "cmd": "cursor-agent"}:
+                err("provider 'cursor-other-400': detect must be exact command 'cursor-agent'")
+            if r.get("args_template") != []:
+                err(
+                    "seat-exec recipe 'cursor-other-400': metered owner-only route must keep "
+                    "an empty argv (never guess a model or retain unsupported Cursor flags)"
+                )
         if pid in {"grok-bot-review-d", "grok-bot-heat-map", "grok-bot-marketplace-intelligence"}:
             expected_model = p.get("model")
             route_id = p.get("route")
@@ -947,6 +1051,12 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                     f"standing provider {pid!r}: wired/live_verified promotion is forbidden "
                     "until its shared code-owned execution input binding is implemented"
                 )
+            if execution_binding is None and p.get("wired") is not False:
+                err(f"standing provider {pid!r}: must remain explicitly wired=false while parked")
+            if execution_binding is None and (
+                not isinstance(route, dict) or route.get("route_state") != "unwired"
+            ):
+                err(f"standing provider {pid!r}: bound route must remain explicitly unwired while parked")
             approved_args = list(grok_agent_mod.APPROVED_STANDING_TEMPLATE)
             if approved_args.count("{sandbox_profile}") != 1:
                 err("standing recipe validator must contain exactly one {sandbox_profile} token")

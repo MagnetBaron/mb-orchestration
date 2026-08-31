@@ -2171,14 +2171,12 @@ def render_matrix(registry: dict) -> str:
     models = registry.get("models") or {}
     for rid, route in _sorted_items(registry.get("routes") or {}):
         model = models.get(route.get("model"), {})
-        signal = ((route.get("attestations") or {}).get("local_access_smoke") or {}).get("signal") or ""
-        if not signal:
-            recs = route.get("evidence") or []
-            if isinstance(recs, list):
-                for rec in reversed(recs):
-                    if isinstance(rec, dict) and rec.get("signal"):
-                        signal = rec.get("signal")
-                        break
+        smoke = ((route.get("attestations") or {}).get("local_access_smoke") or {})
+        signal = ""
+        if (route.get("route_state") in ACTIVE_RESOLVE_STATES
+                and smoke.get("state") == "attested"
+                and smoke.get("signal") in LIVE_SIGNALS):
+            signal = smoke["signal"]
         lines.append(
             f"| `{rid}` | `{route.get('model')}` | {route.get('route_state')} | "
             f"{_lifecycle(route, model)} | {route.get('host')} | {route.get('harness')} | "

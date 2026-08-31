@@ -34,6 +34,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
+import integrations  # noqa: E402
 try:
     import observe  # noqa: E402
 except Exception as _OBS_IMPORT_ERROR:
@@ -69,7 +70,8 @@ def _now_iso() -> str:
 def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
                    task_seconds, user_said_ship, ledger, intake_provider="",
                    profile="default", artifacts="", run_id="", actor_id="",
-                   record_observability=False, no_record_observability=False) -> dict:
+                   record_observability=False, no_record_observability=False,
+                   integration_overlay=None) -> dict:
     """Consume resolve-route.py's JSON decision verbatim (exact shape — never reshaped).
     Called in-process with stdout captured; this is not a subprocess and shells nothing."""
     argv = ["--class", klass, "--scale", scale, "--implement", "--json"]
@@ -103,7 +105,7 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
     # inner resolve-route emit (so emit-on-run-brief-only remains possible).
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = resolve_route.main(argv)
+        rc = resolve_route.main(argv, integration_overlay=integration_overlay)
     if rc != 0:
         raise SystemExit(f"run-brief: resolve-route returned {rc}")
     return json.loads(buf.getvalue())
@@ -170,7 +172,7 @@ def plan_for_seat(
     return entry
 
 
-def build_plan(args) -> dict:
+def build_plan(args, integration_overlay=None) -> dict:
     decision = build_decision(args.klass, args.scale, args.risk, args.pixels,
                               args.needs_mcp.strip(), args.needs_connector.strip(),
                               args.task_seconds, args.user_said_ship, args.ledger,
@@ -178,7 +180,8 @@ def build_plan(args) -> dict:
                               getattr(args, "run_id", "") or "",
                               getattr(args, "actor_id", "") or "",
                               getattr(args, "record_observability", False),
-                              getattr(args, "no_record_observability", False))
+                              getattr(args, "no_record_observability", False),
+                              integration_overlay)
     lane = args.lane or f"lane-{args.klass}"
     recipes = mborch.load_config("seat-exec.json")["recipes"]
     ctx = {
@@ -227,7 +230,7 @@ def build_plan(args) -> dict:
         trans["warning_fix_loops"] = f"fix-loop cap {runledger.FIX_LOOP_CAP} reached — park unless a NOVEL defect"
 
     implement_seat = next((p["seat"] for p in impl_plans if p["role"] == "implement"), None)
-    return {
+    plan = {
         "lane": lane, "dry_run": True, "class": args.klass, "scale": args.scale,
         "risk_flags": decision["risk_flags"], "review_depth": decision["review_depth"],
         "depth_reasons": decision["depth_reasons"], "review": decision["review"],
@@ -242,19 +245,27 @@ def build_plan(args) -> dict:
         "implement_requested": True,
         "park_reason": decision.get("park_reason"),
     }
+    if decision.get("integration_session") is not None:
+        plan["integration_session"] = decision["integration_session"]
+    return plan
 
 
 def record_trace(plan, run_ledger_path):
     """Append a decision-trace event to the run-ledger (auditability): after the fact you
     can prove what was routed and whether the gates were honored before a land."""
+    event_fields = {"class": plan["class"], "scale": plan["scale"],
+                    "review_depth": plan["review_depth"],
+                    "requested_dispatcher": plan["dispatcher"].get("requested"),
+                    "effective_dispatcher": plan["dispatcher"].get("effective"),
+                    "implement_seat": plan["implement_seat"],
+                    "review_chain": plan["review_chain"], "gates": plan["gates"],
+                    "handoff": plan["handoff"], "dry_run": True,
+                    "decided_by": "run-brief"}
+    if plan.get("integration_session") is not None:
+        event_fields["integration_session"] = plan["integration_session"]
     ev = runledger.make_event(
         plan["lane"], plan["transition"]["to"], _now_iso(),
-        **{"class": plan["class"], "scale": plan["scale"], "review_depth": plan["review_depth"],
-           "requested_dispatcher": plan["dispatcher"].get("requested"),
-           "effective_dispatcher": plan["dispatcher"].get("effective"),
-           "implement_seat": plan["implement_seat"], "review_chain": plan["review_chain"],
-           "gates": plan["gates"], "handoff": plan["handoff"],
-           "dry_run": True, "decided_by": "run-brief"})
+        **event_fields)
     return runledger.append(ev, run_ledger_path)
 
 
@@ -327,6 +338,8 @@ def main(argv=None):
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--needs-mcp", default="")
     ap.add_argument("--needs-connector", default="")
+    ap.add_argument("--runtime-tools", choices=["codex"], default="",
+                    help="read a bounded {tool_name:boolean} inventory from stdin and bind it to this one plan")
     ap.add_argument("--task-seconds", type=int, default=0)
     ap.add_argument("--user-said-ship", action="store_true")
     ap.add_argument("--intake-provider", default="", help="user-selected dispatcher for this run")
@@ -360,7 +373,17 @@ def main(argv=None):
     started = time.perf_counter()
     if not args.run_id:
         args.run_id = observe.new_run_id() if observe else str(uuid.uuid4())
-    plan = build_plan(args)
+    integration_overlay = None
+    if args.runtime_tools:
+        try:
+            raw = sys.stdin.buffer.read(integrations.RUNTIME_TOOLS_MAX_BYTES + 1)
+            integration_overlay = integrations.build_runtime_tool_overlay(args.runtime_tools, raw)
+        except (integrations.InventoryError, OSError) as exc:
+            print(f"run-brief: invalid runtime tool inventory (fail closed): {exc}", file=sys.stderr)
+            return 2
+    else:
+        integrations.clear_process_session()
+    plan = build_plan(args, integration_overlay=integration_overlay)
     duration_ms = int((time.perf_counter() - started) * 1000)
     if args.record:
         record_trace(plan, args.run_ledger)

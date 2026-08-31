@@ -75,29 +75,29 @@ Token-efficiency of added roles is a hypothesis to measure, not a realized-savin
 | `gemini-3.7-flash-unwired` | `gemini-3.7-flash` | unwired | preview | none | none | `gemini-3.7-flash` | 2026-08-28 vendor_self_reported | — | — |
 | `glm-5.2-unwired` | `glm-5.2` | unwired | stable | none | none | `glm-5.2` | 2026-08-28 independent_benchmark | — | — |
 | `glm-5.3-flash-unwired` | `glm-5.3-flash` | unwired | preview | none | none | `glm-5.3-flash` | 2026-08-28 vendor_self_reported | — | — |
-| `gpt-5.3-codex-spark-codex` | `gpt-5.3-codex-spark` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.3-codex-spark` | 2026-08-28 cli_listing | standing_provider | — |
-| `gpt-5.4-codex` | `gpt-5.4` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4` | 2026-08-28 cli_listing | standing_provider | — |
-| `gpt-5.4-mini-codex` | `gpt-5.4-mini` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4-mini` | 2026-08-28 cli_listing | standing_provider | — |
-| `gpt-5.5-codex` | `gpt-5.5` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.5` | 2026-08-28 cli_listing | standing_provider | — |
+| `gpt-5.3-codex-spark-codex` | `gpt-5.3-codex-spark` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.3-codex-spark` | 2026-08-28 cli_listing | — | — |
+| `gpt-5.4-codex` | `gpt-5.4` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4` | 2026-08-28 cli_listing | — | — |
+| `gpt-5.4-mini-codex` | `gpt-5.4-mini` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.4-mini` | 2026-08-28 cli_listing | — | — |
+| `gpt-5.5-codex` | `gpt-5.5` | catalog_verified | stable | codex | gpt-wrapper | `gpt-5.5` | 2026-08-28 cli_listing | — | — |
 | `gpt-5.6-luna-codex` | `gpt-5.6-luna` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-luna` | 2026-08-28 cli_listing | standing_provider | codex-luna |
 | `gpt-5.6-sol-codex` | `gpt-5.6-sol` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-sol` | 2026-08-28 cli_listing | standing_provider | codex-sol |
 | `gpt-5.6-terra-codex` | `gpt-5.6-terra` | live_verified | stable | codex | gpt-wrapper | `gpt-5.6-terra` | 2026-08-28 cli_listing | standing_provider | codex-terra |
-| `grok-4.5-cli` | `grok-4.5` | catalog_verified | superseded | grok-cli | grok | `grok-4.5` | 2026-08-28 cli_listing | standing_provider | — |
+| `grok-4.5-cli` | `grok-4.5` | catalog_verified | superseded | grok-cli | grok | `grok-4.5` | 2026-08-28 cli_listing | — | — |
 | `grok-4.6-build` | `grok-4.6` | live_verified | stable | grok-cli | grok | `grok-4.6` | 2026-08-28 cli_listing | standing_provider | grok-build |
-| `grok-4.6-cursor` | `grok-4.6` | live_verified | stable | cursor | cursor-agent | `grok-4.6` | 2026-08-28 owner_eval | standing_provider | cursor-grok |
-| `grok-bot-heat-map` | `grok-4.6` | disabled | retired | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | standing_provider | grok-bot-heat-map |
+| `grok-4.6-cursor` | `grok-4.6` | catalog_verified | stable | cursor | cursor-agent | `cursor-grok-4.6-xhigh` | 2026-08-30 cli_listing | — | cursor-grok |
+| `grok-bot-heat-map` | `grok-4.6` | disabled | retired | grok-bot | grok-bot-app | `heat-map` | 2026-08-28 owner_eval | — | grok-bot-heat-map |
 | `grok-bot-marketplace-intelligence` | `grok-4.6` | disabled | retired | grok-bot | grok-bot-app | `marketplace-intelligence` | 2026-08-28 none | — | grok-bot-marketplace-intelligence |
-| `grok-bot-visual-qa` | `grok-4.6` | disabled | retired | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | standing_provider | grok-bot-review-d |
+| `grok-bot-visual-qa` | `grok-4.6` | disabled | retired | grok-bot | grok-bot-app | `website-visual-qa` | 2026-08-28 owner_eval | — | grok-bot-review-d |
 | `grok-cli-heat-map` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-heat-map` | 2026-08-30 none | — | grok-bot-heat-map |
 | `grok-cli-marketplace-intelligence` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-marketplace-intelligence` | 2026-08-30 none | — | grok-bot-marketplace-intelligence |
-| `grok-cli-review-d` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-review-d` | 2026-08-30 local_smoke | direct_invocation | grok-bot-review-d |
+| `grok-cli-review-d` | `grok-4.6` | unwired | stable | grok-cli | grok | `mb-review-d` | 2026-08-30 local_smoke | — | grok-bot-review-d |
 | `kimi-k2.6-unwired` | `kimi-k2.6` | unwired | superseded | none | none | `kimi-k2.6` | 2026-08-28 vendor_self_reported | — | — |
 | `kimi-k2.7-code-unwired` | `kimi-k2.7-code` | unwired | stable | none | none | `kimi-k2.7-code` | 2026-08-28 vendor_self_reported | — | — |
 | `kimi-k3-unwired` | `kimi-k3` | unwired | stable | none | none | `kimi-k3` | 2026-08-28 independent_benchmark | — | — |
 | `muse-code-unwired` | `muse-code` | unwired | preview | none | none | `muse-code` | 2026-08-28 vendor_self_reported | — | — |
 | `muse-spark-1.2-unwired` | `muse-spark-1.2` | unwired | preview | none | none | `muse-spark-1.2` | 2026-08-28 vendor_self_reported | — | — |
 | `opus-4.8-teamclaude` | `claude-opus-4-8` | live_verified | superseded | teamclaude | claude-cli | `claude-opus-4-8` | 2026-08-28 local_smoke | direct_invocation | opus-4.8 |
-| `opus-5-direct-claude` | `claude-opus-5` | auth_blocked | stable | claude-cli-direct | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | direct_invocation | — |
+| `opus-5-direct-claude` | `claude-opus-5` | auth_blocked | stable | claude-cli-direct | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | — | — |
 | `opus-5-teamclaude` | `claude-opus-5` | live_verified | stable | teamclaude | claude-cli | `claude-opus-5` | 2026-08-28 local_smoke | direct_invocation | opus-5 |
 | `qwen-3.8-max-unwired` | `qwen-3.8-max` | unwired | stable | none | none | `qwen-3.8-max` | 2026-08-28 independent_benchmark | — | — |
 | `review-e-fireworks` | `open-weight-review-e` | unwired | restricted | fireworks | http | `review-e` | 2026-08-28 none | — | review-e |
@@ -115,7 +115,6 @@ Evaluation: `direct` = `local_access_smoke` attested with `direct_invocation`; `
 | `gpt-5.6-sol-codex` | standing+grandfathered | attested/official_vendor_release | attested/standing_provider | waived | attested/independent_benchmark | attested/independent_pricing | waived | 2026-11-26 |
 | `gpt-5.6-terra-codex` | standing+grandfathered | attested/official_vendor_release | attested/standing_provider | waived | waived | waived | waived | 2026-11-26 |
 | `grok-4.6-build` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | waived | attested/independent_benchmark | attested/independent_pricing | waived | 2026-11-26 |
-| `grok-4.6-cursor` | standing+grandfathered | attested/official_vendor_catalog | attested/standing_provider | waived | attested/independent_benchmark | attested/independent_pricing | waived | 2026-11-26 |
 | `opus-4.8-teamclaude` | direct+grandfathered | attested/official_vendor_catalog | attested/direct_invocation | not_applicable/compatibility_fallback_not_ranked | not_applicable/compatibility_fallback_not_ranked | waived | waived | 2026-11-26 |
 | `opus-5-teamclaude` | direct+grandfathered | attested/official_vendor_release | attested/direct_invocation | attested/normalized_receipt | attested/independent_benchmark | attested/official_pricing | waived | 2026-11-26 |
 

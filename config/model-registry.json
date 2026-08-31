@@ -1191,10 +1191,10 @@
       "provider": "cursor-grok",
       "host": "cursor",
       "harness": "cursor-agent",
-      "invocation_id": "grok-4.6",
-      "route_state": "live_verified",
-      "evidence_date": "2026-08-28",
-      "evidence_strength": "owner_eval",
+      "invocation_id": "cursor-grok-4.6-xhigh",
+      "route_state": "catalog_verified",
+      "evidence_date": "2026-08-30",
+      "evidence_strength": "cli_listing",
       "capabilities": [
         "code",
         "ide"
@@ -1208,6 +1208,18 @@
           "kind": "owner_eval",
           "source": "Standing Cursor first-party Models pool provider (Grok 4.6 / Composer) in providers.json. Not a CLI invocation in this audit.",
           "signal": "standing_provider"
+        },
+        {
+          "date": "2026-08-30",
+          "route_state": "catalog_verified",
+          "kind": "cli_listing",
+          "source": "Live cursor-agent --list-models output listed exact selectable id cursor-grok-4.6-xhigh. Model discovery only; no inference or implementation smoke was performed."
+        },
+        {
+          "date": "2026-08-30",
+          "route_state": "catalog_verified",
+          "kind": "transport_attempt",
+          "source": "Exact cursor-agent invocation with cursor-grok-4.6-xhigh produced no stdout, no edit, and no terminal receipt before it was stopped. This is not live evidence."
         }
       ],
       "attestations": {
@@ -1218,11 +1230,9 @@
           "evidence_kind": "official_vendor_catalog"
         },
         "local_access_smoke": {
-          "state": "attested",
-          "date": "2026-08-28",
-          "source": "Standing Cursor first-party Models pool provider (Grok 4.6 / Composer) in providers.json. Not a CLI invocation in this audit.",
-          "signal": "standing_provider",
-          "evidence_kind": "standing_provider"
+          "state": "missing",
+          "date": "2026-08-30",
+          "source": "Exact Cursor Agent transport attempt returned no terminal inference receipt; route remains catalog-only."
         },
         "role_evals": {
           "state": "waived",
@@ -2207,7 +2217,7 @@
           "priority": 2,
           "route": "grok-4.6-cursor",
           "confidence": "high",
-          "rationale": "IDE included pool before Grok Heavy."
+          "rationale": "Included implementation-only overflow after provider-confirmed Grok Build quota exhaustion."
         }
       ],
       "efficiency": [

@@ -51,14 +51,14 @@
       "note": "Architecture / long-horizon only — OUT of the gating order. Invoked via teamclaude; direct claude is auth_blocked. Same family as Opus. Never a gating verdict; never the daily coder."
     },
     "cursor-grok": {
-      "bin": "cursor-agent", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "bin": "cursor-agent", "args_template": ["--trust", "--print", "--workspace", "{worktree}", "--model", "cursor-grok-4.6-xhigh", "Read the scoped brief at {brief_path}. Implement only the authorized file scope in that brief inside this workspace; preserve unrelated changes and stop on any conflict."],
       "reads": "brief", "worktree": true, "never_metered_host": true,
-      "note": "First-party Cursor Models pool (included). IDE edits; drain before metered Cursor."
+      "note": "Included implementation-only overflow after provider-confirmed Grok Build quota exhaustion. Exact live-listed Cursor Agent model id cursor-grok-4.6-xhigh; --trust acknowledges the already isolated dispatcher-owned worktree, --print is non-interactive, and the sole positional prompt names the scoped brief. Never review/dispatch and never substitute for a specialized Grokbot."
     },
     "cursor-other-400": {
-      "bin": "cursor-agent", "args_template": ["--workdir", "{worktree}", "--brief", "{brief_path}"],
+      "bin": "cursor-agent", "args_template": [],
       "reads": "brief", "worktree": true, "never_metered_host": false,
-      "note": "Metered $ 'Last $' pool. never_metered_host:false → the executor will NOT shell it; drains LAST, only when no included capacity remains (minimize API $)."
+      "note": "Metered $ 'Last $' pool. No executable argv is configured: never_metered_host:false means the executor will NOT shell it or guess a model; owner-mediated use only after all included capacity is exhausted."
     },
     "grok-bot-review-d": {
       "bin": "grok", "args_template": ["--cwd", "{repo}", "--sandbox", "{sandbox_profile}", "--agent", "{agent_profile}", "--prompt-file", "{brief_path}", "--model", "grok-4.6", "--reasoning-effort", "high", "--no-subagents", "--output-format", "plain", "--tools", "read_file,grep,list_dir", "--disallowed-tools", "run_terminal_cmd,search_replace,Agent", "--deny", "MCPTool(*)", "--disable-web-search", "--no-auto-update"],

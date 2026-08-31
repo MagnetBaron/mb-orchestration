@@ -79,10 +79,16 @@ preflight. Normal standing-role output is released only after status 0, nonempty
 stderr. Review D stdout must begin with an exact first line of `ship`, `fix-list`, or `blocked`.
 Heat Map and Marketplace Intelligence must not begin with any of those Review D verdict tokens.
 
-**Claude is five seats, not one.** Max + 2 Team-premium (Fable-capable) + 2 Pro (Opus overflow),
-rotated by teamclaude; `bin/resolve-route.py` counts **Fable available only while a Fable-capable seat
-is live and not downgraded** (`bin/detect-capability.py`), so the review order never goes stale on a
-plan change. (No teamclaude on the box → no rotation; degraded to one account — `EDGE-CASES.md`.)
+**Claude inventory is five seats, while usable capacity is the fresh live subset.** The configured
+ceiling is Max + 2 Team-premium (Fable-capable) + 2 Pro (Opus overflow). TeamClaude may currently
+observe fewer imported/enabled accounts; `bin/teamclaude_status.py` reports that as degraded drift
+and routes only the anonymous exact-model accounts with fresh quota. Live capacity above the
+declared account ceiling fails the fleet closed; a model-family ceiling violation blocks only
+that family so independent Opus capacity remains usable. `bin/resolve-route.py` counts **Fable
+available only while a Fable-capable account is live, eligible, and not policy-blocked**, so a spent
+shared bucket cannot be hidden by Fable headroom and a missing account cannot be invented from
+static config. (No teamclaude on the box → the current verified Anthropic transport is
+absent, so Anthropic routing parks; `EDGE-CASES.md`.)
 Direct `claude` without teamclaude is `auth_blocked` and is not a working route.
 
 **Google MCP** rides only the intersection of `config/connectors.json` `available_on` and fresh

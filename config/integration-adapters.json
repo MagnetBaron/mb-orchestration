@@ -15,8 +15,8 @@
     "fable-5": "claude",
     "opus-5": "claude",
     "opus-4.8": "claude",
-    "cursor-grok": "grokbot-cursor",
-    "cursor-other-400": "grokbot-cursor"
+    "cursor-grok": "cursor",
+    "cursor-other-400": "cursor"
   },
   "aliases": {
     "claude": {
@@ -61,7 +61,7 @@
         "magnet-baron-skills": "magnet-baron-skills"
       }
     },
-    "grokbot-cursor": {
+    "cursor": {
       "mcp": {},
       "plugin": {}
     }
@@ -75,19 +75,10 @@
         "deposited-evidence": "deposited-evidence"
       }
     },
-    "grokbot-cursor": {
-      "app": {
-        "heat-map": "heat-map",
-        "marketplace-intelligence": "marketplace-intelligence",
-        "visual-qa": "visual-qa"
-      },
+    "cursor": {
       "capability": {
-        "analytics": "analytics",
-        "browser": "browser",
         "code": "code",
-        "ide": "ide",
-        "marketplace-intelligence": "marketplace_intelligence",
-        "visual-qa": "visual_qa"
+        "ide": "ide"
       }
     }
   },
@@ -161,7 +152,7 @@
     },
     {
       "id": "cursor-mcp",
-      "runtime": "grokbot-cursor",
+      "runtime": "cursor",
       "kind": "mcp",
       "path": "~/.cursor/mcp.json",
       "format": "json-object-keys",

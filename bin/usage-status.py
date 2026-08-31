@@ -24,13 +24,13 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
-import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
+import teamclaude_status  # noqa: E402
 
 try:
     from zoneinfo import ZoneInfo
@@ -175,6 +175,7 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
         entry = {}
     now_ref = to_aware(_now(default_tz), default_tz)
     spent_until = to_aware(parse_iso(entry.get("spent_until")), default_tz)
+    spent_without_reset = entry.get("spent") is True and spent_until is None
     pct = to_number(entry.get("pct"))
     # reserve line: reserve_pct (new) or legacy soft_cap_pct
     reserve_pct = seat.get("reserve_pct", seat.get("soft_cap_pct"))
@@ -189,7 +190,7 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     # solo user's single (intake) seat stays 'available' and codes normally.
     holds_reserve = (drain == "reserve")
 
-    if su_future is not None:
+    if su_future is not None or spent_without_reset:
         tier = "spent"
     elif over_reserve or holds_reserve:
         tier = "reserve"
@@ -197,7 +198,7 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
         tier = "available"
 
     if tier == "spent":
-        state = "SPENT"
+        state = "SPENT" if su_future is not None else "SPENT (reset unknown)"
     elif tier == "reserve":
         why = f"{pct:g}%≥{reserve_pct}%" if over_reserve else "reserve policy"
         state = f"RESERVE ({why}) — usable as last resort"
@@ -206,7 +207,15 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     else:
         state = "available (no signal recorded)"
 
-    reset_effective = su_future if su_future is not None else next_reset_dt
+    # A hard exhaustion signal with no provider reset remains parked until live
+    # recovery is verified.  The configured/learned schedule may still be useful
+    # context in `next_reset`, but it is not evidence that clears this ledger row
+    # and therefore must not drive `--earliest-reset` or runway calculations.
+    reset_effective = (
+        None if spent_without_reset
+        else su_future if su_future is not None
+        else next_reset_dt
+    )
     runway_seconds = None
     if reset_effective is not None:
         runway_seconds = max(0, int((to_aware(reset_effective, default_tz) - now_ref).total_seconds()))
@@ -238,14 +247,20 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
 
 
 def rotation_status():
-    """Informational: is multi-seat Claude rotation (teamclaude) available on this box? Without
-    it a SINGLE Claude account serves — a real 429 parks that seat (and with it dispatch + the
-    Opus review pass) until its 5h window resets, with no failover. Detected here, never fatal:
-    teamclaude is a runtime dep, not config. See EDGE-CASES.md §'teamclaude absent'."""
-    if shutil.which("teamclaude"):
-        return {"available": True, "status": "available (teamclaude multi-seat rotation live)"}
-    return {"available": False,
-            "status": "unavailable (single-account; a real 429 parks the seat until its 5h reset)"}
+    """Return schema-bound live rotation state without exposing account identities."""
+    return teamclaude_status.inspect_status()
+
+
+def attach_rotation(rows, rotation=None):
+    """Attach one value-free live fleet receipt to Anthropic rows for routing."""
+    rotation = rotation_status() if rotation is None else rotation
+    out = []
+    for row in rows:
+        copy = dict(row)
+        if copy.get("family") == "anthropic":
+            copy["teamclaude_rotation"] = rotation
+        out.append(copy)
+    return out
 
 
 def compute(ledger_path=None):
@@ -255,7 +270,10 @@ def compute(ledger_path=None):
     ledger = json.loads(lp.read_text()) if lp.exists() else {}
     observed = mborch.observed_windows()
     seats = conf.get("seats", {})
-    rows = [seat_state(name, seat, ledger, observed=observed.get(name)) for name, seat in seats.items()]
+    rows = attach_rotation([
+        seat_state(name, seat, ledger, observed=observed.get(name))
+        for name, seat in seats.items()
+    ])
     return conf.get("updated"), rows
 
 
@@ -273,7 +291,11 @@ def main(argv=None):
     ledger = json.loads(Path(lp).read_text()) if Path(lp).exists() else {}
     observed = mborch.observed_windows()
     seats = conf.get("seats", {})
-    rows = [seat_state(name, seat, ledger, observed=observed.get(name)) for name, seat in seats.items()]
+    rotation = rotation_status()
+    rows = attach_rotation([
+        seat_state(name, seat, ledger, observed=observed.get(name))
+        for name, seat in seats.items()
+    ], rotation)
     if args.seat:
         rows = [r for r in rows if r["seat"] == args.seat]
         if not rows:
@@ -303,7 +325,7 @@ def main(argv=None):
 
     if args.json:
         print(json.dumps({"updated": conf.get("updated"), "seats": rows,
-                          "rotation": rotation_status()}, indent=2))
+                          "rotation": rotation}, indent=2))
         return 0
 
     print(f"usage-status  (windows: config/usage-windows.json, updated {conf.get('updated')})")
@@ -317,7 +339,7 @@ def main(argv=None):
         if r["reset_effective"]:
             print(f"  next reset: {r['reset_effective']}")
     print("-" * 72)
-    print(f"rotation: {rotation_status()['status']}")
+    print(f"rotation: {rotation['status']}")
     print("tiers: available → reserve (usable last resort) → spent. limits from recorded "
           "429/ledger + computed windows, never LLM token estimation.")
     return 0

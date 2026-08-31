@@ -31,7 +31,7 @@
       "meter": "SuperGrok Heavy (grok CLI / Build / Bot)", "subscription": "grok-heavy", "family": "xai",
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "weekly", "weekday": null, "time": null, "tz": "America/Chicago" } ],
-      "live_signal": "hard 429 on a real grok call → usage-ledger.json; else SuperGrok usage UI %",
+      "live_signal": "hard 429 or exact provider-confirmed Grok Build usage-balance-exhausted 402 on a real transport error → usage-ledger.json; else SuperGrok usage UI %",
       "reset_note": "abundant worker — fine to fully drain. SET weekday/time once known, or learn via usage-record.py"
     },
     "cursor-other-400": {
@@ -52,35 +52,35 @@
       "meter": "Claude Max $200 seat (Opus 5 + Fable)", "subscription": "claude-max-200", "family": "anthropic", "fable": true,
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 } ],
-      "live_signal": "teamclaude per-seat status; hard limit → usage-ledger.json (Opus-cap and Fable-cap are separate)",
+      "live_signal": "teamclaude aggregate live status; shared 5h/shared weekly gate all models and Fable weekly is an additional cap; hard limit → usage-ledger.json",
       "reset_note": "worker/review seat — fine to fully drain; teamclaude prefers the soonest-reset seat"
     },
     "claude-team-a": {
       "meter": "Claude Team premium seat A $125 (Opus 5 + Fable)", "subscription": "claude-team-125-a", "family": "anthropic", "fable": true,
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 } ],
-      "live_signal": "teamclaude per-seat status; hard limit → usage-ledger.json",
+      "live_signal": "teamclaude anonymous aggregate live status; hard limit → usage-ledger.json",
       "reset_note": "fine to fully drain; confirm Fable grant with bin/detect-capability.py"
     },
     "claude-team-b": {
       "meter": "Claude Team premium seat B $125 (Opus 5 + Fable)", "subscription": "claude-team-125-b", "family": "anthropic", "fable": true,
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 } ],
-      "live_signal": "teamclaude per-seat status; hard limit → usage-ledger.json",
+      "live_signal": "teamclaude anonymous aggregate live status; hard limit → usage-ledger.json",
       "reset_note": "fine to fully drain"
     },
     "claude-pro-a": {
       "meter": "Claude Pro $25 seat A (Opus 5 overflow; NO Fable)", "subscription": "claude-pro-25-a", "family": "anthropic", "fable": false,
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 } ],
-      "live_signal": "teamclaude per-seat status; hard limit → usage-ledger.json",
+      "live_signal": "teamclaude anonymous aggregate live status; hard limit → usage-ledger.json",
       "reset_note": "overflow — fine to fully drain (limited Opus; defaults to Sonnet)"
     },
     "claude-pro-b": {
       "meter": "Claude Pro $25 seat B (Opus 5 overflow; NO Fable)", "subscription": "claude-pro-25-b", "family": "anthropic", "fable": false,
       "reserve_pct": null, "drain": "full", "billing": "included",
       "windows": [ { "kind": "rolling", "hours": 5 } ],
-      "live_signal": "teamclaude per-seat status; hard limit → usage-ledger.json",
+      "live_signal": "teamclaude anonymous aggregate live status; hard limit → usage-ledger.json",
       "reset_note": "second overflow seat"
     },
     "review-e": {

@@ -6,26 +6,32 @@ Capabilities like Fable can silently vanish (plan downgrade) OR silently appear
 edit. This script:
 
   1. DOWNGRADE: a declared capability (e.g. Fable on a seat) no longer served →
-     record `fable-downgrade:<seat>`; resolve-route drops it from the capable set.
+     record `fable-downgrade:<seat>`; the marker lowers the anonymous declared
+     Fable ceiling that live TeamClaude capability must reconcile against.
   2. UPGRADE: a seat regains a capability (or gains one config didn't declare) →
      surface it so the owner clears the marker / updates config and the system
      adopts the stronger seat.
   3. MODELS: surface providers that declare `supersedes` (a newer model waiting to
      replace an incumbent) so a clean slot-in (Opus 5.1, Fable 5.1, …) is adopted.
 
-Verification is best-effort via teamclaude (per-seat Claude caps); on a portable
-box without it, it trusts declared grants and says so. Prints the verified
+Verification is best-effort via TeamClaude's anonymous aggregate status. On a
+portable box without that transport, declared grants remain inventory only and
+Anthropic routing parks rather than inventing live accounts. Prints the verified
 disable-auto-downgrade levers.
 
 Exit 0 normally; 2 if a declared/observed conflict is detected in --check.
 """
 from __future__ import annotations
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, sys, tempfile, time
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mborch  # noqa: E402
+import teamclaude_status  # noqa: E402
+
+LEDGER_LOCK_TIMEOUT_SECONDS = 5.0
+LEDGER_LOCK_POLL_SECONDS = 0.02
 
 DOWNGRADE_GUIDANCE = """\
 Disable automatic model downgrades (verified against code.claude.com/docs/en/model-config):
@@ -50,19 +56,33 @@ def declared_fable_seats():
     return sub_seats, win_seats
 
 
+def teamclaude_fable_report():
+    """Return aggregate Fable capability presence, not current quota headroom.
+
+    A fully quota-spent Fable pool is still capable and must not be mislabeled as
+    a plan downgrade.  Dispatch availability is reported separately by the
+    TeamClaude adapter and consumed by resolve-route.
+    """
+    report = teamclaude_status.inspect_status(models=("claude-fable-5",))
+    if report["transport_present"] is False:
+        return None, report["status"], report
+    if report["service_reachable"] is not True or report["schema_valid"] is not True:
+        return None, report["status"], report
+    row = report.get("models", {}).get("fable", {})
+    live = bool(report.get("reconciled") and row.get("capable_account_count", 0) > 0)
+    note = (
+        f"TeamClaude aggregate: {row.get('eligible_account_count', 0)} eligible / "
+        f"{row.get('capable_account_count', 0)} capable / "
+        f"{row.get('declared_seat_count', 0)} declared Fable accounts; "
+        f"fleet reconciliation {'passed' if report.get('reconciled') else 'failed'}"
+    )
+    return live, note, report
+
+
 def teamclaude_fable():
-    tc = shutil.which("teamclaude")
-    if not tc:
-        return None, "teamclaude not installed here — cannot verify live (run on the worker Mini). Trusting declared grants."
-    for cmd in (["teamclaude", "status", "--json"], ["teamclaude", "models", "--json"]):
-        try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
-            blob = (out.stdout or "") + (out.stderr or "")
-            if out.returncode == 0 and blob.strip():
-                return ("fable" in blob.lower()), f"teamclaude reported {'a' if 'fable' in blob.lower() else 'NO'} fable seat via `{' '.join(cmd)}`"
-        except Exception:
-            continue
-    return None, "teamclaude present but no parseable output — verify manually."
+    """Compatibility API: return the historical (available, note) pair."""
+    live, note, _report = teamclaude_fable_report()
+    return live, note
 
 
 def load_ledger():
@@ -74,21 +94,36 @@ def write_ledger(mutate):
     lp = mborch.ledger_path()
     lock = Path(str(lp) + ".lock")
     lp.parent.mkdir(parents=True, exist_ok=True)
-    while True:
+    deadline = time.monotonic() + LEDGER_LOCK_TIMEOUT_SECONDS
+    acquired = False
+    tmp = None
+    while not acquired:
         try:
             lock.mkdir()
-            break
+            acquired = True
         except FileExistsError:
-            pass
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for the usage-ledger lock")
+            time.sleep(min(LEDGER_LOCK_POLL_SECONDS, remaining))
     try:
         data = json.loads(lp.read_text()) if lp.exists() else {}
+        if not isinstance(data, dict):
+            raise ValueError("usage ledger root must be an object")
         mutate(data)
         fd, tmp = tempfile.mkstemp(prefix=".usage-ledger.", dir=str(lp.parent))
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp, lp)
+        tmp = None
     finally:
-        lock.rmdir()
+        if tmp is not None:
+            Path(tmp).unlink(missing_ok=True)
+        if acquired:
+            try:
+                lock.rmdir()
+            except FileNotFoundError:
+                pass
 
 
 def now_iso():
@@ -117,11 +152,21 @@ def main(argv=None):
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
+    sub_seats, win_seats = declared_fable_seats()
     if args.record_downgrade:
         seat = args.record_downgrade
+        if seat not in sub_seats or seat not in win_seats:
+            print(
+                f"detect-capability: {seat!r} is not a consistently declared Fable seat",
+                file=sys.stderr,
+            )
+            return 2
         write_ledger(lambda d: d.__setitem__(f"fable-downgrade:{seat}",
                      {"grant_lost": "fable", "note": "recorded by detect-capability", "updated": now_iso()}))
-        print(f"DOWNGRADE recorded fable-downgrade:{seat} — resolve-route drops it from Fable-capable.")
+        print(
+            f"DOWNGRADE recorded fable-downgrade:{seat} — the anonymous declared "
+            "Fable ceiling is reduced until cleared."
+        )
         return 0
     restore = args.record_upgrade or args.clear
     if restore:
@@ -129,24 +174,25 @@ def main(argv=None):
         print(f"UPGRADE: cleared fable-downgrade:{restore} — seat re-adopted as Fable-capable.")
         return 0
 
-    sub_seats, win_seats = declared_fable_seats()
     ledger, lp = load_ledger()
     marked = sorted(k.split(":", 1)[1] for k in ledger if str(k).startswith("fable-downgrade:"))
-    live, note = teamclaude_fable()
+    live, note, teamclaude = teamclaude_fable_report()
     conflict = set(sub_seats) ^ set(win_seats)
     effective = sorted(set(sub_seats) - set(marked))
     supers = superseding_models()
 
-    # UPGRADE signals: a marked seat that teamclaude now shows as fable-capable.
+    # The privacy-safe TeamClaude receipt is aggregate-only.  It can prove that
+    # some Fable capability exists, but it cannot map that capability to a named
+    # downgrade marker, so never invent per-seat upgrade candidates here.
     upgrades = []
-    if live is True and marked:
-        upgrades = marked  # capability appears restored → suggest clearing markers
 
     if args.json:
         print(json.dumps({
             "declared_subscriptions": sub_seats, "declared_windows": win_seats,
             "declaration_conflict": sorted(conflict), "downgrade_marked": marked,
-            "effective_fable_seats": effective, "live_check": {"available": live, "note": note},
+            "declared_fable_seats_after_markers": effective,
+            "live_check": {"capability_present": live, "note": note},
+            "teamclaude": teamclaude,
             "upgrade_candidates": upgrades, "superseding_models": supers,
         }, indent=2))
     else:
@@ -157,9 +203,13 @@ def main(argv=None):
         if conflict:
             print(f"⚠ DECLARATION CONFLICT (subscriptions vs windows disagree): {', '.join(sorted(conflict))}")
         print(f"downgrade markers: {', '.join(marked) or '(none)'}")
-        print(f"effective Fable-capable seats now: {', '.join(effective) or '(NONE — review starts at Sol/Opus)'}")
+        print(f"declared Fable seats minus downgrade markers: {', '.join(effective) or '(none)'}")
         print(f"live check: {note}")
-        if live is False and effective:
+        if (teamclaude.get("service_reachable") is True
+                and teamclaude.get("schema_valid") is True
+                and teamclaude.get("reconciled") is False):
+            print("⚠ ROTATION BLOCKED: live anonymous fleet/capability counts do not reconcile with declarations.")
+        elif live is False and effective:
             print("⚠ DOWNGRADE suspected: teamclaude reports NO fable though grants declare one.")
             print("  record it:  bin/detect-capability.py --record-downgrade <seat>")
         if upgrades:

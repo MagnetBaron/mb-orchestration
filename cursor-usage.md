@@ -12,16 +12,18 @@ Cursor Models size is “generous,” not a published dollar figure. Other Model
 - Different harness, tools, default effort, and billing label. The selectable Grok CLI model is exactly `grok-4.6`; `grok-4.6-build` is only this repository's internal route key. Same weights in spirit; different wrapper. Benchmarks move with the harness, not just the name.
 - **Different meters:** Cursor Grok → Cursor Models pool. `grok` CLI → SuperGrok Heavy.
 
-So: use Cursor Grok to empty the IDE pool first. Keep Heavy for the orchestration implementer (`grok` CLI), not because the brain is a different species.
+So: use Grok Build for the orchestration implementation lane while Heavy is healthy. Cursor Grok is the included implementation-only overflow after a provider-confirmed Heavy exhaustion signal, not an independent reviewer or dispatcher.
 
-## Drain order (Cursor Models before Heavy)
+## Implementation order (Heavy, then included Cursor overflow)
 
-1. **Cursor IDE agent / inline** → **Cursor Grok 4.6** (Cursor Models). Drain this pool first.
-2. **Orchestration implementer** → **Grok Build CLI** (Heavy). Do not move repo volume into Cursor just to “save Heavy” if the job is already a Build worktree.
+1. **Orchestration implementer** → **Grok Build CLI** (Heavy) while the seat is usable.
+2. When the real Build call returns the exact provider transport error `402 Payment Required: Grok Build usage balance exhausted` (or exact `HTTP 402: Grok Build usage balance exhausted`), record `grok-heavy` and resolve again. The configured overflow recipe is **Cursor Agent** with the same scoped brief in the same isolated worktree: `--trust --print --workspace <worktree> --model cursor-grok-4.6-xhigh` plus one positional instruction to read that brief. The route is currently catalog-only because its exact inference attempt hung without a terminal receipt, so resolution parks until a successful exact-model smoke promotes it to `live_verified`.
 3. Cursor **Other Models $400** last (`AGENTS.md` Last $).
 4. Codex Sol / teamclaude stay review seats (`sol-usage.md`).
 
-If Cursor Models is healthy, do not start a second Grok Build process on the Mini for an IDE-shaped edit. If the job is a dispatched brief with a worktree, stay on Build.
+The current `cursor-agent --list-models` output proves the exact selectable Cursor model id, not inference availability. The exact invocation was attempted but returned no stdout, edit, or terminal receipt before it was stopped; that negative result keeps the route catalog-only. If later promoted by a successful receipt, the seat remains implementation-only and cannot supply a review verdict or dispatch authority. Review D, Heat Map, and Marketplace Intelligence remain separately permissioned standing Grokbots and stay parked while their code-owned bindings are absent; Cursor overflow never impersonates them.
+
+Grok outage is not quota exhaustion: probe once and park. Generic 402/payment/auth text or a completion quoting the error does not open the Cursor overflow. When Cursor Models is also exhausted, park rather than touching Cursor Other Models automatically.
 
 ## Composer 2.5 — do not hoard a reserve
 
@@ -30,7 +32,7 @@ Composer shares the **same Cursor Models pool** as Grok 4.6. There is no separat
 Keep Composer as a **picker choice**, not a savings account:
 
 - Use Composer (or Composer Fast) for tight, interactive IDE loops: rename, small patch, follow-the-cursor edit, cheap iteration.
-- Use Cursor Grok 4.6 for harder / longer IDE agents.
+- Use Cursor Grok 4.6 for harder / longer IDE agents, including the bounded Build-overflow path above.
 - Do not leave Composer unused “in case.” Prefer Grok 4.6 when the task is real work; flip to Composer when latency and short hops matter.
 - Do not use Composer as the orchestration implementer.
 
@@ -38,7 +40,7 @@ Keep Composer as a **picker choice**, not a savings account:
 
 | Pool | What it is | Ultra include |
 |------|------------|---------------|
-| **Cursor Models** | First-party: Cursor **Grok 4.6**, **Grok 4.5**, **Composer 2.5** (and Fast) | Generous. **Not** the $400. Drain Grok 4.6 here first. |
+| **Cursor Models** | First-party: Cursor **Grok 4.6**, **Grok 4.5**, **Composer 2.5** (and Fast) | Generous. **Not** the $400. For orchestration, use only as included overflow after confirmed Grok Build exhaustion and a live-verified Cursor route. |
 | **Other Models** | Third-party at API list rates | **$400 / mo**, then on-demand if enabled |
 
 Unlimited **Tab** completions are outside both pools.

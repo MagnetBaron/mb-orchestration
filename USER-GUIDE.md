@@ -134,8 +134,10 @@ Prices are indicative for **sizing**; verify current pricing/tiers before buying
 The system leans on a few verified projects rather than reinventing them:
 
 - **teamclaude** — https://github.com/KarpelesLab/teamclaude (MIT). Multi-account Claude proxy with
-  automatic quota-based rotation for Claude Code; tracks **per-model** weekly caps, so an account out
-  of one model still serves others. This is what turns "5 Claude accounts" into one resilient pool.
+  automatic quota-based rotation for Claude Code. Shared 5h/shared-weekly buckets gate all models;
+  model-family weekly allowances are additional, so only a spent family bucket can leave another
+  family usable. Orca treats the configured five-account inventory as a ceiling and uses only the
+  freshly probed anonymous live subset instead of assuming every declared account is imported.
   Install: `npm install -g @karpeleslab/teamclaude`.
 - **ccusage** — https://github.com/ryoppippi/ccusage (MIT). Token-usage/cost analysis for coding CLIs,
   including a 5-hour-block report matching Claude's billing windows. Good for calibrating the anchors

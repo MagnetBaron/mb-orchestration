@@ -35,7 +35,7 @@ Read `install.md`, `AGENTS.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli
 
 - Read `DOCTRINE.md`, `mcp-routing.md`, `visual-qa.md`, `visual-qa-cli.md`, `EDGE-CASES.md` against what Grok/Cursor did.
 - Output `ship` | `fix-list` | `blocked` for the *setup*, not a product change. Delegate an OpenAI-family second look to Codex Sol if the risk gate calls for it.
-- Pin claude-opus-5. teamclaude across the five Claude seats. No Fable as installer.
+- Pin claude-opus-5. Use teamclaude across every currently imported, freshly probed eligible Claude account; reconcile its anonymous live count against the five-seat configured ceiling. No Fable as installer.
 
 ## Owner-only (not a coding bot)
 

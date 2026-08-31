@@ -632,6 +632,12 @@ class FableEvalLabelTests(unittest.TestCase):
             "run,--,-p,{prompt},--model,{model},{model}",
             "run,--,-p,prefix-{prompt},--model,{model}",
             "run,--,-p,{unknown},--model,{model},{prompt}",
+            "run,--,-p,{prompt},--model,{model},--output-format,text",
+            "run,--,-p,{prompt},--model,{model},--output-format,stream-json,--fallback-model,opus",
+            "run,--,-p,{prompt},--model,{model},--model,opus,--output-format,stream-json,--no-session-persistence",
+            "run,--,{prompt},--model,{model},--output-format,stream-json,--no-session-persistence",
+            "run,--,-p,{prompt},--model,{model},--output-format,stream-json",
+            "env,--,-p,{prompt},--model,{model},--output-format,stream-json,--no-session-persistence",
         )
         for template in invalid:
             with self.subTest(template=template), mock.patch.object(
@@ -658,8 +664,13 @@ class FableEvalLabelTests(unittest.TestCase):
                     self.fe.run_via_teamclaude("claude-opus-5", "test prompt")
 
     def test_teamclaude_renders_selected_model_and_prompt_once(self):
+        stdout = "\n".join((
+            json.dumps({"type": "system", "subtype": "init", "model": "claude-opus-5"}),
+            json.dumps({"type": "assistant", "message": {"model": "claude-opus-5"}}),
+            json.dumps({"type": "result", "subtype": "success", "result": "answer"}),
+        )) + "\n"
         proc = self.fe.subprocess.CompletedProcess(
-            ["teamclaude"], 0, stdout="answer\n", stderr=""
+            ["teamclaude"], 0, stdout=stdout, stderr=""
         )
         with mock.patch.object(
             self.fe, "_run_bounded_teamclaude", return_value=proc
@@ -671,35 +682,64 @@ class FableEvalLabelTests(unittest.TestCase):
         self.assertEqual(argv.count("prompt,with,commas"), 1)
 
     def test_teamclaude_runner_streams_output_bound_and_kills_timeout_descendants(self):
-        with mock.patch.object(self.fe, "TEAMCLAUDE_BIN", sys.executable), \
-                mock.patch.object(self.fe, "TEAMCLAUDE_ARGV", "-c,{prompt},{model}"):
-            overflow = (
-                "import sys; sys.stdout.write('x' * "
-                f"{self.fe.MAX_PROVIDER_OUTPUT_BYTES + 1})"
-            )
-            with self.assertRaisesRegex(self.fe.TeamclaudeError, "bounded output"):
-                self.fe.run_via_teamclaude("unused", overflow, timeout=3)
+        overflow = (
+            "import sys; sys.stdout.write('x' * "
+            f"{self.fe.MAX_PROVIDER_OUTPUT_BYTES + 1})"
+        )
+        with self.assertRaisesRegex(self.fe.TeamclaudeError, "bounded output"):
+            self.fe._run_bounded_teamclaude([sys.executable, "-c", overflow], timeout=3)
 
-            with tempfile.TemporaryDirectory() as td:
-                pid_path = Path(td) / "child.pid"
-                script = (
-                    "import subprocess,sys,time; "
-                    "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
-                    "open(sys.argv[1],'w').write(str(p.pid)); time.sleep(60)"
+        with tempfile.TemporaryDirectory() as td:
+            pid_path = Path(td) / "child.pid"
+            script = (
+                "import subprocess,sys,time; "
+                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                "open(sys.argv[1],'w').write(str(p.pid)); time.sleep(60)"
+            )
+            with self.assertRaisesRegex(self.fe.TeamclaudeError, "timed out"):
+                self.fe._run_bounded_teamclaude(
+                    [sys.executable, "-c", script, str(pid_path)], timeout=0.5
                 )
-                with self.assertRaisesRegex(self.fe.TeamclaudeError, "timed out"):
-                    self.fe.run_via_teamclaude(str(pid_path), script, timeout=0.5)
-                self.assertTrue(pid_path.exists())
-                child_pid = int(pid_path.read_text())
-                deadline = time.monotonic() + 3
-                while time.monotonic() < deadline:
-                    try:
-                        os.kill(child_pid, 0)
-                    except ProcessLookupError:
-                        break
-                    time.sleep(0.05)
-                else:
-                    self.fail("teamclaude timeout descendant survived process-group cleanup")
+            self.assertTrue(pid_path.exists())
+            child_pid = int(pid_path.read_text())
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                self.fail("teamclaude timeout descendant survived process-group cleanup")
+
+    def test_teamclaude_stream_requires_exact_requested_model(self):
+        def stream(init_model, response_model=None):
+            rows = [{"type": "system", "subtype": "init", "model": init_model}]
+            if response_model is not None:
+                rows.append({"type": "assistant", "message": {"model": response_model}})
+            rows.append({"type": "result", "subtype": "success", "result": "answer"})
+            return "\n".join(json.dumps(row) for row in rows) + "\n"
+
+        for stdout in (
+            stream("claude-opus-5"),
+            stream("claude-fable-5"),
+            stream("claude-fable-5", "claude-opus-5"),
+            json.dumps({"type": "result", "subtype": "success", "result": "answer"}),
+        ):
+            proc = self.fe.subprocess.CompletedProcess(
+                ["teamclaude"], 0, stdout=stdout, stderr=""
+            )
+            with self.subTest(stdout=stdout), mock.patch.object(
+                self.fe, "_run_bounded_teamclaude", return_value=proc
+            ), self.assertRaisesRegex(self.fe.TeamclaudeError, "model|system/init"):
+                self.fe.run_via_teamclaude("claude-fable-5", "prompt")
+
+    def test_teamclaude_rotation_rejects_account_pin(self):
+        with mock.patch.dict(os.environ, {"TC_ACCT": "pinned-account"}), \
+                mock.patch.object(self.fe, "_run_bounded_teamclaude") as run, \
+                self.assertRaisesRegex(self.fe.TeamclaudeError, "disables TeamClaude rotation"):
+            self.fe.run_via_teamclaude("claude-fable-5", "prompt")
+        run.assert_not_called()
 
     def test_trial_suite_requires_exact_complete_unique_axes_before_calls(self):
         valid = [
@@ -900,7 +940,7 @@ class OperationalLiveRouteTests(unittest.TestCase):
             provs, connectors(), self._rows(), "repo-code", "", "", False, 0, registry,
         )
         self.assertFalse(any(s.get("seat") == "grok-build" for s in steps))
-        self.assertTrue(any(s.get("available") for s in steps))
+        self.assertFalse(any(s.get("available") for s in steps))
 
     def test_unknown_route_state_fails_closed(self):
         registry = copy.deepcopy(live())
@@ -1668,8 +1708,9 @@ class LiveEvidenceTests(unittest.TestCase):
         grok = registry["routes"]["grok-4.6-build"]
         self.assertEqual(grok["attestations"]["local_access_smoke"]["signal"], "standing_provider")
         cursor = registry["routes"]["grok-4.6-cursor"]
-        self.assertEqual(cursor["evidence_strength"], "owner_eval")
-        self.assertEqual(cursor["attestations"]["local_access_smoke"]["signal"], "standing_provider")
+        self.assertEqual(cursor["route_state"], "catalog_verified")
+        self.assertEqual(cursor["evidence_strength"], "cli_listing")
+        self.assertEqual(cursor["attestations"]["local_access_smoke"]["state"], "missing")
 
 
 class ResolverLivePredicateTests(unittest.TestCase):
@@ -1766,7 +1807,16 @@ class TypedAttestationTests(unittest.TestCase):
             rid for rid, route in registry["routes"].items()
             if route.get("route_state") == "live_verified"
         ]
-        self.assertGreaterEqual(len(live_ids), 8)
+        self.assertEqual(set(live_ids), {
+            "fable-5-teamclaude",
+            "gpt-5.6-luna-codex",
+            "gpt-5.6-sol-codex",
+            "gpt-5.6-terra-codex",
+            "grok-4.6-build",
+            "opus-4.8-teamclaude",
+            "opus-5-teamclaude",
+        })
+        self.assertNotIn("grok-4.6-cursor", live_ids)
         self.assertNotIn("grok-bot-visual-qa", live_ids)
         self.assertNotIn("grok-bot-heat-map", live_ids)
         for rid in live_ids:
@@ -2554,7 +2604,7 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertEqual(implement["seat"], "grok-build", steps)
         self.assertEqual(implement["billing"], "included")
 
-    def test_non_dispatch_included_worker_beats_dispatcher_within_billing_class(self):
+    def test_catalog_only_non_dispatch_worker_cannot_beat_live_dispatcher(self):
         rows = self._rows()
         next(r for r in rows if r["seat"] == "cursor-models")["tier"] = "reserve"
         steps = rr.pick_implement(
@@ -2562,7 +2612,7 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             avoid_provider="grok-build",
         )
         implement = next(s for s in steps if not s.get("input_seat"))
-        self.assertEqual(implement["seat"], "cursor-grok", steps)
+        self.assertEqual(implement["seat"], "grok-build", steps)
         self.assertEqual(implement["billing"], "included")
 
     def test_intake_family_pairing_is_artifact_only_and_not_sole_reviewer(self):
@@ -2806,6 +2856,76 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
             {r["independence_group"] for r in review["chain"]},
             {"anthropic", "open-weight"},
         )
+
+    def test_anonymous_anthropic_quota_exhaustion_can_open_review_e(self):
+        provs, registry = self._live_review_e()
+        receipt = {
+            "service_reachable": True,
+            "schema_valid": True,
+            "reconciled": True,
+            "models": {
+                "opus": {
+                    "eligible_account_count": 0,
+                    "all_capable_quota_exhausted": True,
+                    "blocked_by_policy": False,
+                },
+            },
+        }
+        rows = self._rows()
+        for row in rows:
+            if row.get("family") == "anthropic":
+                row["teamclaude_rotation"] = receipt
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, rows, {}, registry, dispatcher="grok-build",
+            )
+        ids = [row["provider"] for row in reviewers]
+        self.assertNotIn("opus-5", ids)
+        self.assertIn("codex-sol", ids)
+        self.assertIn("review-e", ids)
+
+    def test_stale_anthropic_pool_does_not_masquerade_as_quota_exhaustion(self):
+        provs, registry = self._live_review_e()
+        receipt = {
+            "service_reachable": True,
+            "schema_valid": True,
+            "reconciled": True,
+            "models": {
+                "opus": {
+                    "eligible_account_count": 0,
+                    "all_capable_quota_exhausted": False,
+                    "blocked_by_policy": False,
+                },
+            },
+        }
+        rows = self._rows()
+        for row in rows:
+            if row.get("family") == "anthropic":
+                row["teamclaude_rotation"] = receipt
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, rows, {}, registry, dispatcher="grok-build",
+            )
+        ids = [row["provider"] for row in reviewers]
+        self.assertNotIn("opus-5", ids)
+        self.assertNotIn("review-e", ids)
+
+    def test_all_native_spent_opens_only_time_critical_advisory_review_e(self):
+        provs, registry = self._live_review_e()
+        rows = self._rows(spent=("claude-max", "claude-pro-a", "codex-sol"))
+        with self._review_e_route_probe():
+            ordinary = rr.live_reviewers(
+                provs, rows, {}, registry, dispatcher="grok-build",
+            )
+            urgent = rr.live_reviewers(
+                provs, rows, {}, registry, dispatcher="grok-build",
+                review_e_time_critical=True,
+            )
+        self.assertNotIn("review-e", [row["provider"] for row in ordinary])
+        self.assertEqual([row["provider"] for row in urgent], ["review-e"])
+        review = rr.pick_review("cross-family", urgent, True, 0)
+        self.assertFalse(review["satisfied"], review)
+        self.assertEqual([row["provider"] for row in review["chain"]], ["review-e"])
 
     def test_review_e_stays_after_native_intake_family_artifact_review(self):
         provs, registry = self._live_review_e()

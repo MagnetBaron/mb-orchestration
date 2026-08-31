@@ -153,8 +153,56 @@ def provider_seats(pid, providers, rows):
             [r for r in rows if r.get("seat") == usage_seat and match(r)],
             key=routing.route_key,
         )
-    seats = [r for r in rows if match(r)]
-    return sorted(seats, key=routing.route_key)
+    seats = sorted([r for r in rows if match(r)], key=routing.route_key)
+    if family != "anthropic":
+        return seats
+
+    # Runtime usage rows carry one privacy-safe aggregate from the live
+    # TeamClaude daemon. Unit callers that construct legacy rows omit it; the
+    # production usage-status path always attaches it. Once present it is
+    # authoritative and fail-closed: static declarations cannot resurrect an
+    # unreachable, over-declared, exhausted, or malformed live fleet. A smaller
+    # observed fleet remains usable; its anonymous eligible count is the capacity.
+    receipts = [r.get("teamclaude_rotation") for r in rows
+                if r.get("family") == "anthropic" and "teamclaude_rotation" in r]
+    if not receipts:
+        return seats
+    receipt = receipts[0]
+    if any(other != receipt for other in receipts[1:]) or not isinstance(receipt, dict):
+        return []
+    model = str(prov.get("model") or "").lower()
+    model_family = "fable" if "fable" in model else "sonnet" if "sonnet" in model else "opus"
+    model_status = (receipt.get("models") or {}).get(model_family) or {}
+    if not (
+        receipt.get("service_reachable") is True
+        and receipt.get("schema_valid") is True
+        and receipt.get("reconciled") is True
+        and isinstance(model_status.get("eligible_account_count"), int)
+        and model_status.get("blocked_by_policy") is not True
+    ):
+        return []
+    if not seats:
+        return []
+    eligible_count = model_status.get("eligible_account_count")
+    quota_spent = model_status.get("all_capable_quota_exhausted") is True
+    if eligible_count <= 0 and not quota_spent:
+        return []
+    pool = dict(seats[0])
+    pool.update({
+        "seat": f"teamclaude-{model_family}-pool",
+        "tier": "spent" if quota_spent else "available",
+        "usable": not quota_spent,
+        "available": not quota_spent,
+        "state": (
+            "live TeamClaude pool (all capable anonymous accounts quota-spent)"
+            if quota_spent else
+            f"live TeamClaude pool ({eligible_count} eligible anonymous account(s))"
+        ),
+        "runtime_pool_selected": True,
+        "runtime_eligible_accounts": eligible_count,
+        "runtime_quota_spent": quota_spent,
+    })
+    return [pool]
 
 
 def provider_backing_subscriptions(pid, provider):
@@ -418,7 +466,10 @@ def select_dispatcher(entrypoints, providers, rows, registry, requested=None, pr
                             f"fell back to {chosen['provider']} on {s['seat']}")}
 
 
-def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=()):
+def live_reviewers(
+    providers, rows, ledger, registry, dispatcher=None, authors=(),
+    review_e_time_critical=False,
+):
     """Reviewers whose bound catalog route is live. Registry is required; unknown state fails closed."""
     if not registry:
         return []
@@ -472,15 +523,21 @@ def live_reviewers(providers, rows, ledger, registry, dispatcher=None, authors=(
     }
     native_quota_spent = {
         group for group, state in native_family_state.items()
-        if state["backing_rows"]
+        if state["route_live"]
+        and state["backing_rows"]
         and all(r.get("tier") == "spent" for r in state["backing_rows"])
     }
+    all_native_quota_spent = bool(native_family_state) and all(
+        group in native_quota_spent for group in native_family_state
+    )
     review_e = prov.get("review-e") or {}
     review_e_open = bool(
         review_e.get("wired") is True
         and modelreg.provider_can_review(registry, review_e)
-        and native_available
-        and native_quota_spent
+        and (
+            (native_available and native_quota_spent)
+            or (review_e_time_critical and all_native_quota_spent)
+        )
     )
 
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
@@ -598,9 +655,11 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
 
 
 IMPLEMENT_FNS = frozenset({"implement", "ide"})
+CURSOR_GROK_OVERFLOW_PROVIDER = "cursor-grok"
+GROK_BUILD_USAGE_SEAT = "grok-heavy"
 
 
-def review_d_input_step(providers, registry):
+def review_d_input_step(providers, registry, integration_overlay=None):
     """Return the mandatory Review D input gate for any pixel/storefront route.
 
     This is independent of implementation selection: review-only routing must park
@@ -631,7 +690,10 @@ def review_d_input_step(providers, registry):
     )
     route_live = modelreg.provider_route_is_live(registry, review_d)
     runtime_caps = {
-        cap: integrations.effective("grok", "capability", cap, require_callable=True)
+        cap: integrations.effective(
+            "grok", "capability", cap, require_callable=True,
+            overlay=integration_overlay if integration_overlay is not None else {},
+        )
         for cap in ("browser", "pixels")
     }
     available = (
@@ -708,6 +770,25 @@ def provider_can_mcp_bulk(provider, registry):
     return "mcp_bulk" in (route.get("capabilities") or [])
 
 
+def implementation_overflow_dependency_satisfied(provider_id, rows):
+    """Gate Cursor Grok behind positive, ledger-backed Grok Build exhaustion.
+
+    Cursor Grok is implementation overflow, not an economic peer of Grok Build.
+    Even after its own inference route becomes live, it must remain inert while
+    Grok Build has quota.  A synthetic/static ``tier=spent`` row is insufficient:
+    usage-status must have derived the state from a recorded provider limit.
+    """
+    if provider_id != CURSOR_GROK_OVERFLOW_PROVIDER:
+        return True
+    for row in rows:
+        if row.get("seat") != GROK_BUILD_USAGE_SEAT or row.get("tier") != "spent":
+            continue
+        ledger = row.get("ledger")
+        if isinstance(ledger, dict) and ledger.get("spent") is True:
+            return True
+    return False
+
+
 def last_resort_coder(prov, registry, subscription, cap_ok):
     """Concrete live coding-capable provider on this subscription, or None.
 
@@ -731,7 +812,7 @@ def last_resort_coder(prov, registry, subscription, cap_ok):
 
 
 def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels,
-                   task_seconds, registry, avoid_provider=None):
+                   task_seconds, registry, avoid_provider=None, integration_overlay=None):
     prov = providers["providers"]
     steps = []
     if not registry:
@@ -745,11 +826,18 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     def cap_ok(pid):
         if not needs_connector:
             return True
-        return needs_connector in routing.capabilities_of(pid, prov.get(pid, {}), connectors)
+        return needs_connector in routing.capabilities_of(
+            pid, prov.get(pid, {}), connectors,
+            session=integration_overlay if integration_overlay is not None else {},
+        )
 
     # candidate implement providers: live catalog route + implement/ide + code + needed capability
-    impl_ids = [pid for pid, p in prov.items()
-                if provider_can_code(p, registry) and cap_ok(pid)]
+    impl_ids = [
+        pid for pid, p in prov.items()
+        if provider_can_code(p, registry)
+        and cap_ok(pid)
+        and implementation_overflow_dependency_satisfied(pid, rows)
+    ]
     if needs_connector and not impl_ids:
         matches = routing.connectors_for_label(needs_connector, connectors)
         details = []
@@ -757,7 +845,10 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
             if not provider_can_code(p, registry):
                 continue
             for cid, meta in matches:
-                ok, reason = routing.connector_is_effective(pid, cid, meta)
+                ok, reason = routing.connector_is_effective(
+                    pid, cid, meta,
+                    session=integration_overlay if integration_overlay is not None else {},
+                )
                 if not ok:
                     details.append(f"{pid}/{cid}: {reason}")
         explanation = "; ".join(details) if details else "no live coding provider exposes that capability"
@@ -795,7 +886,10 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         # do not snapshot then continue to Grok. Connector match, live Terra route,
         # mcp_bulk on functions + provider capabilities + bound live-route
         # capabilities, and a currently usable Terra seat are all required.
-        matches, why = routing.mcp_volume_matches(needs_mcp, connectors, routing.MCP_VOLUME_PROVIDER)
+        matches, why = routing.mcp_volume_matches(
+            needs_mcp, connectors, routing.MCP_VOLUME_PROVIDER,
+            session=integration_overlay if integration_overlay is not None else {},
+        )
         if not matches:
             steps.append({
                 "seat": "(none)",
@@ -869,7 +963,8 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         # intake subscription implements. Luna/Terra/Sol sharing the plan is not enough.
         last_dollar = [pid for pid, p in prov.items()
                        if "last_dollar" in (p.get("functions") or [])
-                       and provider_can_code(p, registry) and cap_ok(pid)]
+                       and provider_can_code(p, registry) and cap_ok(pid)
+                       and implementation_overflow_dependency_satisfied(pid, rows)]
         intake = sorted(
             [r for r in rows if r.get("intake") and routing.usable(r)],
             key=routing.route_key,
@@ -909,7 +1004,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     return steps
 
 
-def main(argv=None):
+def main(argv=None, *, integration_overlay=None):
     ap = argparse.ArgumentParser(description="Deterministic router.")
     ap.add_argument("--class", dest="klass", required=True)
     ap.add_argument("--scale", default="routine", choices=["routine", "elevated"])
@@ -943,13 +1038,31 @@ def main(argv=None):
     args = ap.parse_args(argv)
     started = time.perf_counter()
 
+    # Resolver calls are isolated even when multiple planners share this module.
+    # A previous process-global overlay is never inherited implicitly. The bridge
+    # passes a validated overlay explicitly for exactly this invocation.
+    integrations.clear_process_session()
+    if integration_overlay is not None and args.integration_session:
+        _emit_bootstrap(args, "multiple_integration_sessions",
+                        "only one explicit integration session is allowed", started)
+        sys.exit("resolve-route: only one explicit integration session is allowed")
     if args.integration_session:
         try:
-            integrations.load_session(args.integration_session)
+            integration_overlay = integrations.validated_session_from_source(args.integration_session)
         except (integrations.InventoryError, OSError) as exc:
             _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
             sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
-    integration_session = integrations.session_provenance()
+    if integration_overlay is not None:
+        try:
+            integration_overlay = integrations.claim_overlay_for_resolution(integration_overlay)
+        except integrations.InventoryError as exc:
+            _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
+            sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
+    routing_overlay = integration_overlay if integration_overlay is not None else {}
+    integration_session = (
+        integrations.session_provenance(integration_overlay)
+        if integration_overlay is not None else None
+    )
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
@@ -1004,16 +1117,17 @@ def main(argv=None):
         implement = pick_implement(
             providers, connectors, rows, args.klass, args.needs_connector.strip(),
             args.needs_mcp.strip(), args.pixels, args.task_seconds, registry,
-            avoid_provider=effective_dispatcher,
+            avoid_provider=effective_dispatcher, integration_overlay=routing_overlay,
         )
     if extra.get("review_d") or args.pixels or args.klass == "storefront-theme":
         if implement is None:
             implement = []
-        implement.append(review_d_input_step(providers, registry))
+        implement.append(review_d_input_step(providers, registry, routing_overlay))
     authors = [s.get("seat") for s in (implement or [])
                if s.get("available", True) and not s.get("input_seat") and s.get("seat") not in (None, "(none)")]
     reviewers = live_reviewers(providers, rows, ledger, registry,
-                               dispatcher=effective_dispatcher, authors=authors)
+                               dispatcher=effective_dispatcher, authors=authors,
+                               review_e_time_critical=args.user_said_ship)
     review_e = providers["providers"].get("review-e") or {}
     review_e_wired = bool(
         review_e.get("wired") is True

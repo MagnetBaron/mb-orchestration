@@ -45,7 +45,7 @@ MagnetBaron fork adds the clone URL + `mb/` overlay.
 
 1. `npm install -g @karpeleslab/teamclaude`
 2. From the clone: `./mb/install-local.sh`
-3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional seat (Max + 2 Team-premium + 2 Pro = five seats total)
+3. `teamclaude import` for the seat already in Claude Code, then `mb-teamclaude-login` once per additional configured seat (this inventory's ceiling is Max + 2 Team-premium + 2 Pro = five). A smaller imported subset remains usable but is reported as degraded; never claim the absent seats as capacity.
 4. `teamclaude service install` and `teamclaude alias --install`
 5. `teamclaude run -- --model claude-opus-5`
 

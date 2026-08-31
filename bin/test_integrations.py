@@ -231,21 +231,21 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertIsNone(integrations.load_session())
         self.assertIsNone(integrations.session())
 
-    def test_session_only_grokbot_alias_and_value_free_provenance(self):
+    def test_session_only_cursor_alias_and_value_free_provenance(self):
         self.write([])
         inv = integrations.refresh(force=True)
-        session_file = Path(self.tmp.name) / "grokbot-session.json"
-        row = record(runtime="grokbot-cursor", kind="capability", ident="visual-qa")
-        self.write_session(session_file, "grokbot-cursor", [row])
+        session_file = Path(self.tmp.name) / "cursor-session.json"
+        row = record(runtime="cursor", kind="capability", ident="code")
+        self.write_session(session_file, "cursor", [row])
         overlay = integrations.load_session(str(session_file))
         ok, _ = integrations.effective(
-            "grokbot-cursor", "capability", "visual_qa", require_callable=True,
+            "cursor", "capability", "code", require_callable=True,
             inv=inv, overlay=overlay,
         )
         self.assertTrue(ok)
         provenance = integrations.session_provenance(overlay)
-        self.assertEqual(provenance["runtime"], "grokbot-cursor")
-        self.assertEqual(provenance["canonical_ids"], ["visual_qa"])
+        self.assertEqual(provenance["runtime"], "cursor")
+        self.assertEqual(provenance["canonical_ids"], ["code"])
         self.assertEqual(set(provenance["attestation"]), {
             "source", "observed_at", "expires_at", "digest",
         })
@@ -253,21 +253,21 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertNotIn(self.session_nonce, json.dumps(provenance))
         self.assertNotIn("must-not-escape", json.dumps(integrations.session_provenance(overlay)))
 
-        failed = record(runtime="grokbot-cursor", kind="capability", ident="browser", callable=False)
-        self.write_session(session_file, "grokbot-cursor", [failed])
+        failed = record(runtime="cursor", kind="capability", ident="ide", callable=False)
+        self.write_session(session_file, "cursor", [failed])
         failed_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
-        self.assertEqual(failed_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(failed_provenance["runtime"], "cursor")
         self.assertEqual(failed_provenance["canonical_ids"], [])
 
-        unknown = record(runtime="grokbot-cursor", kind="capability", ident="not-registered")
-        self.write_session(session_file, "grokbot-cursor", [unknown])
+        unknown = record(runtime="cursor", kind="capability", ident="visual-qa")
+        self.write_session(session_file, "cursor", [unknown])
         unknown_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
-        self.assertEqual(unknown_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(unknown_provenance["runtime"], "cursor")
         self.assertEqual(unknown_provenance["canonical_ids"], [])
 
-        self.write_session(session_file, "grokbot-cursor", [])
+        self.write_session(session_file, "cursor", [])
         empty_provenance = integrations.session_provenance(integrations.load_session(str(session_file)))
-        self.assertEqual(empty_provenance["runtime"], "grokbot-cursor")
+        self.assertEqual(empty_provenance["runtime"], "cursor")
         self.assertEqual(empty_provenance["canonical_ids"], [])
 
     def test_session_attestation_rejects_stale_future_tampered_reused_and_secret_fields(self):
@@ -535,23 +535,21 @@ class IntegrationInventoryTests(unittest.TestCase):
                 self.assertEqual(len(github), 1)
                 self.assertTrue(integrations._explicit_negative(github[0]))
 
-        # Different aliases resolving to one canonical capability also coalesce
-        # with denial winning, and the denied ID is absent from provenance.
-        alias_positive = record(
-            runtime="grokbot-cursor", kind="capability", ident="visual-qa",
-        )
+        # Repeated Cursor capability evidence coalesces with denial winning, and
+        # generic Cursor still has no specialized Grokbot aliases.
+        alias_positive = record(runtime="cursor", kind="capability", ident="code")
         canonical_negative = record(
-            runtime="grokbot-cursor", kind="capability", ident="visual_qa",
+            runtime="cursor", kind="capability", ident="code",
             blocked=True,
         )
         for rows in (
             [alias_positive, canonical_negative],
             [canonical_negative, alias_positive],
         ):
-            self.write_session(path, "grokbot-cursor", rows)
+            self.write_session(path, "cursor", rows)
             overlay = integrations.load_session(str(path))
             self.assertFalse(integrations.effective(
-                "grokbot-cursor", "capability", "visual_qa", require_callable=True,
+                "cursor", "capability", "code", require_callable=True,
                 inv={"records": []}, overlay=overlay,
             )[0])
             self.assertEqual(integrations.session_provenance(overlay)["canonical_ids"], [])
@@ -752,7 +750,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         loaded = gen.load(ROOT / "config/roles.json", ROOT / "config/providers.json", inventory=inv)
         self.assertIn("shopify-theme-build", loaded["roles"])
 
-    def test_doctor_discovery_is_read_only_and_cli_roles_do_not_depend_on_cursor_aliases(self):
+    def test_doctor_discovery_is_read_only_and_cursor_cannot_claim_grokbot_aliases(self):
         os.environ.pop("MB_INTEGRATION_FIXTURE", None)
         os.environ["MB_INTEGRATION_SOURCE_ROOT"] = str(Path(self.tmp.name) / "empty-home")
         doctor = load_doctor()
@@ -763,10 +761,20 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertFalse(integrations.cache_path().exists())
         self.assertFalse(integrations.events_path().exists())
 
-        del adapters["session_only_aliases"]["grokbot-cursor"]["capability"]["browser"]
+        del adapters["session_only_aliases"]["cursor"]["capability"]["code"]
         doctor.ERRORS.clear()
         doctor.check_integration_adapters(adapters, providers)
-        self.assertEqual(doctor.ERRORS, [])
+        self.assertTrue(any("cursor session-only aliases must be exactly code+ide" in e
+                            for e in doctor.ERRORS), doctor.ERRORS)
+        adapters["session_only_aliases"]["cursor"]["capability"]["code"] = "code"
+        adapters["provider_runtimes"]["grok-bot-review-d"] = "cursor"
+        doctor.ERRORS.clear()
+        doctor.check_integration_adapters(adapters, providers)
+        self.assertTrue(any("specialized provider grok-bot-review-d must stay on the grok runtime" in e
+                            for e in doctor.ERRORS), doctor.ERRORS)
+        self.assertTrue(any("non-code/ide capability aliases" in e for e in doctor.ERRORS),
+                        doctor.ERRORS)
+        adapters["provider_runtimes"]["grok-bot-review-d"] = "grok"
         self.assertEqual(adapters["provider_runtimes"]["grok-bot-review-d"], "grok")
 
     def test_cli_session_merge_json_and_check(self):

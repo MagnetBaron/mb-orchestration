@@ -230,7 +230,7 @@
         "inventory_schema_version": { "const": 1 },
         "ttl_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
         "lock_timeout_seconds": { "type": "number", "minimum": 0.1, "maximum": 30 },
-        "provider_runtimes": { "type": "object", "additionalProperties": { "enum": ["claude", "codex", "grok", "grokbot-cursor"] } },
+        "provider_runtimes": { "type": "object", "additionalProperties": { "enum": ["claude", "codex", "grok", "cursor"] } },
         "aliases": { "type": "object" },
         "session_only_aliases": { "type": "object" },
         "sources": {
@@ -240,7 +240,7 @@
             "required": ["id", "runtime", "kind", "path", "format", "key"],
             "properties": {
               "id": { "type": "string", "minLength": 1 },
-              "runtime": { "enum": ["claude", "codex", "grok", "grokbot-cursor"] },
+              "runtime": { "enum": ["claude", "codex", "grok", "cursor"] },
               "kind": { "enum": ["mcp", "plugin", "app", "connector", "capability"] },
               "path": { "type": "string", "minLength": 1 },
               "format": { "enum": ["json-object-keys", "json-list", "toml-object-keys", "toml-list"] },

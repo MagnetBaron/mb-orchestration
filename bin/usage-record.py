@@ -20,7 +20,7 @@ is implemented. A successful parse persists zero history rows and never claims c
 Only a real 429 (record-429.sh) may mark a seat spent.
 """
 from __future__ import annotations
-import argparse, json, math, os, shutil, subprocess, sys, tempfile
+import argparse, json, math, os, shutil, subprocess, sys, tempfile, time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +34,8 @@ usage_status = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(usage_status)
 
 _WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+LEDGER_LOCK_TIMEOUT_SECONDS = 5.0
+LEDGER_LOCK_POLL_SECONDS = 0.02
 
 
 def parse_owner_pairs(pairs, configured_seats):
@@ -111,14 +113,22 @@ def write_ledger_pct(seat, pct):
     lp = mborch.ledger_path()
     lock = Path(str(lp) + ".lock")
     lp.parent.mkdir(parents=True, exist_ok=True)
-    while True:
+    deadline = time.monotonic() + LEDGER_LOCK_TIMEOUT_SECONDS
+    acquired = False
+    tmp = None
+    while not acquired:
         try:
             lock.mkdir()
-            break
+            acquired = True
         except FileExistsError:
-            pass
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for the usage-ledger lock")
+            time.sleep(min(LEDGER_LOCK_POLL_SECONDS, remaining))
     try:
         data = json.loads(lp.read_text()) if lp.exists() else {}
+        if not isinstance(data, dict):
+            raise ValueError("usage ledger root must be an object")
         entry = data.get(seat) if isinstance(data.get(seat), dict) else {}
         entry.update({"pct": pct, "note": "owner-noted via usage-record", "updated": now_iso()})
         data[seat] = entry
@@ -126,8 +136,15 @@ def write_ledger_pct(seat, pct):
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp, lp)
+        tmp = None
     finally:
-        lock.rmdir()
+        if tmp is not None:
+            Path(tmp).unlink(missing_ok=True)
+        if acquired:
+            try:
+                lock.rmdir()
+            except FileNotFoundError:
+                pass
 
 
 def run_source(name, monitoring):
