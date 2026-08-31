@@ -76,7 +76,7 @@ Two boundaries an evaluating owner should know up front — both are current-by-
 | `subscription-calculator.py` | Recommend a plan from habits or `--from-history` utilization |
 | `generate-roles.py` | Render general host-native Claude/Grok agent files + Codex TOML; installed standing Grok profiles use `sync-grok-agents.py` via `sync-commands.sh` |
 | `connectors.py` | Render validated standing-role allowlists and prompt packets from `connectors.json` |
-| `detect-integrations.py` | Refresh/check the per-runtime plugin/MCP/app inventory; atomic cache under `$MB_DATA_DIR`, with process-only session overlays |
+| `detect-integrations.py` | Refresh/check the per-runtime plugin/MCP/app inventory; atomic cache under `$MB_DATA_DIR`; caller sessions are diagnostic/negative-only and never mint routing authority |
 | `record-429.sh` | Record a real 429 into the ledger (never a timeout) |
 | `mborch.py` · `routing.py` | Shared: layered config resolution (`MB_CONFIG_DIR`) · drain/allocation scoring |
 | `test_generate.py` | Unit tests for the role registry |

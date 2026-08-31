@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Bind a trusted runtime tool inventory to exactly one resolver invocation.
+"""Reduce a caller runtime tool list to a non-authoritative observation.
 
 Input on stdin is a bounded JSON object whose keys are runtime tool names and
-whose values are booleans. The bridge retains no tool arguments or metadata,
-creates a fresh one-use in-memory attestation, and calls resolve-route once:
+whose values are booleans. The bridge retains no tool arguments or metadata and
+calls resolve-route once with a value-free diagnostic observation:
 
   printf '%s' '{"mcp__github__get_me":true,"mcp__github__get_file_contents":true}' | \
     bin/build-integration-session.py --runtime codex -- \
       --class repo-code --scale routine --json --no-record
 
-The envelope, challenge, raw names, and aliases are never written to disk.
+Raw names and aliases are never written to disk. This compatibility bridge does
+not authenticate product origin, so it never grants MCP dispatch authority.
 """
 from __future__ import annotations
 
@@ -52,20 +53,20 @@ def main(argv=None):
         print(f"build-integration-session: {exc}", file=sys.stderr)
         return 2
     ap = argparse.ArgumentParser(
-        description="Bind a bounded runtime tool inventory to one resolver invocation."
+        description="Observe a bounded runtime tool inventory for one resolver invocation."
     )
     ap.add_argument("--runtime", required=True, choices=["codex"])
     args = ap.parse_args(bridge_argv)
     try:
         raw = sys.stdin.buffer.read(integrations.RUNTIME_TOOLS_MAX_BYTES + 1)
-        overlay = integrations.build_runtime_tool_overlay(args.runtime, raw)
+        observation = integrations.build_runtime_tool_observation(args.runtime, raw)
     except (integrations.InventoryError, OSError) as exc:
         print(f"build-integration-session: invalid runtime tool inventory (fail closed): {exc}",
               file=sys.stderr)
         return 2
     resolver = _load_resolver()
     try:
-        return resolver.main(resolver_argv, integration_overlay=overlay)
+        return resolver.main(resolver_argv, integration_observation=observation)
     finally:
         integrations.clear_process_session()
 

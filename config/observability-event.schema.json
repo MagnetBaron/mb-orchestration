@@ -29,27 +29,23 @@
     "actor_id": { "type": ["string", "null"] },
     "profile_id": { "type": ["string", "null"] },
     "dry_run": { "type": "boolean" },
-    "integration_session": {
+    "integration_observation": {
       "type": "object",
-      "required": ["runtime", "canonical_ids", "attestation"],
+      "required": ["runtime", "reported_callable_ids", "reported_unavailable_ids", "observed_at", "source", "dispatch_authority"],
       "additionalProperties": false,
       "properties": {
         "runtime": { "type": "string", "minLength": 1 },
-        "canonical_ids": {
+        "reported_callable_ids": {
           "type": "array", "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         },
-        "attestation": {
-          "type": "object",
-          "required": ["source", "observed_at", "expires_at", "digest"],
-          "additionalProperties": false,
-          "properties": {
-            "source": { "const": "dispatcher-runtime-v1" },
-            "observed_at": { "type": "string", "minLength": 10 },
-            "expires_at": { "type": "string", "minLength": 10 },
-            "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
-          }
-        }
+        "reported_unavailable_ids": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "observed_at": { "type": "string", "minLength": 10 },
+        "source": { "const": "caller-runtime-tool-list-v1" },
+        "dispatch_authority": { "const": false }
       }
     },
     "intake": {

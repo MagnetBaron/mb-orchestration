@@ -18,11 +18,17 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
+import shutil
+import stat
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DEFAULT_CONFIG = REPO / "config"
+LOCK_OWNER_FILE = "owner.json"
+LOCK_STALE_GRACE_SECONDS = 1.0
 
 
 # ---- Opus 5 GA classifier (NOT a ban) ----------------------------------------
@@ -106,6 +112,148 @@ def ledger_path() -> Path:
     if env:
         return Path(env).expanduser()
     return find_config("usage-ledger.json")
+
+
+def _pid_is_live(pid: int) -> bool:
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _directory_lock_owner(lock: Path) -> dict | None:
+    """Read a lock owner without following attacker/stale symlinks."""
+    try:
+        lock_stat = lock.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISDIR(lock_stat.st_mode):
+        return None
+    owner_path = lock / LOCK_OWNER_FILE
+    try:
+        owner_stat = owner_path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(owner_stat.st_mode):
+        return None
+    try:
+        owner = json.loads(owner_path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(owner, dict) or set(owner) != {"pid", "token", "created"}:
+        return None
+    if (isinstance(owner.get("pid"), bool)
+            or not isinstance(owner.get("pid"), int)
+            or owner["pid"] <= 0
+            or not isinstance(owner.get("token"), str)
+            or not re.fullmatch(r"[0-9a-f]{32}", owner["token"])
+            or isinstance(owner.get("created"), bool)
+            or not isinstance(owner.get("created"), (int, float))):
+        return None
+    return owner
+
+
+def _reclaim_stale_directory_lock(
+    lock: Path, *, stale_grace_seconds: float = LOCK_STALE_GRACE_SECONDS,
+) -> bool:
+    """Atomically quarantine a dead/malformed stale lock; never steal a live PID."""
+    try:
+        lock_stat = lock.lstat()
+    except FileNotFoundError:
+        return True
+    if not stat.S_ISDIR(lock_stat.st_mode):
+        return False
+    owner = _directory_lock_owner(lock)
+    if owner is not None:
+        if _pid_is_live(owner["pid"]):
+            return False
+    elif time.time() - lock_stat.st_mtime < stale_grace_seconds:
+        # The winner may be between mkdir and its owner-file write.
+        return False
+    quarantine = lock.with_name(
+        f"{lock.name}.reclaimed.{os.getpid()}.{secrets.token_hex(8)}"
+    )
+    try:
+        os.replace(lock, quarantine)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    try:
+        quarantine_stat = quarantine.lstat()
+        if stat.S_ISDIR(quarantine_stat.st_mode):
+            shutil.rmtree(quarantine)
+    except FileNotFoundError:
+        pass
+    return True
+
+
+def acquire_directory_lock(
+    lock: Path,
+    *,
+    timeout_seconds: float,
+    poll_seconds: float,
+    stale_grace_seconds: float = LOCK_STALE_GRACE_SECONDS,
+    owner_pid: int | None = None,
+) -> str:
+    """Acquire a PID-owned mkdir lock and return its unguessable release token."""
+    if timeout_seconds <= 0 or poll_seconds <= 0 or stale_grace_seconds < 0:
+        raise ValueError("lock timing values are invalid")
+    pid = os.getpid() if owner_pid is None else owner_pid
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        raise ValueError("lock owner PID must be a positive integer")
+    token = secrets.token_hex(16)
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            os.mkdir(lock, 0o700)
+        except FileExistsError:
+            _reclaim_stale_directory_lock(
+                lock, stale_grace_seconds=stale_grace_seconds,
+            )
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out waiting for the usage-ledger lock")
+            time.sleep(min(poll_seconds, remaining))
+            continue
+        owner_path = lock / LOCK_OWNER_FILE
+        try:
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(owner_path, flags, 0o600)
+            with os.fdopen(fd, "w") as stream:
+                json.dump({"pid": pid, "token": token, "created": time.time()}, stream)
+                stream.write("\n")
+            return token
+        except Exception:
+            try:
+                owner_path.unlink(missing_ok=True)
+                lock.rmdir()
+            except OSError:
+                pass
+            raise
+
+
+def release_directory_lock(lock: Path, token: str, *, owner_pid: int | None = None) -> bool:
+    """Release only the exact lock generation owned by this PID and token."""
+    pid = os.getpid() if owner_pid is None else owner_pid
+    owner = _directory_lock_owner(lock)
+    if owner is None or owner.get("pid") != pid or owner.get("token") != token:
+        return False
+    try:
+        (lock / LOCK_OWNER_FILE).unlink()
+        lock.rmdir()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return True
 
 
 def data_dir() -> Path:

@@ -1,5 +1,5 @@
 {
-  "_note": "Safe integration discovery adapters. These paths are an allowlist, not a filesystem search. Parsers extract names and enabled/configured state only; values, arguments, URLs, environment values, logs, backups, and marketplace/cache catalogs are never retained. connectors.json remains the authorization ceiling. Codex config.plugins is policy-only (plugin MCP allowlist), never installed inventory; active Codex plugin proof must arrive from the Plugins tab or /plugins surface through a fresh runtime attestation.",
+  "_note": "Safe integration discovery adapters. These paths are an allowlist, not a filesystem search. Parsers extract names and enabled/configured state only; values, arguments, URLs, environment values, logs, backups, and marketplace/cache catalogs are never retained. connectors.json remains the authorization ceiling. Codex config.plugins is policy-only (plugin MCP allowlist), never installed inventory. Caller runtime/session observations are diagnostic and denial-only; no product-authenticated positive issuer exists in this repository.",
   "schema_version": 1,
   "inventory_schema_version": 1,
   "ttl_seconds": 300,

@@ -56,7 +56,7 @@
       "model": "grok-4.6", "functions": ["implement", "dispatch"], "capabilities": ["code", "dispatch"],
       "prowess": { "implement": 82, "dispatch": 79 }, "billing": "included", "review_eligible": false, "dispatch_eligible": true,
       "dispatch_evidence": { "status": "passed", "date": "2026-08-28", "trials": 2, "completed": 2, "reversals": 0, "source": "model-evals/receipts/2026-08-28-dispatch-stability.json", "runtime_note": "TTY launcher path required; non-TTY launcher failed" },
-      "backed_by": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
+      "backed_by": "grok-heavy", "usage_seat": "grok-heavy", "detect": { "method": "command", "cmd": "grok" },
       "route": "grok-4.6-build",
       "notes": "Default implementer. Exact selectable provider model is grok-4.6; grok-4.6-build is only the internal route key. 1 worktree / 1 branch / named file scope."
     },
@@ -127,7 +127,7 @@
       "label": "Cursor Grok 4.6 xhigh (implementation overflow)", "level": "terra", "family": "cursor-pool", "kind": "ide",
       "model": "grok-4.6", "functions": ["ide"], "capabilities": ["code", "ide"],
       "prowess": { "ide": 78 }, "billing": "included", "review_eligible": false,
-      "backed_by": "cursor-ultra", "usage_seat": "cursor-models", "detect": { "method": "command", "cmd": "cursor-agent" },
+      "backed_by": "cursor-ultra", "usage_seat": "cursor-models", "overflow_after_provider": "grok-build", "detect": { "method": "command", "cmd": "cursor-agent" },
       "route": "grok-4.6-cursor",
       "notes": "Included implementation-only overflow after a provider-confirmed Grok Build quota exhaustion. Never dispatches, reviews, or substitutes for a specialized Grokbot. Exact Cursor model selection is bound by the route and seat-exec recipe."
     },

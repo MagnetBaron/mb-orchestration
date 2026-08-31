@@ -17,7 +17,8 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true", help="print normalized safe metadata")
     ap.add_argument("--refresh", action="store_true", help="force a fresh allowlisted-manifest scan")
     ap.add_argument("--check", action="store_true", help="return 2 when registered access is not effective")
-    ap.add_argument("--session", metavar="FILE|-", help="merge one runtime-bound JSON overlay for this process only")
+    ap.add_argument("--session", metavar="FILE|-",
+                    help="merge caller session denials/diagnostics for this process; positive claims never grant authority")
     args = ap.parse_args(argv)
     try:
         inv = integrations.refresh(force=args.refresh)

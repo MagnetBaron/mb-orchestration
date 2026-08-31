@@ -19,7 +19,7 @@ It enforces the owner's economics (bin/routing.py):
     and its bound live route. Sharing a plan with Luna/Terra/Sol is not enough.
     No such provider → PARK.
   * capability-aware — an implement seat must actually have the needed capability
-    (browser/connector/etc., derived from policy plus fresh runtime/session evidence).
+    (browser/connector/etc., derived from policy plus product-authenticated evidence).
   * MCP volume — --needs-mcp requires an active, observed-callable connector on the MCP volume seat
     AND mcp_bulk on that provider's functions, capabilities, and bound live route.
     Any missing layer PARKS immediately and does not continue to implement.
@@ -172,7 +172,15 @@ def provider_seats(pid, providers, rows):
         return []
     model = str(prov.get("model") or "").lower()
     model_family = "fable" if "fable" in model else "sonnet" if "sonnet" in model else "opus"
-    model_status = (receipt.get("models") or {}).get(model_family) or {}
+    exact_routes = receipt.get("model_routes")
+    if isinstance(exact_routes, dict):
+        model_status = exact_routes.get(model) or {}
+    elif model == usage_status.teamclaude_status.MODEL_FOR_FAMILY[model_family]:
+        # Backward-compatible test/receipt path for a canonical family model.
+        # Compatibility must never let Opus 4.8 consume Opus 5 state.
+        model_status = (receipt.get("models") or {}).get(model_family) or {}
+    else:
+        model_status = {}
     if not (
         receipt.get("service_reachable") is True
         and receipt.get("schema_valid") is True
@@ -468,7 +476,6 @@ def select_dispatcher(entrypoints, providers, rows, registry, requested=None, pr
 
 def live_reviewers(
     providers, rows, ledger, registry, dispatcher=None, authors=(),
-    review_e_time_critical=False,
 ):
     """Reviewers whose bound catalog route is live. Registry is required; unknown state fails closed."""
     if not registry:
@@ -527,17 +534,12 @@ def live_reviewers(
         and state["backing_rows"]
         and all(r.get("tier") == "spent" for r in state["backing_rows"])
     }
-    all_native_quota_spent = bool(native_family_state) and all(
-        group in native_quota_spent for group in native_family_state
-    )
     review_e = prov.get("review-e") or {}
     review_e_open = bool(
         review_e.get("wired") is True
         and modelreg.provider_can_review(registry, review_e)
-        and (
-            (native_available and native_quota_spent)
-            or (review_e_time_critical and all_native_quota_spent)
-        )
+        and native_available
+        and native_quota_spent
     )
 
     downgraded = {k.split(":", 1)[1] for k in (ledger or {}) if str(k).startswith("fable-downgrade:")}
@@ -655,8 +657,10 @@ def pick_review(level, reviewers, review_e_wired, task_seconds):
 
 
 IMPLEMENT_FNS = frozenset({"implement", "ide"})
-CURSOR_GROK_OVERFLOW_PROVIDER = "cursor-grok"
-GROK_BUILD_USAGE_SEAT = "grok-heavy"
+PROVIDER_EXHAUSTION_NOTES = frozenset({
+    "429/usage-limit recorded by wrapper",
+    "Grok Build 402 usage-balance-exhausted recorded by wrapper",
+})
 
 
 def review_d_input_step(providers, registry, integration_overlay=None):
@@ -770,21 +774,49 @@ def provider_can_mcp_bulk(provider, registry):
     return "mcp_bulk" in (route.get("capabilities") or [])
 
 
-def implementation_overflow_dependency_satisfied(provider_id, rows):
-    """Gate Cursor Grok behind positive, ledger-backed Grok Build exhaustion.
+def implementation_overflow_dependency_satisfied(provider_id, providers, rows):
+    """Gate configured overflow behind exact, wrapper-recorded source exhaustion.
 
-    Cursor Grok is implementation overflow, not an economic peer of Grok Build.
-    Even after its own inference route becomes live, it must remain inert while
-    Grok Build has quota.  A synthetic/static ``tier=spent`` row is insufficient:
-    usage-status must have derived the state from a recorded provider limit.
+    The dependency provider and its usage seat are configuration-owned.  A
+    synthetic/static ``tier=spent`` row is insufficient.  Current ledgers carry
+    ``spent:true``; legacy wrapper ledgers may instead carry only a future
+    ``spent_until`` plus their exact provider-limit provenance.
     """
-    if provider_id != CURSOR_GROK_OVERFLOW_PROVIDER:
+    provider = providers.get(provider_id)
+    if not isinstance(provider, dict):
+        return False
+    dependency_id = provider.get("overflow_after_provider")
+    if dependency_id is None:
         return True
+    if not isinstance(dependency_id, str) or not dependency_id or dependency_id == provider_id:
+        return False
+    dependency = providers.get(dependency_id)
+    if not isinstance(dependency, dict):
+        return False
+    usage_seat = dependency.get("usage_seat")
+    if not isinstance(usage_seat, str) or not usage_seat:
+        return False
     for row in rows:
-        if row.get("seat") != GROK_BUILD_USAGE_SEAT or row.get("tier") != "spent":
+        if row.get("seat") != usage_seat or row.get("tier") != "spent":
             continue
         ledger = row.get("ledger")
-        if isinstance(ledger, dict) and ledger.get("spent") is True:
+        if not isinstance(ledger, dict) or ledger.get("note") not in PROVIDER_EXHAUSTION_NOTES:
+            continue
+        if ledger.get("spent") is True:
+            return True
+        if "spent" in ledger:
+            continue
+        # Older record-429 wrappers did not persist ``spent:true``.  Accept only
+        # their exact wrapper provenance while the recorded deadline is future.
+        spent_until = usage_status.to_aware(
+            usage_status.parse_iso(ledger.get("spent_until")),
+            usage_status.DEFAULT_TZ,
+        )
+        now_ref = usage_status.to_aware(
+            usage_status._now(usage_status.DEFAULT_TZ),
+            usage_status.DEFAULT_TZ,
+        )
+        if spent_until is not None and spent_until > now_ref:
             return True
     return False
 
@@ -812,7 +844,8 @@ def last_resort_coder(prov, registry, subscription, cap_ok):
 
 
 def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mcp, pixels,
-                   task_seconds, registry, avoid_provider=None, integration_overlay=None):
+                   task_seconds, registry, avoid_provider=None, integration_overlay=None,
+                   integration_observation=None):
     prov = providers["providers"]
     steps = []
     if not registry:
@@ -836,7 +869,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         pid for pid, p in prov.items()
         if provider_can_code(p, registry)
         and cap_ok(pid)
-        and implementation_overflow_dependency_satisfied(pid, rows)
+        and implementation_overflow_dependency_satisfied(pid, prov, rows)
     ]
     if needs_connector and not impl_ids:
         matches = routing.connectors_for_label(needs_connector, connectors)
@@ -880,6 +913,28 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         return (economic[0], pid == avoid_provider, *economic[1:])
 
     workers.sort(key=worker_key)
+
+    if needs_mcp and integration_observation is not None:
+        reported = set(integration_observation.get("reported_callable_ids") or [])
+        matching_ids = {
+            cid for cid, _meta in routing.connectors_for_label(needs_mcp, connectors)
+        }
+        reported_detail = (
+            "the connector was reported by the caller"
+            if reported & matching_ids
+            else "the connector was not reported by the caller"
+        )
+        steps.append({
+            "seat": "(none)",
+            "why": (
+                f"PARK: --needs-mcp {needs_mcp!r} has caller-only runtime observation "
+                f"({reported_detail}; dispatch_authority=false); product-authenticated "
+                "callable proof is unavailable"
+            ),
+            "available": False,
+            "tier": "spent",
+        })
+        return steps
 
     if needs_mcp:
         # MCP bulk to Terra first. Any failed prerequisite PARKS the whole pipeline —
@@ -964,7 +1019,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         last_dollar = [pid for pid, p in prov.items()
                        if "last_dollar" in (p.get("functions") or [])
                        and provider_can_code(p, registry) and cap_ok(pid)
-                       and implementation_overflow_dependency_satisfied(pid, rows)]
+                       and implementation_overflow_dependency_satisfied(pid, prov, rows)]
         intake = sorted(
             [r for r in rows if r.get("intake") and routing.usable(r)],
             key=routing.route_key,
@@ -1004,7 +1059,7 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
     return steps
 
 
-def main(argv=None, *, integration_overlay=None):
+def main(argv=None, *, integration_observation=None, integration_overlay=None):
     ap = argparse.ArgumentParser(description="Deterministic router.")
     ap.add_argument("--class", dest="klass", required=True)
     ap.add_argument("--scale", default="routine", choices=["routine", "elevated"])
@@ -1014,7 +1069,7 @@ def main(argv=None, *, integration_overlay=None):
                     help="connector id, alias, or class this brief needs (routes bulk to Terra; unknown/inert/unusable-Terra PARK)")
     ap.add_argument("--needs-connector", default="", help="capability/connector the implement seat must have (e.g. clarity-magnetbaron, browser)")
     ap.add_argument("--integration-session", metavar="FILE|-",
-                    help="ephemeral one-runtime callable integration evidence; process-scoped and never cached")
+                    help="legacy caller session input; rejected because no product-authenticated issuer is configured")
     ap.add_argument("--pixels", action="store_true")
     ap.add_argument("--task-seconds", type=int, default=0, help="est. task length; flags seats that reset before it finishes (no mid-turn swaps)")
     ap.add_argument("--user-said-ship", action="store_true")
@@ -1039,30 +1094,39 @@ def main(argv=None, *, integration_overlay=None):
     started = time.perf_counter()
 
     # Resolver calls are isolated even when multiple planners share this module.
-    # A previous process-global overlay is never inherited implicitly. The bridge
-    # passes a validated overlay explicitly for exactly this invocation.
+    # A caller-held HMAC/session proves integrity, not product origin, and can
+    # never mint callable routing authority.
     integrations.clear_process_session()
-    if integration_overlay is not None and args.integration_session:
-        _emit_bootstrap(args, "multiple_integration_sessions",
-                        "only one explicit integration session is allowed", started)
-        sys.exit("resolve-route: only one explicit integration session is allowed")
+    if integration_overlay is not None:
+        _emit_bootstrap(args, "untrusted_integration_overlay",
+                        "caller integration overlays cannot grant routing authority", started)
+        sys.exit(
+            "resolve-route: caller integration overlay rejected (fail closed): "
+            "product-authenticated callable proof is unavailable"
+        )
     if args.integration_session:
         try:
-            integration_overlay = integrations.validated_session_from_source(args.integration_session)
+            # Validate the bounded file contract for a privacy-safe failure, but
+            # never consume its self-signed contents as routing authority.
+            integrations.validated_session_from_source(args.integration_session)
         except (integrations.InventoryError, OSError) as exc:
             _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
             sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
-    if integration_overlay is not None:
+        _emit_bootstrap(args, "untrusted_integration_session",
+                        "caller session integrity does not establish product origin", started)
+        sys.exit(
+            "resolve-route: integration session rejected (fail closed): caller-held "
+            "nonce/HMAC is not product-authenticated callable proof"
+        )
+    if integration_observation is not None:
         try:
-            integration_overlay = integrations.claim_overlay_for_resolution(integration_overlay)
+            integration_observation = integrations.validate_runtime_tool_observation(
+                integration_observation
+            )
         except integrations.InventoryError as exc:
-            _emit_bootstrap(args, "invalid_integration_session", str(exc), started)
-            sys.exit(f"resolve-route: invalid integration session (fail closed): {exc}")
-    routing_overlay = integration_overlay if integration_overlay is not None else {}
-    integration_session = (
-        integrations.session_provenance(integration_overlay)
-        if integration_overlay is not None else None
-    )
+            _emit_bootstrap(args, "invalid_integration_observation", str(exc), started)
+            sys.exit(f"resolve-route: invalid integration observation (fail closed): {exc}")
+    routing_overlay = {}
 
     depth_conf = mborch.load_config("review-depth.json")
     providers = mborch.load_config("providers.json")
@@ -1118,6 +1182,7 @@ def main(argv=None, *, integration_overlay=None):
             providers, connectors, rows, args.klass, args.needs_connector.strip(),
             args.needs_mcp.strip(), args.pixels, args.task_seconds, registry,
             avoid_provider=effective_dispatcher, integration_overlay=routing_overlay,
+            integration_observation=integration_observation,
         )
     if extra.get("review_d") or args.pixels or args.klass == "storefront-theme":
         if implement is None:
@@ -1126,8 +1191,7 @@ def main(argv=None, *, integration_overlay=None):
     authors = [s.get("seat") for s in (implement or [])
                if s.get("available", True) and not s.get("input_seat") and s.get("seat") not in (None, "(none)")]
     reviewers = live_reviewers(providers, rows, ledger, registry,
-                               dispatcher=effective_dispatcher, authors=authors,
-                               review_e_time_critical=args.user_said_ship)
+                               dispatcher=effective_dispatcher, authors=authors)
     review_e = providers["providers"].get("review-e") or {}
     review_e_wired = bool(
         review_e.get("wired") is True
@@ -1162,13 +1226,18 @@ def main(argv=None, *, integration_overlay=None):
         park_reason = handoff["reason"]
     elif not dispatcher.get("satisfied"):
         park_reason = dispatcher["explanation"]
-    elif not review.get("satisfied"):
-        park_reason = review["explanation"]
-    elif not implementation_satisfied:
-        park_reason = "PARK: no complete usable implementation path"
     elif not input_satisfied:
+        # Required external evidence (notably the Review D pixel packet) is a
+        # prerequisite to evaluating the finished artifact. Surface that
+        # concrete missing input ahead of a simultaneously unavailable model
+        # reviewer so the result is deterministic across live quota drift and
+        # tells the operator which non-substitutable gate must be wired.
         blocked_inputs = [s.get("why") for s in input_required_steps if not s.get("available", True)]
         park_reason = "; ".join(x for x in blocked_inputs if x) or "PARK: required input seat unavailable"
+    elif not implementation_satisfied:
+        park_reason = "PARK: no complete usable implementation path"
+    elif not review.get("satisfied"):
+        park_reason = review["explanation"]
     else:
         park_reason = None
 
@@ -1187,8 +1256,8 @@ def main(argv=None, *, integration_overlay=None):
         "user_said_ship": args.user_said_ship, "implement": implement, "usage_updated": updated,
         "implement_requested": bool(args.implement),
     }
-    if integration_session is not None:
-        decision["integration_session"] = integration_session
+    if integration_observation is not None:
+        decision["integration_observation"] = integration_observation
 
     duration_ms = int((time.perf_counter() - started) * 1000)
     obs_meta = _emit_decision(decision, args, duration_ms)
@@ -1204,13 +1273,16 @@ def main(argv=None, *, integration_overlay=None):
 
     print(f"ROUTE  class={args.klass} scale={args.scale} risk={risk_flags or '-'}")
     print("-" * 72)
-    if integration_session is not None:
-        canonical_ids = integration_session["canonical_ids"]
-        rendered_ids = ",".join(canonical_ids) if canonical_ids else "[]"
-        attestation = integration_session["attestation"]
-        print(f"integration session: runtime={integration_session['runtime']} canonical_ids={rendered_ids} "
-              f"source={attestation['source']} observed_at={attestation['observed_at']} "
-              f"expires_at={attestation['expires_at']} digest={attestation['digest']}")
+    if integration_observation is not None:
+        callable_ids = integration_observation["reported_callable_ids"]
+        rendered_ids = ",".join(callable_ids) if callable_ids else "[]"
+        print(
+            f"integration observation: runtime={integration_observation['runtime']} "
+            f"reported_callable_ids={rendered_ids} "
+            f"source={integration_observation['source']} "
+            f"observed_at={integration_observation['observed_at']} "
+            "dispatch_authority=false"
+        )
     print(f"review depth: {level}")
     for r in reasons:
         print(f"  · {r}")

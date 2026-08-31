@@ -56,7 +56,8 @@ class RecordGrokExhaustionTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_record(
-        self, seat: str, message: str, *, reset: str | None = RESET
+        self, seat: str, message: str, *, reset: str | None = RESET,
+        extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env.update({
@@ -67,6 +68,8 @@ class RecordGrokExhaustionTests(unittest.TestCase):
             env.pop("MB_429_RESET", None)
         else:
             env["MB_429_RESET"] = reset
+        if extra_env:
+            env.update(extra_env)
         return subprocess.run(
             ["bash", str(RECORD), seat, message],
             cwd=ROOT,
@@ -167,6 +170,95 @@ class RecordGrokExhaustionTests(unittest.TestCase):
                 self.assertFalse(ledger.exists())
                 self.assertTrue(lock.is_dir())
 
+    def test_all_ledger_writers_reclaim_a_dead_pid_lock(self):
+        dead_pid = 2_147_483_647
+        cases = (
+            (
+                detect_capability,
+                lambda: detect_capability.write_ledger(
+                    lambda data: data.__setitem__("test", {"spent": True})
+                ),
+            ),
+            (
+                usage_record,
+                lambda: usage_record.write_ledger_pct("codex-plan", 50),
+            ),
+        )
+        for module, call in cases:
+            with self.subTest(module=module.__name__):
+                ledger = self.root / f"dead-{module.__name__}.json"
+                lock = Path(f"{ledger}.lock")
+                lock.mkdir()
+                (lock / "owner.json").write_text(json.dumps({
+                    "pid": dead_pid,
+                    "token": "a" * 32,
+                    "created": 1.0,
+                }))
+                with mock.patch.object(module.mborch, "ledger_path", return_value=ledger):
+                    call()
+                self.assertTrue(ledger.exists())
+                self.assertFalse(lock.exists())
+
+        shell_lock = Path(f"{self.ledger}.lock")
+        shell_lock.mkdir()
+        (shell_lock / "owner.json").write_text(json.dumps({
+            "pid": dead_pid,
+            "token": "b" * 32,
+            "created": 1.0,
+        }))
+        got = self.run_record("codex-plan", "HTTP 429 rate limit exceeded")
+        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertFalse(shell_lock.exists())
+
+    def test_all_ledger_writers_never_steal_a_live_pid_lock(self):
+        cases = (
+            (
+                detect_capability,
+                lambda: detect_capability.write_ledger(
+                    lambda data: data.__setitem__("test", {"spent": True})
+                ),
+            ),
+            (
+                usage_record,
+                lambda: usage_record.write_ledger_pct("codex-plan", 50),
+            ),
+        )
+        for module, call in cases:
+            with self.subTest(module=module.__name__):
+                ledger = self.root / f"live-{module.__name__}.json"
+                lock = Path(f"{ledger}.lock")
+                token = module.mborch.acquire_directory_lock(
+                    lock, timeout_seconds=1, poll_seconds=0.001,
+                )
+                try:
+                    with mock.patch.object(module.mborch, "ledger_path", return_value=ledger), \
+                            mock.patch.object(module, "LEDGER_LOCK_TIMEOUT_SECONDS", 0.01), \
+                            mock.patch.object(module, "LEDGER_LOCK_POLL_SECONDS", 0.001), \
+                            self.assertRaisesRegex(TimeoutError, "timed out waiting"):
+                        call()
+                    self.assertFalse(ledger.exists())
+                    self.assertTrue(lock.is_dir())
+                finally:
+                    self.assertTrue(module.mborch.release_directory_lock(lock, token))
+
+        shell_lock = Path(f"{self.ledger}.lock")
+        token = detect_capability.mborch.acquire_directory_lock(
+            shell_lock, timeout_seconds=1, poll_seconds=0.001,
+        )
+        try:
+            got = self.run_record(
+                "codex-plan", "HTTP 429 rate limit exceeded",
+                extra_env={"MB_LEDGER_LOCK_TIMEOUT": "0.03"},
+            )
+            self.assertNotEqual(got.returncode, 0)
+            self.assertIn("timed out waiting", got.stderr)
+            self.assertFalse(self.ledger.exists())
+            self.assertTrue(shell_lock.is_dir())
+        finally:
+            self.assertTrue(
+                detect_capability.mborch.release_directory_lock(shell_lock, token)
+            )
+
     def test_invalid_or_past_explicit_reset_fails_without_write(self):
         for reset in ("not-a-date", "2000-01-01T00:00:00Z"):
             with self.subTest(reset=reset):
@@ -188,6 +280,9 @@ class RecordGrokExhaustionTests(unittest.TestCase):
             "A completion says: 402 Payment Required: Grok Build usage balance exhausted",
             "A completion says:\n402 Payment Required: Grok Build usage balance exhausted",
             "402 Payment Required: Grok Build usage balance exhausted.",
+            "402 payment Required: Grok Build usage balance exhausted",
+            "402 Payment Required: grok Build usage balance exhausted",
+            "HTTP 402: Grok Build Usage balance exhausted",
         )
         for message in rejected:
             with self.subTest(message=message):
@@ -233,6 +328,26 @@ class RecordGrokExhaustionTests(unittest.TestCase):
         entry = json.loads(self.ledger.read_text())["claude-max"]
         self.assertIs(entry["spent"], True)
         self.assertIsInstance(entry["spent_until"], str)
+
+    def test_rolling_default_rejects_missing_or_non_numeric_hours(self):
+        for hours in (None, "5", "five"):
+            with self.subTest(hours=hours):
+                self.ledger.unlink(missing_ok=True)
+                window = {"kind": "rolling"}
+                if hours is not None:
+                    window["hours"] = hours
+                windows = self.root / f"windows-{str(hours)}.json"
+                windows.write_text(json.dumps({
+                    "seats": {"test-seat": {"windows": [window]}},
+                }))
+                got = self.run_record(
+                    "test-seat", "HTTP 429 rate limit exceeded", reset=None,
+                    extra_env={"MB_USAGE_WINDOWS": str(windows)},
+                )
+                self.assertEqual(got.returncode, 0, got.stderr)
+                entry = json.loads(self.ledger.read_text())["test-seat"]
+                self.assertIs(entry["spent"], True)
+                self.assertIsNone(entry["spent_until"])
 
     def test_malformed_ledger_is_preserved_and_temp_lock_are_cleaned(self):
         before = b"not-json\n"
@@ -382,6 +497,11 @@ class CursorOverflowContractTests(unittest.TestCase):
         )
 
     def test_cursor_overflow_requires_ledger_backed_grok_exhaustion(self):
+        self.assertEqual(
+            self.providers["cursor-grok"]["overflow_after_provider"],
+            "grok-build",
+        )
+        self.assertEqual(self.providers["grok-build"]["usage_seat"], "grok-heavy")
         healthy = [{
             "seat": "grok-heavy", "tier": "available", "ledger": None,
         }]
@@ -390,19 +510,71 @@ class CursorOverflowContractTests(unittest.TestCase):
         }]
         confirmed = [{
             "seat": "grok-heavy", "tier": "spent",
-            "ledger": {"spent": True, "note": "provider-confirmed limit"},
+            "ledger": {
+                "spent": True,
+                "note": "429/usage-limit recorded by wrapper",
+            },
         }]
         self.assertFalse(resolve.implementation_overflow_dependency_satisfied(
-            "cursor-grok", healthy,
+            "cursor-grok", self.providers, healthy,
         ))
         self.assertFalse(resolve.implementation_overflow_dependency_satisfied(
-            "cursor-grok", synthetic,
+            "cursor-grok", self.providers, synthetic,
         ))
         self.assertTrue(resolve.implementation_overflow_dependency_satisfied(
-            "cursor-grok", confirmed,
+            "cursor-grok", self.providers, confirmed,
         ))
         self.assertTrue(resolve.implementation_overflow_dependency_satisfied(
-            "grok-build", healthy,
+            "grok-build", self.providers, healthy,
+        ))
+
+    def test_cursor_overflow_accepts_only_live_legacy_wrapper_exhaustion(self):
+        def row(ledger):
+            return [{"seat": "grok-heavy", "tier": "spent", "ledger": ledger}]
+
+        legacy = {
+            "spent_until": "2099-01-01T00:00:00+00:00",
+            "note": "429/usage-limit recorded by wrapper",
+        }
+        self.assertTrue(resolve.implementation_overflow_dependency_satisfied(
+            "cursor-grok", self.providers, row(legacy),
+        ))
+        for rejected in (
+            {"spent_until": "2020-01-01T00:00:00+00:00",
+             "note": "429/usage-limit recorded by wrapper"},
+            {"spent_until": "2099-01-01T00:00:00+00:00",
+             "note": "manual tier-only claim"},
+            {"spent": False, "spent_until": "2099-01-01T00:00:00+00:00",
+             "note": "429/usage-limit recorded by wrapper"},
+            {"spent": True, "note": "manual tier-only claim"},
+        ):
+            with self.subTest(rejected=rejected):
+                self.assertFalse(resolve.implementation_overflow_dependency_satisfied(
+                    "cursor-grok", self.providers, row(rejected),
+                ))
+
+    def test_cursor_overflow_dependency_uses_renamed_config_ids(self):
+        providers = copy.deepcopy(self.providers)
+        build = providers.pop("grok-build")
+        cursor = providers.pop("cursor-grok")
+        build["usage_seat"] = "renamed-build-seat"
+        cursor["overflow_after_provider"] = "renamed-build"
+        providers["renamed-build"] = build
+        providers["renamed-cursor"] = cursor
+        rows = [{
+            "seat": "renamed-build-seat",
+            "tier": "spent",
+            "ledger": {
+                "spent": True,
+                "note": "429/usage-limit recorded by wrapper",
+            },
+        }]
+        self.assertTrue(resolve.implementation_overflow_dependency_satisfied(
+            "renamed-cursor", providers, rows,
+        ))
+        cursor["overflow_after_provider"] = "missing-build"
+        self.assertFalse(resolve.implementation_overflow_dependency_satisfied(
+            "renamed-cursor", providers, rows,
         ))
 
     def test_live_cursor_remains_inert_until_grok_is_confirmed_spent(self):
@@ -435,7 +607,10 @@ class CursorOverflowContractTests(unittest.TestCase):
             spent_rows = copy.deepcopy(base_rows)
             spent_rows[0].update({
                 "tier": "spent",
-                "ledger": {"spent": True, "note": "provider-confirmed limit"},
+                "ledger": {
+                    "spent": True,
+                    "note": "429/usage-limit recorded by wrapper",
+                },
             })
             overflow = resolve.pick_implement(
                 providers, connectors, spent_rows, "repo-code",
@@ -471,7 +646,7 @@ class CursorOverflowContractTests(unittest.TestCase):
 
         false_live = copy.deepcopy(self.registry)
         false_live["routes"]["grok-4.6-cursor"]["route_state"] = "live_verified"
-        mutations.append((self.seat_exec, self.providers, false_live, "route_state must be"))
+        mutations.append((self.seat_exec, self.providers, false_live, "terminal inference receipt"))
 
         bad_authority = copy.deepcopy(self.providers)
         bad_authority["cursor-grok"]["functions"].append("review")
@@ -482,6 +657,52 @@ class CursorOverflowContractTests(unittest.TestCase):
             with self.subTest(needle=needle):
                 errors = self.check(seats, providers, registry)
                 self.assertTrue(any(needle in error for error in errors), errors)
+
+    def test_doctor_permits_only_exact_receipt_attested_cursor_promotion(self):
+        promoted = copy.deepcopy(self.registry)
+        route = promoted["routes"]["grok-4.6-cursor"]
+        route["route_state"] = "live_verified"
+        route["evidence_strength"] = "local_smoke"
+        route["attestations"]["local_access_smoke"] = {
+            "state": "attested",
+            "date": "2026-08-30",
+            "source": "Recorded exact Cursor Agent terminal inference receipt.",
+            "evidence_kind": "direct_invocation",
+            "signal": "direct_invocation",
+        }
+        route["evidence"].append({
+            "date": "2026-08-30",
+            "route_state": "live_verified",
+            "kind": "terminal_inference_receipt",
+            "source": "Recorded exact Cursor Agent terminal inference receipt.",
+            "signal": "direct_invocation",
+            "terminal_receipt": {
+                "harness": "cursor-agent",
+                "invocation_id": "cursor-grok-4.6-xhigh",
+                "exit_code": 0,
+                "completed": True,
+            },
+        })
+        # Isolate this Doctor contract from the generic six-attestation gate. A
+        # real promotion must pass both; the corrected identity intentionally
+        # cannot inherit the frozen old-invocation waivers.
+        with mock.patch.object(doctor.model_registry, "route_is_live", return_value=True):
+            errors = self.check(registry=promoted)
+        self.assertFalse(
+            [error for error in errors if "provider 'cursor-grok'" in error],
+            errors,
+        )
+
+        malformed = copy.deepcopy(promoted)
+        malformed["routes"]["grok-4.6-cursor"]["evidence"][-1] \
+            ["terminal_receipt"]["invocation_id"] = "grok-4.6"
+        with mock.patch.object(doctor.model_registry, "route_is_live", return_value=True):
+            errors = self.check(registry=malformed)
+        self.assertTrue(any("exact successful terminal inference receipt" in e for e in errors), errors)
+
+        with mock.patch.object(doctor.model_registry, "route_is_live", return_value=False):
+            errors = self.check(registry=promoted)
+        self.assertTrue(any("frozen legacy waiver" in e for e in errors), errors)
 
     def test_specialized_grokbots_remain_explicitly_parked(self):
         for pid in (

@@ -11,12 +11,11 @@ and never fills this slot. Never an implementer, dispatcher, MCP seat, or archit
 
 Its value is **independence**, not capacity: Fable + Opus 5 are one family (Anthropic), Sol is OpenAI. A Fireworks open-weight model (DeepSeek / Moonshot / Alibaba / Zhipu labs) is the first review family that is none of Anthropic / OpenAI / xAI. See `DOCTRINE.md` §Correlated failure.
 
-## Two roles (both review-only)
+## One role (review-only)
 
-1. **Last resort.** All native GATING seats (Opus 5, Sol — Fable is not a gate) are quota-confirmed spent **and** the brief is time-critical (owner said ship, prod incident, security fix). One advisory pass. Otherwise the correct move is to **park to the earliest reset** (`usage-status --earliest-reset`) — a rested native seat beats an open-weight fallback.
-2. **Cross-family second slot.** A safety-gate-5 item needs one pass from each of two families, but one native family is **quota-spent** so only one remains (e.g. post-downgrade Sol spent, or teamclaude spent). Review E fills the **second** family slot so the gate is satisfiable instead of parking. A family merely *down* (outage) is not spent — that parks, it does not open Review E.
+**Cross-family second slot.** A safety-gate-5 item needs one pass from each of two families, but one native family is **quota-spent** so only one remains (e.g. post-downgrade Sol spent, or teamclaude spent). Review E fills the **second** family slot so the gate is satisfiable instead of parking. A family merely *down* (outage) is not spent — that parks, it does not open Review E. If all native gating seats are spent, park to the earliest reset: Review E alone never satisfies the gate. `user said ship` grants landing authority, not permission to spend on Review E.
 
-Role 2 fires more often than role 1 and is the real reason to wire this.
+Independent second-family review is the reason to wire this slot.
 
 ## No reset — it is dollars
 
@@ -38,9 +37,9 @@ Only **positive quota evidence** opens Review E. Record the state in `usage-ledg
 
 ## Dispatch check (all five, mirrors Sol)
 
-1. Stamped `review: single-frontier` or `cross-family`? (never `none` / `self-check`)
-2. All native seats for that role QUOTA-spent per `usage-status` — not merely probed down?
-3. Time-critical (role 1) **or** the only-remaining second family (role 2)?
+1. Stamped `review: cross-family`? (never `none`, `self-check`, or `single-frontier`)
+2. Exactly one native family remains usable and another native family is QUOTA-spent per `usage-status` — not merely probed down?
+3. Is Review E the independent second family, never the only reviewer?
 4. Diff within the fallback cap and **secret/PII scan clean**?
 5. Not already reviewed by an open-weight family on this change-set?
 

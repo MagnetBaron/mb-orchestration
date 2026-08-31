@@ -2,11 +2,11 @@
 """Privacy-safe, fail-closed runtime integration inventory.
 
 The inventory is observation, never authorization. ``connectors.json`` remains the
-maximum vetted scope; an MCP grant additionally needs fresh runtime/session proof.
+maximum vetted scope; an MCP grant additionally needs fresh product-authenticated proof.
 Only allowlisted manifests are parsed and only names plus boolean/status metadata are
-retained. Session overlays are challenge-bound, short-lived, process-scoped, and never
-written to the cache. Explicit negative runtime evidence is monotonic: an overlay cannot
-turn a blocked, disabled, unconfigured, or uninstalled integration into an effective one.
+retained. Caller runtime-tool lists and caller-held session envelopes are diagnostic only:
+their integrity/replay controls do not establish issuer authority. Explicit negative
+runtime evidence is monotonic; caller input can never mint a positive routing grant.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import hmac
 import json
 import os
 import re
-import secrets
 import stat
 import tempfile
 import threading
@@ -42,6 +41,7 @@ RUNTIME_TOOLS_MAX_BYTES = 65_536
 RUNTIME_TOOLS_MAX_COUNT = 2_000
 RUNTIME_TOOL_NAME_MAX_CHARS = 512
 RUNTIME_SESSION_TTL_SECONDS = 30
+RUNTIME_OBSERVATION_SOURCE = "caller-runtime-tool-list-v1"
 _SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$")
 _SAFE_RUNTIME_TOOL_NAME = re.compile(r"^[A-Za-z0-9_:@./-]+$")
 _CODEX_MCP_TOOL = re.compile(r"^mcp__([A-Za-z0-9_]+)__([A-Za-z0-9_]+)$")
@@ -792,7 +792,7 @@ def _reject_duplicate_runtime_tool_name(pairs):
 
 
 def parse_runtime_tool_states(raw: str | bytes) -> dict[str, bool]:
-    """Parse a bounded names-to-booleans inventory from a trusted dispatcher.
+    """Parse a bounded names-to-booleans report from an untrusted caller.
 
     The accepted JSON shape is deliberately only ``{tool_name: boolean}``. No
     arguments, descriptions, URLs, paths, values, or nested metadata have an input
@@ -832,8 +832,24 @@ def parse_runtime_tool_states(raw: str | bytes) -> dict[str, bool]:
     return clean
 
 
-def runtime_tool_records(runtime: str, states: dict[str, bool]) -> list[dict]:
-    """Reduce exact runtime tool namespaces to value-free connector records."""
+def runtime_tool_connector_mappings() -> dict[str, dict[str, dict]]:
+    """Return the code-owned namespace map for Doctor referential validation."""
+    return {
+        runtime: {
+            namespace: {
+                "connector": rule["connector"],
+                "required_tools": sorted(rule["required_tools"]),
+            }
+            for namespace, rule in rules.items()
+        }
+        for runtime, rules in _RUNTIME_TOOL_MCP_RULES.items()
+    }
+
+
+def _runtime_tool_observation_ids(
+    runtime: str, states: dict[str, bool],
+) -> tuple[list[str], list[str]]:
+    """Reduce exact namespaces to value-free reported-positive/negative IDs."""
     if runtime not in _RUNTIME_TOOL_MCP_RULES:
         raise InventoryError("runtime tool inventory is not registered for this runtime")
     rules = _RUNTIME_TOOL_MCP_RULES[runtime]
@@ -848,7 +864,8 @@ def runtime_tool_records(runtime: str, states: dict[str, bool]) -> list[dict]:
         if rule is None or tool_name not in rule["required_tools"]:
             continue
         observed.setdefault(namespace, {})[tool_name] = callable_value
-    records = []
+    reported_callable = []
+    reported_unavailable = []
     for namespace in sorted(observed):
         rule = rules[namespace]
         observed_id = rule["connector"]
@@ -858,41 +875,75 @@ def runtime_tool_records(runtime: str, states: dict[str, bool]) -> list[dict]:
         callable_value = required.issubset(observed[namespace]) and all(
             observed[namespace][tool] for tool in required
         )
-        records.append({
-            "kind": "mcp",
-            "id": observed_id,
-            "installed": callable_value,
-            "enabled": callable_value,
-            "configured": callable_value,
-            "blocked": not callable_value,
-            "health": "verified" if callable_value else "unavailable",
-            "callable": callable_value,
-        })
-    return records
+        (reported_callable if callable_value else reported_unavailable).append(observed_id)
+    return sorted(set(reported_callable)), sorted(set(reported_unavailable))
 
 
-def build_runtime_tool_overlay(runtime: str, raw: str | bytes, *,
-                               observed_at: datetime | None = None) -> dict:
-    """Build and consume one fresh in-memory envelope for one resolver call.
+def validate_runtime_tool_observation(observation: dict) -> dict:
+    """Validate and normalize one value-free, explicitly non-authoritative report."""
+    expected = {
+        "runtime", "reported_callable_ids", "reported_unavailable_ids",
+        "observed_at", "source", "dispatch_authority",
+    }
+    if not isinstance(observation, dict) or set(observation) != expected:
+        raise InventoryError("runtime tool observation has an invalid shape")
+    runtime = observation.get("runtime")
+    if runtime not in _RUNTIME_TOOL_MCP_RULES:
+        raise InventoryError("runtime tool observation is not registered for this runtime")
+    if observation.get("source") != RUNTIME_OBSERVATION_SOURCE:
+        raise InventoryError("runtime tool observation source is invalid")
+    if observation.get("dispatch_authority") is not False:
+        raise InventoryError("runtime tool observation cannot carry dispatch authority")
+    observed_at = _parse_session_time(observation.get("observed_at"), "observed_at")
+    if observed_at > datetime.now(timezone.utc) + timedelta(seconds=SESSION_FUTURE_SKEW_SECONDS):
+        raise InventoryError("runtime tool observation is from the future")
+    allowed_ids = {
+        rule["connector"] for rule in _RUNTIME_TOOL_MCP_RULES[runtime].values()
+    }
+    clean_lists = {}
+    for key in ("reported_callable_ids", "reported_unavailable_ids"):
+        values = observation.get(key)
+        if (not isinstance(values, list)
+                or any(not isinstance(value, str) or value not in allowed_ids for value in values)):
+            raise InventoryError("runtime tool observation contains an invalid connector id")
+        clean_lists[key] = sorted(set(values))
+    if set(clean_lists["reported_callable_ids"]) & set(clean_lists["reported_unavailable_ids"]):
+        raise InventoryError("runtime tool observation connector states conflict")
+    return {
+        "runtime": runtime,
+        **clean_lists,
+        "observed_at": _session_iso(observed_at),
+        "source": RUNTIME_OBSERVATION_SOURCE,
+        "dispatch_authority": False,
+    }
 
-    Neither the raw tool names nor the random challenge are returned or persisted.
-    The returned overlay contains only cleaned connector records plus value-free
-    provenance and must be threaded explicitly into the resolver.
+
+def build_runtime_tool_observation(runtime: str, raw: str | bytes, *,
+                                   observed_at: datetime | None = None) -> dict:
+    """Build a value-free observation which never supplies routing authority.
+
+    Raw names and booleans are reduced to canonical reported IDs. The result has
+    no installation, configuration, health, callable, or attestation grant fields.
     """
     states = parse_runtime_tool_states(raw)
-    records = runtime_tool_records(runtime, states)
+    reported_callable, reported_unavailable = _runtime_tool_observation_ids(runtime, states)
     observed_at = observed_at or datetime.now(timezone.utc)
-    nonce = secrets.token_urlsafe(32)
-    document = build_session_document(
-        runtime,
-        records,
-        nonce,
-        observed_at=observed_at,
-        expires_at=observed_at + timedelta(seconds=RUNTIME_SESSION_TTL_SECONDS),
+    return validate_runtime_tool_observation({
+        "runtime": runtime,
+        "reported_callable_ids": reported_callable,
+        "reported_unavailable_ids": reported_unavailable,
+        "observed_at": _session_iso(observed_at),
+        "source": RUNTIME_OBSERVATION_SOURCE,
+        "dispatch_authority": False,
+    })
+
+
+def build_runtime_tool_overlay(*_args, **_kwargs):
+    """Removed unsafe compatibility surface: caller input cannot mint an overlay."""
+    raise InventoryError(
+        "runtime tool input is observation-only; product-authenticated routing authority "
+        "is unavailable"
     )
-    # Validate and consume without publishing to _PROCESS_SESSION. This keeps the
-    # one-use attestation local to its caller even when planners share a process.
-    return _validated_session(document, nonce=nonce)
 
 
 def _validated_session(data: dict, *, nonce: str | None = None) -> dict:
@@ -926,6 +977,7 @@ def _validated_session(data: dict, *, nonce: str | None = None) -> dict:
     overlay = {
         "runtime": runtime,
         "process_scope": True,
+        "dispatch_authority": False,
         "records": clean,
         "attestation": {
             "source": data["attestation"]["source"],
@@ -941,6 +993,11 @@ def _validated_session(data: dict, *, nonce: str | None = None) -> dict:
 
 def claim_overlay_for_resolution(overlay: dict) -> dict:
     """Consume one internally validated overlay for exactly one resolver call."""
+    if not isinstance(overlay, dict) or overlay.get("dispatch_authority") is not True:
+        raise InventoryError(
+            "caller-held session integrity does not provide product-authenticated "
+            "dispatch authority"
+        )
     if not isinstance(overlay, dict) or not _overlay_is_fresh(overlay):
         raise InventoryError("integration overlay is absent, malformed, or expired")
     attestation = overlay.get("attestation") or {}
@@ -1043,6 +1100,10 @@ def merged_records(inv: dict | None = None, overlay: dict | None = None) -> list
             by_key[key] = dict(r)
     if _overlay_is_fresh(overlay):
         for r in overlay.get("records", []):
+            # No authenticated product issuer exists in this repository. Caller
+            # sessions can add denials, but their positive claims never merge.
+            if not _explicit_negative(r):
+                continue
             key = (r.get("runtime"), r.get("kind"), r.get("canonical_id") or r.get("observed_id"))
             if key in by_key and _explicit_negative(by_key[key]):
                 continue

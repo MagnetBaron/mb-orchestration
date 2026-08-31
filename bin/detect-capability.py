@@ -22,7 +22,7 @@ disable-auto-downgrade levers.
 Exit 0 normally; 2 if a declared/observed conflict is detected in --check.
 """
 from __future__ import annotations
-import argparse, json, os, sys, tempfile, time
+import argparse, json, os, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -94,18 +94,12 @@ def write_ledger(mutate):
     lp = mborch.ledger_path()
     lock = Path(str(lp) + ".lock")
     lp.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + LEDGER_LOCK_TIMEOUT_SECONDS
-    acquired = False
+    lock_token = mborch.acquire_directory_lock(
+        lock,
+        timeout_seconds=LEDGER_LOCK_TIMEOUT_SECONDS,
+        poll_seconds=LEDGER_LOCK_POLL_SECONDS,
+    )
     tmp = None
-    while not acquired:
-        try:
-            lock.mkdir()
-            acquired = True
-        except FileExistsError:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("timed out waiting for the usage-ledger lock")
-            time.sleep(min(LEDGER_LOCK_POLL_SECONDS, remaining))
     try:
         data = json.loads(lp.read_text()) if lp.exists() else {}
         if not isinstance(data, dict):
@@ -119,11 +113,7 @@ def write_ledger(mutate):
     finally:
         if tmp is not None:
             Path(tmp).unlink(missing_ok=True)
-        if acquired:
-            try:
-                lock.rmdir()
-            except FileNotFoundError:
-                pass
+        mborch.release_directory_lock(lock, lock_token)
 
 
 def now_iso():

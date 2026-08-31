@@ -27,6 +27,7 @@ def _load(name: str, path: Path):
 
 
 resolve_route = _load("resolve_route_bridge_tests", HERE / "resolve-route.py")
+doctor = _load("doctor_bridge_tests", HERE / "doctor.py")
 
 
 class IntegrationSessionBridgeTests(unittest.TestCase):
@@ -79,58 +80,46 @@ class IntegrationSessionBridgeTests(unittest.TestCase):
             "plain_unknown_tool": True,
         })
 
-    def test_exact_codex_namespaces_only_and_challenge_is_not_environmental(self):
-        first = integrations.build_runtime_tool_overlay("codex", self._tool_blob())
-        second = integrations.build_runtime_tool_overlay("codex", self._tool_blob())
-        first_provenance = integrations.session_provenance(first)
+    def test_exact_namespaces_reduce_to_value_free_non_authoritative_observation(self):
+        observation = integrations.build_runtime_tool_observation("codex", self._tool_blob())
         self.assertEqual(
-            first_provenance["canonical_ids"],
+            observation["reported_callable_ids"],
             ["dataforseo", "github", "google-drive", "google-search-console"],
         )
-        self.assertNotEqual(
-            first["attestation"]["digest"], second["attestation"]["digest"]
-        )
-        self.assertNotIn("MB_INTEGRATION_SESSION_NONCE", os.environ)
-        serialized = json.dumps(first)
-        for forbidden in ("keyword_overview", "get_file_contents", "gsc_indexing",
-                          "google_workspace", "google_analytics", "gadgetduke"):
+        self.assertEqual(observation["reported_unavailable_ids"], [])
+        self.assertIs(observation["dispatch_authority"], False)
+        self.assertEqual(observation["source"], "caller-runtime-tool-list-v1")
+        self.assertEqual(set(observation), {
+            "runtime", "reported_callable_ids", "reported_unavailable_ids",
+            "observed_at", "source", "dispatch_authority",
+        })
+        serialized = json.dumps(observation)
+        for forbidden in (
+            "keyword_overview", "get_file_contents", "gsc_indexing",
+            "google_workspace", "google_analytics", "gadgetduke", "installed",
+            "enabled", "configured", "health", "attestation", "digest",
+        ):
             self.assertNotIn(forbidden, serialized)
+        with self.assertRaisesRegex(integrations.InventoryError, "observation-only"):
+            integrations.build_runtime_tool_overlay("codex", self._tool_blob())
 
-    def test_false_only_namespace_is_explicitly_unavailable(self):
-        overlay = integrations.build_runtime_tool_overlay(
+    def test_false_or_incomplete_namespace_is_reported_unavailable_not_granted(self):
+        observation = integrations.build_runtime_tool_observation(
             "codex", '{"mcp__github__get_me":true,"mcp__github__get_file_contents":false}'
         )
-        provenance = integrations.session_provenance(overlay)
-        self.assertEqual(provenance["canonical_ids"], [])
-        ok, reason = integrations.effective(
-            "codex", "mcp", "github", require_callable=True,
-            inv={"records": []}, overlay=overlay,
-        )
-        self.assertFalse(ok)
-        self.assertIn("explicitly denied", reason)
+        self.assertEqual(observation["reported_callable_ids"], [])
+        self.assertEqual(observation["reported_unavailable_ids"], ["github"])
 
-    def test_mutation_only_tools_cannot_prove_read_connectors(self):
-        overlay = integrations.build_runtime_tool_overlay(
+    def test_mutation_only_tools_cannot_report_read_connectors(self):
+        observation = integrations.build_runtime_tool_observation(
             "codex",
             json.dumps({
                 "mcp__gsc_indexing__submit_sitemap": True,
                 "mcp__google_workspace__empty_trash": True,
             }),
         )
-        self.assertEqual(integrations.session_provenance(overlay)["canonical_ids"], [])
-        for connector in ("google-search-console", "google-drive"):
-            ok, _ = integrations.effective(
-                "codex", "mcp", connector, require_callable=True,
-                inv={"records": []}, overlay=overlay,
-            )
-            self.assertFalse(ok)
-
-    def test_unrelated_false_mutation_does_not_withdraw_complete_read_surface(self):
-        overlay = integrations.build_runtime_tool_overlay("codex", self._tool_blob())
-        self.assertEqual(
-            integrations.session_provenance(overlay)["canonical_ids"],
-            ["dataforseo", "github", "google-drive", "google-search-console"],
-        )
+        self.assertEqual(observation["reported_callable_ids"], [])
+        self.assertEqual(observation["reported_unavailable_ids"], [])
 
     def test_malformed_duplicate_and_non_boolean_input_fail_closed(self):
         with self.assertRaisesRegex(integrations.InventoryError, "duplicate"):
@@ -140,43 +129,37 @@ class IntegrationSessionBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(integrations.InventoryError, "bounded size"):
             integrations.parse_runtime_tool_states(b"{" + b"x" * integrations.RUNTIME_TOOLS_MAX_BYTES)
 
-    def test_resolver_explicit_overlay_does_not_leak_to_next_invocation(self):
-        overlay = integrations.build_runtime_tool_overlay("codex", self._tool_blob())
+    def test_resolver_records_observation_without_affecting_non_mcp_route(self):
+        observation = integrations.build_runtime_tool_observation("codex", self._tool_blob())
         first_out = io.StringIO()
         with contextlib.redirect_stdout(first_out):
             rc = resolve_route.main(
                 ["--class", "repo-code", "--intake-provider", "opus-5", "--json", "--no-record"],
-                integration_overlay=overlay,
+                integration_observation=observation,
             )
         self.assertEqual(rc, 0)
-        self.assertEqual(
-            json.loads(first_out.getvalue())["integration_session"]["canonical_ids"],
-            ["dataforseo", "github", "google-drive", "google-search-console"],
-        )
+        first = json.loads(first_out.getvalue())
+        self.assertTrue(first["routing_satisfied"], first)
+        self.assertEqual(first["integration_observation"], observation)
+        self.assertNotIn("integration_session", first)
         second_out = io.StringIO()
         with contextlib.redirect_stdout(second_out):
             rc = resolve_route.main(
                 ["--class", "repo-code", "--intake-provider", "opus-5", "--json", "--no-record"]
             )
         self.assertEqual(rc, 0)
-        self.assertNotIn("integration_session", json.loads(second_out.getvalue()))
+        self.assertNotIn("integration_observation", json.loads(second_out.getvalue()))
         self.assertIsNone(integrations.session())
 
-    def test_resolver_consumes_clean_overlay_exactly_once(self):
-        overlay = integrations.build_runtime_tool_overlay("codex", self._tool_blob())
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(resolve_route.main(
-                ["--class", "repo-code", "--json", "--no-record"],
-                integration_overlay=overlay,
-            ), 0)
+    def test_resolver_rejects_legacy_caller_overlay_as_authority(self):
         with self.assertRaises(SystemExit):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 resolve_route.main(
                     ["--class", "repo-code", "--json", "--no-record"],
-                    integration_overlay=overlay,
+                    integration_overlay={"runtime": "codex", "dispatch_authority": True},
                 )
 
-    def test_bridge_invokes_resolver_once_and_emits_value_free_provenance(self):
+    def test_bridge_records_observation_but_mcp_parks(self):
         env = dict(os.environ)
         secret_suffix = "do_not_persist_7d21"
         payload = json.dumps({
@@ -188,13 +171,22 @@ class IntegrationSessionBridgeTests(unittest.TestCase):
         got = subprocess.run(
             [sys.executable, str(HERE / "build-integration-session.py"),
              "--runtime", "codex", "--", "--class", "repo-code", "--scale", "routine",
+             "--implement", "--needs-mcp", "dataforseo",
              "--intake-provider", "opus-5", "--json", "--no-record"],
             input=payload, capture_output=True, text=True, cwd=ROOT, env=env,
         )
         self.assertEqual(got.returncode, 0, got.stderr)
         decision = json.loads(got.stdout)
         self.assertEqual(
-            decision["integration_session"]["canonical_ids"], ["dataforseo", "github"]
+            decision["integration_observation"]["reported_callable_ids"],
+            ["dataforseo", "github"],
+        )
+        self.assertIs(decision["integration_observation"]["dispatch_authority"], False)
+        self.assertNotIn("integration_session", decision)
+        self.assertFalse(decision["routing_satisfied"], decision)
+        self.assertIn(
+            "product-authenticated callable proof is unavailable",
+            decision["implement"][0]["why"],
         )
         self.assertNotIn(secret_suffix, got.stdout)
         self.assertNotIn("dfs-mcp", got.stdout)
@@ -202,7 +194,7 @@ class IntegrationSessionBridgeTests(unittest.TestCase):
             if path.is_file():
                 self.assertNotIn(secret_suffix, path.read_text(errors="ignore"))
 
-    def test_run_brief_threads_same_overlay_into_its_single_resolver_call(self):
+    def test_run_brief_all_true_stdin_still_parks_and_records_observation(self):
         env = dict(os.environ)
         got = subprocess.run(
             [sys.executable, str(HERE / "run-brief.py"), "--dry-run",
@@ -214,44 +206,42 @@ class IntegrationSessionBridgeTests(unittest.TestCase):
         self.assertEqual(got.returncode, 0, got.stderr)
         plan = json.loads(got.stdout)
         self.assertEqual(
-            plan["integration_session"]["canonical_ids"],
+            plan["integration_observation"]["reported_callable_ids"],
             ["dataforseo", "github", "google-drive", "google-search-console"],
         )
-        self.assertTrue(plan["routing_satisfied"])
-        self.assertEqual(plan["implement_decision"][0]["seat"], "codex-terra")
+        self.assertFalse(plan["routing_satisfied"])
+        self.assertEqual(plan["implement_decision"][0]["seat"], "(none)")
+        self.assertIn("dispatch_authority=false", plan["implement_decision"][0]["why"])
 
-    def test_dynamic_google_read_connectors_route_but_indexing_mutation_stays_parked(self):
+    def test_observation_cannot_piggyback_synthetic_positive_inventory(self):
         env = dict(os.environ)
-        for connector in ("google-drive", "google-search-console"):
-            with self.subTest(connector=connector):
-                got = subprocess.run(
-                    [sys.executable, str(HERE / "run-brief.py"), "--dry-run",
-                     "--runtime-tools", "codex", "--class", "repo-code",
-                     "--needs-mcp", connector, "--intake-provider", "opus-5",
-                     "--json", "--no-record-observability"],
-                    input=self._tool_blob(), capture_output=True, text=True,
-                    cwd=ROOT, env=env,
-                )
-                self.assertEqual(got.returncode, 0, got.stderr)
-                plan = json.loads(got.stdout)
-                self.assertTrue(plan["routing_satisfied"], plan)
-                self.assertEqual(plan["implement_decision"][0]["seat"], "codex-terra")
-
-        mutation = subprocess.run(
+        env["MB_INTEGRATION_FIXTURE"] = str(
+            ROOT / "model-evals" / "fixtures" / "integrations" / "all-observed.json"
+        )
+        got = subprocess.run(
             [sys.executable, str(HERE / "run-brief.py"), "--dry-run",
              "--runtime-tools", "codex", "--class", "repo-code",
-             "--needs-mcp", "gsc-indexing", "--intake-provider", "opus-5",
+             "--needs-mcp", "dataforseo", "--intake-provider", "opus-5",
              "--json", "--no-record-observability"],
-            input=self._tool_blob(), capture_output=True, text=True,
-            cwd=ROOT, env=env,
+            input=self._tool_blob(), capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(mutation.returncode, 0, mutation.stderr)
-        plan = json.loads(mutation.stdout)
-        self.assertFalse(plan["routing_satisfied"])
-        self.assertTrue(any(
-            "not an observed-effective connector" in str(step.get("why"))
-            for step in plan["implement_decision"]
-        ), plan)
+        self.assertEqual(got.returncode, 0, got.stderr)
+        plan = json.loads(got.stdout)
+        self.assertFalse(plan["routing_satisfied"], plan)
+        self.assertIn("product-authenticated callable proof is unavailable",
+                      plan["implement_decision"][0]["why"])
+
+    def test_doctor_validates_namespace_connector_mapping(self):
+        connectors = json.loads((ROOT / "config/connectors.json").read_text())
+        saved = doctor.ERRORS[:]
+        self.addCleanup(lambda: doctor.ERRORS.__setitem__(slice(None), saved))
+        doctor.ERRORS.clear()
+        doctor.check_runtime_tool_mappings(connectors)
+        self.assertEqual(doctor.ERRORS, [])
+        del connectors["mcp_connectors"]["dataforseo"]
+        doctor.check_runtime_tool_mappings(connectors)
+        self.assertTrue(any("dfs_mcp" in error and "unknown connector" in error
+                            for error in doctor.ERRORS), doctor.ERRORS)
 
     def test_cursor_runtime_is_generic_and_cannot_claim_specialized_bot_roles(self):
         adapters = json.loads((ROOT / "config/integration-adapters.json").read_text())

@@ -57,12 +57,16 @@ def account(
     shared_weekly_status: str | None = None,
     fable_weekly_status: str | None = None,
     fable_capability: str | None = None,
+    rate_limited_until: str | None = None,
+    paused_until: str | None = None,
 ) -> dict:
     return {
         "name": name,
         "type": "oauth",
         "disabled": disabled,
         "status": status,
+        "rateLimitedUntil": rate_limited_until,
+        "pausedUntil": paused_until,
         "quota": {
             "unified5h": five_hour,
             "unified7d": shared_weekly,
@@ -194,6 +198,102 @@ class TeamClaudeEligibilityTests(unittest.TestCase):
         )
         self.assertIs(
             stale_report["models"]["fable"]["all_capable_quota_exhausted"], False
+        )
+
+    def test_future_teamclaude_holds_are_temporary_not_quota_exhaustion(self):
+        now = datetime.now(timezone.utc)
+        future = (now + timedelta(minutes=10)).isoformat()
+        for fields in (
+            {"status": "throttled", "rate_limited_until": future},
+            {"paused_until": future},
+        ):
+            with self.subTest(fields=fields):
+                report = tc.summarize_status(
+                    native([account("temporarily-held", **fields)]),
+                    subscriptions=subscriptions(1),
+                    models=("claude-fable-5",),
+                    now=now,
+                )
+                row = report["model_routes"]["claude-fable-5"]
+                self.assertEqual(row["eligible_account_count"], 0)
+                self.assertEqual(row["temporarily_unavailable_account_count"], 1)
+                self.assertIs(row["all_capable_quota_exhausted"], False)
+                self.assertEqual(report["readiness"], "temporarily_unavailable")
+                self.assertIn("temporarily unavailable", report["status"])
+
+    def test_expired_teamclaude_holds_do_not_hide_recovered_capacity(self):
+        now = datetime.now(timezone.utc)
+        past = (now - timedelta(minutes=1)).isoformat()
+        report = tc.summarize_status(
+            native([
+                account("expired-throttle", status="throttled", rate_limited_until=past),
+                account("expired-pause", paused_until=past),
+            ]),
+            subscriptions=subscriptions(2),
+            models=("claude-fable-5",),
+            now=now,
+        )
+        row = report["model_routes"]["claude-fable-5"]
+        self.assertEqual(row["eligible_account_count"], 2)
+        self.assertEqual(row["temporarily_unavailable_account_count"], 0)
+        self.assertIs(report["available"], True)
+
+    def test_exhausted_status_needs_fresh_positive_exact_bucket_evidence(self):
+        positive = tc.summarize_status(
+            native([account(
+                "exactly-exhausted",
+                status="exhausted",
+                fable_weekly=None,
+                fable_weekly_status="rejected",
+            )]),
+            subscriptions=subscriptions(1),
+            models=("claude-fable-5",),
+        )
+        self.assertIs(
+            positive["model_routes"]["claude-fable-5"]
+            ["all_capable_quota_exhausted"],
+            True,
+        )
+
+        cases = (
+            account(
+                "generic-only", status="exhausted", unified_status="rejected"
+            ),
+            account(
+                "disabled", status="exhausted", disabled=True,
+                fable_weekly_status="rejected",
+            ),
+            account(
+                "error", status="error", fable_weekly_status="rejected",
+            ),
+        )
+        for item in cases:
+            with self.subTest(name=item["name"]):
+                report = tc.summarize_status(
+                    native([item]), subscriptions=subscriptions(1),
+                    models=("claude-fable-5",),
+                )
+                self.assertIs(
+                    report["model_routes"]["claude-fable-5"]
+                    ["all_capable_quota_exhausted"],
+                    False,
+                )
+
+        stale = native([account(
+            "stale-exhausted", status="exhausted",
+            fable_weekly_status="rejected",
+        )])
+        stale["probe"]["accounts"][0]["lastProbedAt"] = (
+            datetime.now(timezone.utc) - timedelta(hours=2)
+        ).isoformat()
+        stale_report = tc.summarize_status(
+            stale, subscriptions=subscriptions(1),
+            models=("claude-fable-5",),
+        )
+        self.assertIs(
+            stale_report["model_routes"]["claude-fable-5"]
+            ["all_capable_quota_exhausted"],
+            False,
         )
 
     def test_native_teamclaude_route_eligibility_is_an_additional_gate(self):
@@ -462,6 +562,40 @@ class TeamClaudeEligibilityTests(unittest.TestCase):
         self.assertIs(blocked["models"]["fable"]["blocked_by_policy"], True)
         self.assertEqual(blocked["models"]["fable"]["eligible_account_count"], 0)
 
+    def test_opus_versions_keep_exact_route_and_block_state_separate(self):
+        doc = native([account("opus-capable")])
+        doc["routes"].extend((
+            {
+                "name": "opus-5",
+                "match": ["claude-opus-5"],
+                "accounts": [{"name": "opus-capable", "eligible": True}],
+            },
+            {
+                "name": "opus-4.8",
+                "match": ["claude-opus-4-8"],
+                "accounts": [{"name": "opus-capable", "eligible": True}],
+            },
+        ))
+        doc["blockedModels"] = ["claude-opus-4-8"]
+        report = tc.summarize_status(
+            doc,
+            subscriptions=subscriptions(1),
+            models=("claude-opus-5", "claude-opus-4-8"),
+        )
+        self.assertGreater(
+            report["model_routes"]["claude-opus-5"]["eligible_account_count"], 0
+        )
+        self.assertIs(
+            report["model_routes"]["claude-opus-5"]["blocked_by_policy"], False
+        )
+        self.assertEqual(
+            report["model_routes"]["claude-opus-4-8"]["eligible_account_count"], 0
+        )
+        self.assertIs(
+            report["model_routes"]["claude-opus-4-8"]["blocked_by_policy"], True
+        )
+        self.assertEqual(report["models"]["opus"]["model"], "claude-opus-5")
+
 
 class TeamClaudePrivacyAndProcessTests(unittest.TestCase):
     def test_successful_report_never_contains_native_account_names(self):
@@ -510,6 +644,22 @@ class TeamClaudePrivacyAndProcessTests(unittest.TestCase):
         self.assertIs(report["available"], False)
         self.assertNotIn(secret, json.dumps(report))
 
+    def test_live_hold_timestamps_are_schema_validated(self):
+        for field in ("rateLimitedUntil", "pausedUntil"):
+            malformed = native([account("private-account")])
+            malformed["accounts"][0][field] = "not-a-timestamp"
+            report = tc.inspect_status(
+                executable="/mock/teamclaude",
+                runner=lambda _argv, doc=malformed: tc.CommandResult(
+                    0, json.dumps(doc), ""
+                ),
+                subscriptions=subscriptions(1),
+                models=("claude-fable-5",),
+            )
+            with self.subTest(field=field):
+                self.assertEqual(report["error_code"], "schema_mismatch")
+                self.assertIs(report["available"], False)
+
     def test_subprocess_output_is_actually_bounded(self):
         with self.assertRaises(tc.OutputLimitError):
             tc.run_bounded(
@@ -531,6 +681,13 @@ class TeamClaudeIntegrationTests(unittest.TestCase):
             "reconciled": True,
             "models": {
                 "fable": {
+                    "eligible_account_count": 2,
+                    "capable_account_count": 3,
+                    "declared_seat_count": 3,
+                }
+            },
+            "model_routes": {
+                "claude-fable-5": {
                     "eligible_account_count": 2,
                     "capable_account_count": 3,
                     "declared_seat_count": 3,
@@ -640,6 +797,9 @@ class TeamClaudeIntegrationTests(unittest.TestCase):
             "all_capable_quota_exhausted": True,
             "blocked_by_policy": False,
         })
+        spent["model_routes"]["claude-fable-5"].update(
+            spent["models"]["fable"]
+        )
         rows = resolve.provider_seats(
             "fable-5", providers,
             [dict(base_row, teamclaude_rotation=spent)],
@@ -650,6 +810,8 @@ class TeamClaudeIntegrationTests(unittest.TestCase):
 
         stale = json.loads(json.dumps(spent))
         stale["models"]["fable"]["all_capable_quota_exhausted"] = False
+        stale["model_routes"]["claude-fable-5"] \
+            ["all_capable_quota_exhausted"] = False
         self.assertEqual(
             resolve.provider_seats(
                 "fable-5", providers,
@@ -657,6 +819,43 @@ class TeamClaudeIntegrationTests(unittest.TestCase):
             ),
             [],
         )
+
+    def test_opus_48_provider_consumes_only_its_exact_model_receipt(self):
+        providers = resolve.mborch.load_config("providers.json", required=True)
+        base_row = {
+            "seat": "claude-max",
+            "subscription": "claude-max-200",
+            "family": "anthropic",
+            "fable": True,
+            "billing": "included",
+            "tier": "available",
+            "usable": True,
+            "available": True,
+            "window_kinds": ["rolling"],
+            "runway_seconds": None,
+            "intake": False,
+        }
+        receipt = json.loads(json.dumps(self.report))
+        receipt["models"]["opus"] = {
+            "eligible_account_count": 1,
+            "blocked_by_policy": False,
+            "all_capable_quota_exhausted": False,
+        }
+        receipt["model_routes"].update({
+            "claude-opus-5": {
+                "eligible_account_count": 1,
+                "blocked_by_policy": False,
+                "all_capable_quota_exhausted": False,
+            },
+            "claude-opus-4-8": {
+                "eligible_account_count": 0,
+                "blocked_by_policy": True,
+                "all_capable_quota_exhausted": False,
+            },
+        })
+        rows = [dict(base_row, teamclaude_rotation=receipt)]
+        self.assertTrue(resolve.provider_seats("opus-5", providers, rows))
+        self.assertEqual(resolve.provider_seats("opus-4.8", providers, rows), [])
 
 
 if __name__ == "__main__":

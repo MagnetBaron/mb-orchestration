@@ -2937,22 +2937,17 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertNotIn("opus-5", ids)
         self.assertNotIn("review-e", ids)
 
-    def test_all_native_spent_opens_only_time_critical_advisory_review_e(self):
+    def test_all_native_spent_never_opens_review_e_as_a_sole_gate(self):
         provs, registry = self._live_review_e()
         rows = self._rows(spent=("claude-max", "claude-pro-a", "codex-sol"))
         with self._review_e_route_probe():
-            ordinary = rr.live_reviewers(
+            reviewers = rr.live_reviewers(
                 provs, rows, {}, registry, dispatcher="grok-build",
             )
-            urgent = rr.live_reviewers(
-                provs, rows, {}, registry, dispatcher="grok-build",
-                review_e_time_critical=True,
-            )
-        self.assertNotIn("review-e", [row["provider"] for row in ordinary])
-        self.assertEqual([row["provider"] for row in urgent], ["review-e"])
-        review = rr.pick_review("cross-family", urgent, True, 0)
+        self.assertNotIn("review-e", [row["provider"] for row in reviewers])
+        review = rr.pick_review("cross-family", reviewers, True, 0)
         self.assertFalse(review["satisfied"], review)
-        self.assertEqual([row["provider"] for row in review["chain"]], ["review-e"])
+        self.assertEqual(review["chain"], [])
 
     def test_review_e_stays_after_native_intake_family_artifact_review(self):
         provs, registry = self._live_review_e()

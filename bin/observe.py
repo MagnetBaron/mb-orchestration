@@ -91,7 +91,7 @@ _FINGERPRINT_KEYS = (
     "kind", "run_id", "source", "actor_id", "profile_id",
     "intake", "task", "implementation", "review", "handoff",
     "usage", "terminal", "outcomes", "provider", "verdict", "tokens",
-    "integration_session",
+    "integration_observation",
 )
 
 _IDENTIFIER_KEYS = frozenset({
@@ -103,8 +103,9 @@ _IDENTIFIER_KEYS = frozenset({
 })
 
 _IDENTIFIER_PATHS = frozenset({
-    ("integration_session", "runtime"),
-    ("integration_session", "canonical_ids", "*"),
+    ("integration_observation", "runtime"),
+    ("integration_observation", "reported_callable_ids", "*"),
+    ("integration_observation", "reported_unavailable_ids", "*"),
 })
 
 
@@ -555,7 +556,7 @@ def make_event(kind, *, run_id, ts, source="observe-cli", actor_id=None, profile
     }
     for key in ("intake", "task", "implementation", "review", "handoff", "usage",
                 "timing", "terminal", "outcomes", "tokens", "verdict", "provider",
-                "independence_group", "review_scope", "routing_satisfied", "integration_session"):
+                "independence_group", "review_scope", "routing_satisfied", "integration_observation"):
         if key in fields and fields[key] is not None:
             ev[key] = fields[key]
     extra = {k: v for k, v in fields.items()
@@ -592,23 +593,32 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
         "fix_loops": None,
         "retractions": None,
     }
-    session_summary = decision.get("integration_session")
-    if isinstance(session_summary, dict):
-        runtime = session_summary.get("runtime")
-        canonical_ids = session_summary.get("canonical_ids")
-        attestation = session_summary.get("attestation") or {}
-        safe_attestation = {
-            key: attestation.get(key)
-            for key in ("source", "observed_at", "expires_at", "digest")
-        }
-        session_summary = {
+    observation_summary = decision.get("integration_observation")
+    if isinstance(observation_summary, dict):
+        runtime = observation_summary.get("runtime")
+        observed_at = observation_summary.get("observed_at")
+        source_name = observation_summary.get("source")
+        callable_ids = observation_summary.get("reported_callable_ids")
+        unavailable_ids = observation_summary.get("reported_unavailable_ids")
+        observation_summary = {
             "runtime": runtime,
-            "canonical_ids": sorted({x for x in (canonical_ids or []) if isinstance(x, str) and x}),
-            "attestation": safe_attestation,
-        } if (isinstance(runtime, str) and runtime
-              and all(isinstance(value, str) and value for value in safe_attestation.values())) else None
+            "reported_callable_ids": sorted({
+                x for x in (callable_ids or []) if isinstance(x, str) and x
+            }),
+            "reported_unavailable_ids": sorted({
+                x for x in (unavailable_ids or []) if isinstance(x, str) and x
+            }),
+            "observed_at": observed_at,
+            "source": source_name,
+            "dispatch_authority": False,
+        } if (
+            isinstance(runtime, str) and runtime
+            and isinstance(observed_at, str) and observed_at
+            and source_name == "caller-runtime-tool-list-v1"
+            and observation_summary.get("dispatch_authority") is False
+        ) else None
     else:
-        session_summary = None
+        observation_summary = None
     return make_event(
         "run_plan" if source == "run-brief" else "route_decision",
         run_id=run_id, ts=ts, source=source, actor_id=actor_id, profile_id=profile_id,
@@ -653,7 +663,7 @@ def event_from_route_decision(decision, *, run_id, ts, source="resolve-route",
             "park_reason_code": park_reason_code(park),
         },
         outcomes=outcomes,
-        integration_session=session_summary,
+        integration_observation=observation_summary,
         tokens=tokens,
         routing_satisfied=routing_ok,
         gates={k: bool(v) for k, v in (decision.get("gates") or {}).items()},

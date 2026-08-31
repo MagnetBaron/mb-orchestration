@@ -9,9 +9,10 @@ The **effective per-run dispatcher** dispatches. It may be Claude, Codex, or Gro
 **Which seat has which connector is dynamic and must not be hardcoded here** (it goes stale the
 moment a connector moves). The policy ceiling is `config/connectors.json`
 `mcp_connectors.*.available_on`; print that maximum map with `bin/connectors.py`. Effective access is
-the intersection of that ceiling with fresh per-runtime observation from
-`bin/detect-integrations.py` and an ephemeral runtime-bound session overlay when a dispatcher can
-enumerate callable tools. Today the ceiling is roughly: Google Search Console / Drive /
+the intersection of that ceiling with fresh product-authenticated callable proof. The repository
+does not currently have a product issuer/verifier for a caller tool list: `bin/detect-integrations.py`,
+`run-brief.py --runtime-tools`, and `bin/build-integration-session.py` can record a sanitized
+observation, but cannot grant routing authority. Today the ceiling is roughly: Google Search Console / Drive /
 DataForSEO on Opus + GPT (Codex); Shopify (MB Internal) preferred on Grok for volume catalog; GitHub
 on all coding seats — but **read the config, do not trust this sentence** when routing.
 
@@ -43,7 +44,7 @@ python3 bin/detect-integrations.py
 python3 bin/detect-integrations.py --json
 python3 bin/detect-integrations.py --refresh
 python3 bin/detect-integrations.py --check
-python3 bin/detect-integrations.py --session FILE   # use - for stdin
+python3 bin/detect-integrations.py --session FILE   # diagnostic/negative-only; use - for stdin
 ```
 
 Codex plugin installation is read only from the active Plugins tab or CLI `/plugins` inventory,
@@ -51,27 +52,26 @@ never from `config.toml` `plugins` keys or the on-disk download cache. OpenAI do
 keys as a plugin-specific MCP allowlist; they are policy overrides, not proof that a plugin is
 installed or enabled ([Plugins](https://learn.chatgpt.com/docs/plugins),
 [config reference](https://learn.chatgpt.com/docs/config-file/config-reference)). Because there is no
-safe non-interactive local manager manifest, Codex plugins fail closed unless the current runtime
-supplies them in the attested session inventory. Profile/project config layers and leftover cache
+safe non-interactive local manager manifest or authenticated product issuer, Codex plugins fail
+closed. A caller session or stdin tool list is diagnostic and cannot promote them. Profile/project config layers and leftover cache
 directories cannot resurrect a removed plugin.
 
 The single observed-effective predicate in `bin/integrations.py` is consumed by
 `routing.capabilities_of`, `routing.mcp_volume_matches`, skill capability gates, and the generated-
 role MCP mutation map. Production manifest discovery can prove that an MCP/app is configured for
 static generation and validation, but cannot prove installation, verified health, or current-session
-callability. Runtime route selection always requires all three through an ephemeral session overlay,
-so there is no static-active bypass. Explicit manifest denials (`blocked`, disabled/unconfigured,
-`installed:false`, or negative auth/health) are monotonic and cannot be replaced by a positive overlay.
-Manifest and session records are coalesced by runtime, kind, and canonical ID; denial wins across
-duplicate records and aliases in either input order, including plugin removal observations.
-Every overlay is schema-versioned, bounded to a one-process random challenge, no more than 60 seconds
-old, expires within 120 seconds, HMAC-SHA256 verified with that challenge, and single-use inside that process. Files must be
-regular non-symlinks with mode 0600; `-` means explicit stdin; `MB_INTEGRATION_SESSION` accepts a file
-path only and cannot implicitly consume stdin or inline JSON. The dispatcher must rotate the 32+
-character `MB_INTEGRATION_SESSION_NONCE` for every launched process and never persist or print it.
-Supplied overlays are reported only as runtime plus registered canonical IDs and value-free
-source/time/digest provenance; an empty ID list distinguishes zero proved capabilities from no
-overlay, while nonces, observed aliases, and values are never printed or persisted. Legacy Grok Bot
+callability. Runtime route selection therefore parks without a separately product-authenticated
+callable assertion; there is no static-active or caller-stdin bypass. Explicit manifest or caller
+denials (`blocked`, disabled/unconfigured, `installed:false`, or negative auth/health) remain
+monotonic. Caller-held nonce/HMAC envelopes provide bounded integrity and replay protection only;
+they do not establish product origin and their positive records never merge into effective routing.
+
+`--runtime-tools` accepts only a bounded `{tool_name:boolean}` object. Exact code-owned namespace
+and representative-tool rules reduce it to canonical `reported_callable_ids` and
+`reported_unavailable_ids`, an `observed_at` timestamp, source
+`caller-runtime-tool-list-v1`, and exact `dispatch_authority:false`. It contains no raw names,
+values, installed/enabled/configured fields, health assertion, callable grant, nonce, or digest.
+The namespace-to-connector map is doctor-validated against `config/connectors.json`. Legacy Grok Bot
 observations and Cursor capabilities are explicitly session-only because those surfaces have no
 canonical local manifest; legacy observations grant no active Bot route. Portable synthetic fixtures are explicit
 test inputs only; production routing never loads them unless an operator explicitly sets the fixture
@@ -82,7 +82,7 @@ override.
 A distributed clone carries its own MCP servers plug-and-play, admin-managed, via a required
 `status` on each `config/connectors.json` `mcp_connectors` entry:
 
-- **active** — eligible inside the vetted policy ceiling; fresh runtime/session observation is still required.
+- **active** — eligible inside the vetted policy ceiling; product-authenticated callable proof is still required.
 - **primed** — bundled/declared for distribution but NOT wired (some MCPs aren't ready yet).
 - **ready** — validated + wireable, awaiting owner activation.
 - **missing or unknown** — inert, never active. The schema requires `status`; doctor errors if it is absent.
@@ -102,9 +102,9 @@ then is it routable.
   coarse word such as `browser`; a class label stays coarse only when it is declared in the
   capability catalog. A primed name, alias, or class copied into `providers.json` `capabilities`
   does not grant access. Missing/unknown/primed/ready never route and `available_on` is only a
-  *declaration* of the seat it would ride on once active and freshly observed. A primed Shopify connector does not
+  *declaration* of the seat it would ride on once active and authenticated as callable. A primed Shopify connector does not
   satisfy a write-capable Shopify skill gate. Existing `status: active` connectors route only with
-  fresh observed-effective proof.
+  fresh product-authenticated callable proof.
   `--needs-mcp` resolves through id, alias, or class and PARKS unless a matching connector is
   `status=active` and lists the MCP volume seat (Terra) in `available_on` **and** Terra has a
   valid live route plus a currently usable seat. If Terra is missing, spent, unavailable, or

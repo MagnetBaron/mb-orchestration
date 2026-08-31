@@ -32,11 +32,13 @@ rr = load_mod("resolve_route_obs", HERE / "resolve-route.py")
 run_brief = load_mod("run_brief_obs", HERE / "run-brief.py")
 doc = load_mod("doctor_obs", HERE / "doctor.py")
 
-ATTESTATION = {
-    "source": "dispatcher-runtime-v1",
+OBSERVATION = {
+    "runtime": "codex",
+    "reported_callable_ids": ["dataforseo"],
+    "reported_unavailable_ids": ["github"],
     "observed_at": "2026-08-29T00:00:00+00:00",
-    "expires_at": "2026-08-29T00:01:00+00:00",
-    "digest": "sha256:" + "a" * 64,
+    "source": "caller-runtime-tool-list-v1",
+    "dispatch_authority": False,
 }
 
 
@@ -138,44 +140,57 @@ class SchemaAndIdempotencyTests(unittest.TestCase):
         )
         self.assertNotEqual(a["event_id"], b["event_id"])
 
-    def test_integration_session_records_only_runtime_and_canonical_ids(self):
-        decision = _decision(integration_session={
+    def test_integration_observation_records_only_value_free_non_authority(self):
+        decision = _decision(integration_observation={
             "runtime": "grokbot-cursor",
-            "canonical_ids": ["visual_qa", "browser", "visual_qa"],
-            "attestation": dict(ATTESTATION),
+            "reported_callable_ids": ["visual_qa", "browser", "visual_qa"],
+            "reported_unavailable_ids": ["ide", "ide"],
+            "observed_at": OBSERVATION["observed_at"],
+            "source": OBSERVATION["source"],
+            "dispatch_authority": False,
             "values": {"token": "must-not-escape"},
             "observed_ids": ["private-local-alias"],
         })
         ev = observe.event_from_route_decision(
             decision, run_id="run-session", ts="2026-08-29T00:00:00+00:00",
         )
-        self.assertEqual(ev["integration_session"], {
-            "runtime": "grokbot-cursor", "canonical_ids": ["browser", "visual_qa"],
-            "attestation": ATTESTATION,
+        self.assertEqual(ev["integration_observation"], {
+            "runtime": "grokbot-cursor",
+            "reported_callable_ids": ["browser", "visual_qa"],
+            "reported_unavailable_ids": ["ide"],
+            "observed_at": OBSERVATION["observed_at"],
+            "source": OBSERVATION["source"],
+            "dispatch_authority": False,
         })
         self.assertNotIn("must-not-escape", json.dumps(ev))
         self.assertNotIn("private-local-alias", json.dumps(ev))
         self.assertEqual(observe.validate_event(ev), [])
 
         zero = observe.event_from_route_decision(
-            _decision(integration_session={
-                "runtime": "codex", "canonical_ids": [], "attestation": dict(ATTESTATION),
-            }),
+            _decision(integration_observation=dict(
+                OBSERVATION,
+                reported_callable_ids=[],
+                reported_unavailable_ids=[],
+            )),
             run_id="run-session-zero", ts="2026-08-29T00:00:00+00:00",
         )
-        self.assertEqual(zero["integration_session"], {
-            "runtime": "codex", "canonical_ids": [], "attestation": ATTESTATION,
-        })
+        self.assertEqual(zero["integration_observation"], dict(
+            OBSERVATION,
+            reported_callable_ids=[],
+            reported_unavailable_ids=[],
+        ))
 
         scoped = observe.make_event(
             "route_decision", run_id="run-scoped-runtime", ts="2026-08-29T00:00:00+00:00",
-            integration_session={
-                "runtime": "grokbot-cursor", "canonical_ids": ["visual_qa"],
-                "attestation": dict(ATTESTATION),
-            },
+            integration_observation=dict(
+                OBSERVATION,
+                runtime="grokbot-cursor",
+                reported_callable_ids=["visual_qa"],
+                reported_unavailable_ids=[],
+            ),
             unrelated={"runtime": "private@example.test"},
         )
-        self.assertEqual(scoped["integration_session"]["runtime"], "grokbot-cursor")
+        self.assertEqual(scoped["integration_observation"]["runtime"], "grokbot-cursor")
         self.assertEqual(scoped["unrelated"]["runtime"], "<redacted-email>")
 
 

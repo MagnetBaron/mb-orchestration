@@ -175,6 +175,11 @@ points, and habits:
 1. Rewrite `config/subscriptions.json` with their plans (this drives Fable grants and capacity).
 2. Set `config/entrypoints.json` — their entry surfaces, profiles, and fallback order.
 3. Set `config/connectors.json` — their MCP connectors, stores, analytics login, and Grok CLI role bindings.
+   Runtime tool JSON supplied to `run-brief.py --runtime-tools` or
+   `build-integration-session.py` is diagnostic only. It is reduced to canonical IDs as an
+   `integration_observation` with `dispatch_authority:false`; it never proves installed,
+   enabled, configured, verified-health, or callable state. Until the product exposes an
+   authenticated issuer/channel, a task that depends on that caller report parks.
 4. Fill the anchors they know in `config/usage-windows.json`.
 5. Run `python3 bin/doctor.py` (must be error-free) and `python3 bin/smoketest.py` (must be 29/29).
 6. Run `python3 bin/detect-agents.py` for transport presence and the configured enabled/wired and

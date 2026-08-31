@@ -196,7 +196,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(integrations.InventoryError, "must be boolean"):
             integrations.fixture_inventory(self.fixture)
 
-    def test_session_is_runtime_bound_ephemeral_and_not_cached(self):
+    def test_session_is_runtime_bound_ephemeral_negative_only_and_not_cached(self):
         self.write([])
         inv = integrations.refresh(force=True)
         before = integrations.cache_path().read_bytes()
@@ -205,7 +205,10 @@ class IntegrationInventoryTests(unittest.TestCase):
         overlay = integrations.load_session(str(session_file))
         ok, _ = integrations.effective("codex", "mcp", "github", require_callable=True,
                                        inv=inv, overlay=overlay)
-        self.assertTrue(ok)
+        self.assertFalse(ok)
+        self.assertIs(overlay["dispatch_authority"], False)
+        with self.assertRaisesRegex(integrations.InventoryError, "product-authenticated"):
+            integrations.claim_overlay_for_resolution(overlay)
         wrong, _ = integrations.effective("claude", "mcp", "github", require_callable=True,
                                           inv=inv, overlay=overlay)
         self.assertFalse(wrong)
@@ -231,7 +234,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         self.assertIsNone(integrations.load_session())
         self.assertIsNone(integrations.session())
 
-    def test_session_only_cursor_alias_and_value_free_provenance(self):
+    def test_session_only_cursor_alias_is_observation_not_positive_authority(self):
         self.write([])
         inv = integrations.refresh(force=True)
         session_file = Path(self.tmp.name) / "cursor-session.json"
@@ -242,10 +245,11 @@ class IntegrationInventoryTests(unittest.TestCase):
             "cursor", "capability", "code", require_callable=True,
             inv=inv, overlay=overlay,
         )
-        self.assertTrue(ok)
+        self.assertFalse(ok)
         provenance = integrations.session_provenance(overlay)
         self.assertEqual(provenance["runtime"], "cursor")
-        self.assertEqual(provenance["canonical_ids"], ["code"])
+        self.assertEqual(provenance["canonical_ids"], [])
+        self.assertIs(overlay["dispatch_authority"], False)
         self.assertEqual(set(provenance["attestation"]), {
             "source", "observed_at", "expires_at", "digest",
         })
@@ -454,13 +458,13 @@ class IntegrationInventoryTests(unittest.TestCase):
             with self.assertRaisesRegex(integrations.InventoryError, "changed during"):
                 integrations.load_session(str(path))
 
-    def test_manifest_denials_are_monotonic_over_positive_session_attestation(self):
+    def test_caller_session_cannot_promote_manifest_and_denials_remain_monotonic(self):
         path = Path(self.tmp.name) / "positive-session.json"
         self.write_session(path, "codex", [record()])
         overlay = integrations.load_session(str(path))
         config = integrations.load_adapters()
         positive = integrations._record(config, "codex", "mcp", "github")
-        self.assertTrue(integrations.effective(
+        self.assertFalse(integrations.effective(
             "codex", "mcp", "github", require_callable=True,
             inv={"records": [positive]}, overlay=overlay,
         )[0])
@@ -620,7 +624,7 @@ class IntegrationInventoryTests(unittest.TestCase):
             kind="plugin", ident="magnet-baron-skills@magnet-baron", callable=False,
         )])
         active_overlay = integrations.load_session(str(installed))
-        self.assertTrue(integrations.plugin_effective(
+        self.assertFalse(integrations.plugin_effective(
             "codex", "magnet-baron-skills", inv=inv, overlay=active_overlay
         )[0])
 
@@ -777,7 +781,7 @@ class IntegrationInventoryTests(unittest.TestCase):
         adapters["provider_runtimes"]["grok-bot-review-d"] = "grok"
         self.assertEqual(adapters["provider_runtimes"]["grok-bot-review-d"], "grok")
 
-    def test_cli_session_merge_json_and_check(self):
+    def test_cli_session_is_diagnostic_and_resolver_rejects_its_authority(self):
         self.write([])
         session_file = Path(self.tmp.name) / "session.json"
         self.write_session(session_file, "codex", [record()])
@@ -786,11 +790,11 @@ class IntegrationInventoryTests(unittest.TestCase):
             [sys.executable, str(HERE / "detect-integrations.py"), "--json", "--session", str(session_file), "--check"],
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertEqual(got.returncode, 2, got.stderr)
         data = json.loads(got.stdout)
         self.assertEqual(data["session_runtime"], "codex")
         self.assertFalse(data["session_persisted"])
-        self.assertIn("codex:mcp:github", data["effective"])
+        self.assertNotIn("codex:mcp:github", data["effective"])
         stdio = subprocess.run(
             [sys.executable, str(HERE / "detect-integrations.py"), "--json", "--session", "-"],
             input=session_file.read_text(), capture_output=True, text=True, cwd=ROOT, env=env,
@@ -804,19 +808,16 @@ class IntegrationInventoryTests(unittest.TestCase):
              "--json", "--no-record"],
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(routed.returncode, 0, routed.stderr)
-        routed_session = json.loads(routed.stdout)["integration_session"]
-        self.assertEqual(routed_session["runtime"], "codex")
-        self.assertEqual(routed_session["canonical_ids"], ["github"])
-        self.assertRegex(routed_session["attestation"]["digest"], r"^sha256:[a-f0-9]{64}$")
+        self.assertNotEqual(routed.returncode, 0, routed.stdout)
+        self.assertIn("not product-authenticated callable proof", routed.stderr)
         human = subprocess.run(
             [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
              "--intake-provider", "opus-5", "--integration-session", str(session_file),
              "--no-record"],
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(human.returncode, 0, human.stderr)
-        self.assertIn("integration session: runtime=codex canonical_ids=github source=dispatcher-runtime-v1", human.stdout)
+        self.assertNotEqual(human.returncode, 0, human.stdout)
+        self.assertIn("not product-authenticated callable proof", human.stderr)
 
         self.write_session(session_file, "codex", [])
         empty = subprocess.run(
@@ -825,18 +826,16 @@ class IntegrationInventoryTests(unittest.TestCase):
              "--json", "--no-record"],
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(empty.returncode, 0, empty.stderr)
-        empty_session = json.loads(empty.stdout)["integration_session"]
-        self.assertEqual(empty_session["runtime"], "codex")
-        self.assertEqual(empty_session["canonical_ids"], [])
+        self.assertNotEqual(empty.returncode, 0, empty.stdout)
+        self.assertIn("not product-authenticated callable proof", empty.stderr)
         empty_human = subprocess.run(
             [sys.executable, str(HERE / "resolve-route.py"), "--class", "repo-code",
              "--intake-provider", "opus-5", "--integration-session", str(session_file),
              "--no-record"],
             capture_output=True, text=True, cwd=ROOT, env=env,
         )
-        self.assertEqual(empty_human.returncode, 0, empty_human.stderr)
-        self.assertIn("integration session: runtime=codex canonical_ids=[]", empty_human.stdout)
+        self.assertNotEqual(empty_human.returncode, 0, empty_human.stdout)
+        self.assertIn("not product-authenticated callable proof", empty_human.stderr)
 
 
 class GrantBypassTests(unittest.TestCase):

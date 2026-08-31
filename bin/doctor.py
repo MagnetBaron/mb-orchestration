@@ -26,6 +26,7 @@ sys.path.insert(0, str(HERE))
 import mborch  # noqa: E402
 import dispatch_evidence  # noqa: E402
 import handoff_policy  # noqa: E402
+import integrations  # noqa: E402
 
 ROOT = HERE.parent
 CONFIG = ROOT / "config"
@@ -56,6 +57,9 @@ def load_module(name, path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+model_registry = load_module("model_registry_doctor_contract", HERE / "model-registry.py")
 
 
 def load_json(name, required=True):
@@ -140,6 +144,24 @@ def check_providers(providers):
         elif provs[pid].get("review_eligible") is not True:
             err(f"review order/fallback provider {pid!r} is not review_eligible")
     for pid, p in provs.items():
+        dependency_id = p.get("overflow_after_provider")
+        if dependency_id is not None:
+            if not isinstance(dependency_id, str) or not dependency_id:
+                err(f"provider {pid}: overflow_after_provider must be a non-empty string")
+            elif dependency_id == pid:
+                err(f"provider {pid}: overflow_after_provider must not reference itself")
+            elif dependency_id not in provs:
+                err(
+                    f"provider {pid}: overflow_after_provider references unknown provider "
+                    f"{dependency_id!r}"
+                )
+            else:
+                dependency_seat = provs[dependency_id].get("usage_seat")
+                if not isinstance(dependency_seat, str) or not dependency_seat:
+                    err(
+                        f"provider {pid}: overflow dependency {dependency_id!r} must "
+                        "declare a non-empty usage_seat"
+                    )
         if p.get("dispatch_eligible") is True:
             if "dispatch" not in (p.get("functions") or []):
                 err(f"provider {pid}: dispatch_eligible requires dispatch function")
@@ -296,6 +318,37 @@ def check_connectors(conns, provider_ids):
             )
 
 
+def check_runtime_tool_mappings(conns):
+    """Bind every code-owned stdin namespace reduction to a configured connector."""
+    connectors = (conns or {}).get("mcp_connectors") or {}
+    mappings = integrations.runtime_tool_connector_mappings()
+    for runtime, namespaces in mappings.items():
+        if not isinstance(runtime, str) or not runtime:
+            err("runtime tool mapping has an invalid runtime id")
+            continue
+        for namespace, rule in namespaces.items():
+            connector = rule.get("connector")
+            required_tools = rule.get("required_tools")
+            if connector not in connectors:
+                err(
+                    f"runtime tool mapping {runtime}:{namespace} references unknown "
+                    f"connector {connector!r}"
+                )
+            if (
+                not isinstance(required_tools, list)
+                or not required_tools
+                or any(
+                    not isinstance(tool, str)
+                    or not re.fullmatch(r"[A-Za-z0-9_]+", tool)
+                    for tool in required_tools
+                )
+            ):
+                err(
+                    f"runtime tool mapping {runtime}:{namespace} requires a non-empty "
+                    "exact safe tool surface"
+                )
+
+
 def check_integration_adapters(adapters, providers_data):
     if not adapters:
         return
@@ -393,7 +446,8 @@ def check_integration_adapters(adapters, providers_data):
         records, events = integ.discover(adapters)
         unregistered = sum(1 for r in records if not r.get("registered"))
         info(f"integration inventory read-only discovery: {len(records)} observed, {unregistered} unregistered, "
-             f"{len(events)} unavailable source(s); runtime grants still require session-callable proof")
+             f"{len(events)} unavailable source(s); runtime grants still require "
+             "product-authenticated callable proof")
     except Exception as exc:
         err(f"integration inventory read-only discovery failed closed: {exc}")
 
@@ -965,7 +1019,6 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                 expected_identity = {
                     "model": "grok-4.6", "provider": "cursor-grok", "host": "cursor",
                     "harness": "cursor-agent", "invocation_id": expected_invocation,
-                    "route_state": "catalog_verified",
                 }
                 for key, want in expected_identity.items():
                     if route.get(key) != want:
@@ -973,35 +1026,87 @@ def check_seat_exec(seat_exec, provs, provider_ids, registry=None):
                             f"provider 'cursor-grok': route {route_id!r} {key} must be "
                             f"exact {want!r}, got {route.get(key)!r}"
                         )
-                if route.get("evidence_strength") != "cli_listing":
-                    err(
-                        "provider 'cursor-grok': corrected invocation must remain "
-                        "cli_listing/catalog-only until an inference smoke is recorded"
-                    )
                 local_smoke = (route.get("attestations") or {}).get("local_access_smoke") or {}
-                if local_smoke.get("state") != "missing":
-                    err(
-                        "provider 'cursor-grok': local_access_smoke must remain missing "
-                        "until the exact Cursor invocation returns a terminal receipt"
-                    )
-                listed = [
-                    ev for ev in (route.get("evidence") or [])
-                    if isinstance(ev, dict) and ev.get("kind") == "cli_listing"
-                ]
-                if not listed:
-                    err("provider 'cursor-grok': exact invocation needs dated cli_listing evidence")
-                else:
-                    latest = sorted(listed, key=lambda ev: str(ev.get("date") or ""))[-1]
-                    source = str(latest.get("source") or "")
-                    if ("cursor-agent --list-models" not in source
-                            or expected_invocation not in source
-                            or "no inference" not in source.lower()
-                            or latest.get("signal") in {"direct_invocation", "standing_provider"}):
+                route_state = route.get("route_state")
+                if route_state == "catalog_verified":
+                    if route.get("evidence_strength") != "cli_listing":
                         err(
-                            "provider 'cursor-grok': cli_listing evidence must name the live "
-                            "listing command and exact model id, state that no inference ran, "
-                            "and must not masquerade as a live invocation signal"
+                            "provider 'cursor-grok': catalog route must retain exact "
+                            "cli_listing evidence strength"
                         )
+                    if local_smoke.get("state") != "missing":
+                        err(
+                            "provider 'cursor-grok': catalog local_access_smoke must remain "
+                            "missing until the exact Cursor invocation returns a terminal receipt"
+                        )
+                    listed = [
+                        ev for ev in (route.get("evidence") or [])
+                        if isinstance(ev, dict) and ev.get("kind") == "cli_listing"
+                    ]
+                    if not listed:
+                        err("provider 'cursor-grok': exact invocation needs dated cli_listing evidence")
+                    else:
+                        latest = sorted(listed, key=lambda ev: str(ev.get("date") or ""))[-1]
+                        source = str(latest.get("source") or "")
+                        if ("cursor-agent --list-models" not in source
+                                or expected_invocation not in source
+                                or "no inference" not in source.lower()
+                                or latest.get("signal") in {"direct_invocation", "standing_provider"}):
+                            err(
+                                "provider 'cursor-grok': cli_listing evidence must name the live "
+                                "listing command and exact model id, state that no inference ran, "
+                                "and must not masquerade as a live invocation signal"
+                            )
+                elif route_state == "live_verified":
+                    if route.get("evidence_strength") != "local_smoke":
+                        err(
+                            "provider 'cursor-grok': live promotion requires exact "
+                            "local_smoke evidence strength"
+                        )
+                    if not (
+                        local_smoke.get("state") == "attested"
+                        and local_smoke.get("signal") == "direct_invocation"
+                        and local_smoke.get("evidence_kind") == "direct_invocation"
+                    ):
+                        err(
+                            "provider 'cursor-grok': live promotion requires an attested "
+                            "direct_invocation local_access_smoke"
+                        )
+                    evidence = [
+                        ev for ev in (route.get("evidence") or [])
+                        if isinstance(ev, dict)
+                    ]
+                    latest = sorted(
+                        evidence,
+                        key=lambda ev: str(ev.get("date") or ""),
+                    )[-1] if evidence else {}
+                    expected_receipt = {
+                        "harness": "cursor-agent",
+                        "invocation_id": expected_invocation,
+                        "exit_code": 0,
+                        "completed": True,
+                    }
+                    if not (
+                        latest.get("route_state") == "live_verified"
+                        and latest.get("kind") == "terminal_inference_receipt"
+                        and latest.get("signal") == "direct_invocation"
+                        and latest.get("terminal_receipt") == expected_receipt
+                    ):
+                        err(
+                            "provider 'cursor-grok': live promotion requires the latest "
+                            "evidence to be an exact successful terminal inference receipt"
+                        )
+                    if not model_registry.route_is_live(registry, route_id):
+                        err(
+                            "provider 'cursor-grok': live promotion must satisfy the generic "
+                            "model-registry live predicate; corrected identity cannot inherit "
+                            "the frozen legacy waiver"
+                        )
+                else:
+                    err(
+                        "provider 'cursor-grok': route_state must be catalog_verified or "
+                        "a receipt-attested live_verified promotion"
+                    )
         if pid == "cursor-other-400":
             detect = p.get("detect") or {}
             if detect != {"method": "command", "cmd": "cursor-agent"}:
@@ -1494,6 +1599,7 @@ def main(argv=None):
     fable_from_subs = check_subscriptions(subs, provider_ids)
     check_provider_backings(provs, subs, windows)
     check_connectors(conns, provider_ids)
+    check_runtime_tool_mappings(conns)
     check_integration_adapters(integration_adapters, providers)
     check_connector_lifecycle(conns, providers)
     check_skills(skills, providers, conns)

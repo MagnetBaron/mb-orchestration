@@ -33,6 +33,7 @@
               "review_eligible": { "type": "boolean" },
               "dispatch_eligible": { "type": "boolean" },
               "usage_seat": { "type": "string", "minLength": 1 },
+              "overflow_after_provider": { "type": "string", "minLength": 1 },
               "backed_by": { "type": ["string", "null"], "not": { "const": "UNRESOLVED" } },
               "dispatch_evidence": {
                 "type": "object",

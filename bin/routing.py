@@ -12,7 +12,7 @@ Encodes the economics the owner asked for, as legible deterministic rules:
   * no mid-turn swap — a seat whose window resets before the task finishes is flagged.
 
 `capabilities_of(provider, connectors)` unions coarse capabilities with only connectors inside
-the `available_on` ceiling that also have fresh runtime/session callable proof, so "who has
+the `available_on` ceiling that also have product-authenticated callable proof, so "who has
 Clarity/Chrome/GSC" is observed rather than assumed.
 Connector IDs and aliases are always connector-derived — even when they equal a coarse
 word such as `browser` — and are granted only through an explicitly active connector
@@ -76,7 +76,7 @@ def connector_is_active(meta):
     and ready (validated, awaiting owner activation) are also inert scaffolding and are never
     granted to a seat. Only an owner/admin setting status to 'active' makes a connector
     eligible within the policy ceiling. ``connector_is_effective`` adds the mandatory
-    observed runtime/session proof used by routing, role/MCP generation, and skill gates.
+    product-authenticated callable proof used by routing, role/MCP generation, and skill gates.
     """
     return (meta or {}).get("status") == "active"
 
@@ -86,7 +86,7 @@ def connector_is_effective(provider_id, connector_id, meta, inventory=None, sess
     """Central observed-effective predicate for a provider connector grant.
 
     ``available_on`` and ``status=active`` are only the vetted ceiling. Fresh
-    Runtime/session evidence must additionally prove that the connector is
+    Product-authenticated evidence must additionally prove that the connector is
     enabled, configured, and healthy. Runtime grants keep the default
     ``require_callable=True``; static role validation may explicitly request
     configured-manifest evidence without changing runtime routing.
@@ -222,7 +222,7 @@ def capabilities_of(provider_id, provider, connectors, inventory=None, session=N
     equal a coarse word. A class is stripped only when it is not in the capability
     catalog. A derived label is granted only when at least one matching connector is
     active, its lifecycle predicate passes, `available_on` includes this provider, and fresh
-    runtime/session evidence proves it callable (the default). Static role
+    product-authenticated evidence proves it callable (the default). Static role
     validation may explicitly set ``require_callable=False``; runtime callers
     must retain the default.
     """

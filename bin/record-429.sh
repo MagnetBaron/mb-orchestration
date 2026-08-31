@@ -39,7 +39,7 @@ signal_note="429/usage-limit recorded by wrapper"
 grok_balance_exhausted=false
 if [ "$seat" = "grok-heavy" ] \
   && [[ "$message" != *$'\n'* && "$message" != *$'\r'* ]] \
-  && printf '%s' "$message" | grep -Eiq "$grok_402_sig"; then
+  && printf '%s' "$message" | grep -Eq "$grok_402_sig"; then
   signal_note="Grok Build 402 usage-balance-exhausted recorded by wrapper"
   grok_balance_exhausted=true
 elif ! printf '%s' "$message" | grep -Eiq "$sig"; then
@@ -68,7 +68,10 @@ fi
 rolling_only_5h="$(jq -r --arg seat "$seat" '
   (.seats[$seat].windows // []) as $windows
   | (($windows | length) > 0
-     and all($windows[]; .kind == "rolling" and (.hours | tonumber?) == 5))
+     and all($windows[];
+       .kind == "rolling"
+       and (.hours | type) == "number"
+       and .hours == 5))
 ' "$windows")"
 if [ -z "$reset" ] && [ "$grok_balance_exhausted" = false ] \
   && [ "$rolling_only_5h" = true ]; then
@@ -83,18 +86,17 @@ fi
 umask 077
 mkdir -p "$(dirname "$ledger")"
 lock="${ledger}.lock"
-lock_attempts=0
-while ! mkdir "$lock" 2>/dev/null; do
-  lock_attempts=$((lock_attempts + 1))
-  if [ "$lock_attempts" -ge 250 ]; then
-    echo "record-429: timed out waiting for the ledger lock" >&2
-    exit 1
-  fi
-  sleep 0.02
-done
+lock_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ledger-lock.py"
+lock_token="$(python3 "$lock_helper" acquire --lock "$lock" --owner-pid "$$" \
+  --timeout "${MB_LEDGER_LOCK_TIMEOUT:-5}" --poll 0.02 --stale-grace 1)"
 
 tmp="${ledger}.tmp.$$"
-trap 'rm -f "$tmp"; rmdir "$lock"' EXIT
+release_lock() {
+  rm -f "$tmp"
+  python3 "$lock_helper" release --lock "$lock" --owner-pid "$$" \
+    --token "$lock_token" >/dev/null 2>&1 || true
+}
+trap release_lock EXIT
 if [ -s "$ledger" ]; then
   base="$(cat "$ledger")"
 else

@@ -2209,7 +2209,7 @@ def main(argv=None) -> int:
     ap.add_argument("--cwd", type=Path, default=mborch.REPO)
     ap.add_argument("--agent-dir", type=Path, default=Path.home() / ".grok" / "agents")
     ap.add_argument("--integration-session", metavar="FILE|-",
-                    help="fresh process-scoped Grok capability attestation")
+                    help="caller session diagnostic/denial input; positive claims never grant capability")
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--smoke", action="store_true",
                     help="prove only CLI/profile/model selection with a fixed no-tool prompt")

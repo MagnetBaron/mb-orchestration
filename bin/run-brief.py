@@ -71,7 +71,7 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
                    task_seconds, user_said_ship, ledger, intake_provider="",
                    profile="default", artifacts="", run_id="", actor_id="",
                    record_observability=False, no_record_observability=False,
-                   integration_overlay=None) -> dict:
+                   integration_observation=None) -> dict:
     """Consume resolve-route.py's JSON decision verbatim (exact shape — never reshaped).
     Called in-process with stdout captured; this is not a subprocess and shells nothing."""
     argv = ["--class", klass, "--scale", scale, "--implement", "--json"]
@@ -105,7 +105,7 @@ def build_decision(klass, scale, risk, pixels, needs_mcp, needs_connector,
     # inner resolve-route emit (so emit-on-run-brief-only remains possible).
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = resolve_route.main(argv, integration_overlay=integration_overlay)
+        rc = resolve_route.main(argv, integration_observation=integration_observation)
     if rc != 0:
         raise SystemExit(f"run-brief: resolve-route returned {rc}")
     return json.loads(buf.getvalue())
@@ -172,7 +172,7 @@ def plan_for_seat(
     return entry
 
 
-def build_plan(args, integration_overlay=None) -> dict:
+def build_plan(args, integration_observation=None) -> dict:
     decision = build_decision(args.klass, args.scale, args.risk, args.pixels,
                               args.needs_mcp.strip(), args.needs_connector.strip(),
                               args.task_seconds, args.user_said_ship, args.ledger,
@@ -181,7 +181,7 @@ def build_plan(args, integration_overlay=None) -> dict:
                               getattr(args, "actor_id", "") or "",
                               getattr(args, "record_observability", False),
                               getattr(args, "no_record_observability", False),
-                              integration_overlay)
+                              integration_observation)
     lane = args.lane or f"lane-{args.klass}"
     recipes = mborch.load_config("seat-exec.json")["recipes"]
     ctx = {
@@ -245,8 +245,8 @@ def build_plan(args, integration_overlay=None) -> dict:
         "implement_requested": True,
         "park_reason": decision.get("park_reason"),
     }
-    if decision.get("integration_session") is not None:
-        plan["integration_session"] = decision["integration_session"]
+    if decision.get("integration_observation") is not None:
+        plan["integration_observation"] = decision["integration_observation"]
     return plan
 
 
@@ -261,8 +261,8 @@ def record_trace(plan, run_ledger_path):
                     "review_chain": plan["review_chain"], "gates": plan["gates"],
                     "handoff": plan["handoff"], "dry_run": True,
                     "decided_by": "run-brief"}
-    if plan.get("integration_session") is not None:
-        event_fields["integration_session"] = plan["integration_session"]
+    if plan.get("integration_observation") is not None:
+        event_fields["integration_observation"] = plan["integration_observation"]
     ev = runledger.make_event(
         plan["lane"], plan["transition"]["to"], _now_iso(),
         **event_fields)
@@ -285,6 +285,13 @@ def _print_plan(plan):
     print(f"gates: {', '.join(k for k, v in plan['gates'].items() if v) or '(none)'}")
     if plan["user_said_ship"]:
         print("  note: user said ship = LAND; the floor's landing lock / green test / pixel / owner gates still apply.")
+    observation = plan.get("integration_observation")
+    if observation is not None:
+        reported = ",".join(observation["reported_callable_ids"]) or "[]"
+        print(
+            f"integration observation: runtime={observation['runtime']} "
+            f"reported_callable_ids={reported} dispatch_authority=false"
+        )
 
     print("-" * 72)
     print("WOULD IMPLEMENT:")
@@ -339,7 +346,7 @@ def main(argv=None):
     ap.add_argument("--needs-mcp", default="")
     ap.add_argument("--needs-connector", default="")
     ap.add_argument("--runtime-tools", choices=["codex"], default="",
-                    help="read a bounded {tool_name:boolean} inventory from stdin and bind it to this one plan")
+                    help="read a bounded {tool_name:boolean} inventory from stdin as diagnostic observation only; never grants MCP dispatch authority")
     ap.add_argument("--task-seconds", type=int, default=0)
     ap.add_argument("--user-said-ship", action="store_true")
     ap.add_argument("--intake-provider", default="", help="user-selected dispatcher for this run")
@@ -373,17 +380,19 @@ def main(argv=None):
     started = time.perf_counter()
     if not args.run_id:
         args.run_id = observe.new_run_id() if observe else str(uuid.uuid4())
-    integration_overlay = None
+    integration_observation = None
     if args.runtime_tools:
         try:
             raw = sys.stdin.buffer.read(integrations.RUNTIME_TOOLS_MAX_BYTES + 1)
-            integration_overlay = integrations.build_runtime_tool_overlay(args.runtime_tools, raw)
+            integration_observation = integrations.build_runtime_tool_observation(
+                args.runtime_tools, raw
+            )
         except (integrations.InventoryError, OSError) as exc:
             print(f"run-brief: invalid runtime tool inventory (fail closed): {exc}", file=sys.stderr)
             return 2
     else:
         integrations.clear_process_session()
-    plan = build_plan(args, integration_overlay=integration_overlay)
+    plan = build_plan(args, integration_observation=integration_observation)
     duration_ms = int((time.perf_counter() - started) * 1000)
     if args.record:
         record_trace(plan, args.run_ledger)

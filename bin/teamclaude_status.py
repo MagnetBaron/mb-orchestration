@@ -53,6 +53,11 @@ MODEL_FOR_FAMILY = {
     "fable": "claude-fable-5",
     "sonnet": "claude-sonnet-4-6",
 }
+DEFAULT_MODELS = (
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-fable-5",
+)
 FAMILY_BUCKET = {
     "opus": "unified7d",
     "fable": "unified7dFable",
@@ -226,6 +231,9 @@ def _validate_status(document) -> dict:
             raise StatusSchemaError(f"{where}.disabled must be a boolean")
         if account.get("status") not in {"active", "throttled", "exhausted", "error"}:
             raise StatusSchemaError(f"{where}.status is not recognized")
+        for field in ("rateLimitedUntil", "pausedUntil"):
+            if account.get(field) is not None:
+                _timestamp(account[field], f"{where}.{field}")
         quota = account.get("quota")
         if not isinstance(quota, dict):
             raise StatusSchemaError(f"{where}.quota must be an object")
@@ -435,6 +443,15 @@ def _model_blocked(document: dict, model: str) -> bool:
     return any(_matches(pattern, model) for pattern in document.get("blockedModels", []))
 
 
+def _future_hold(account: dict, now: datetime) -> bool:
+    """Whether TeamClaude says this account is temporarily unavailable now."""
+    for field in ("rateLimitedUntil", "pausedUntil"):
+        value = account.get(field)
+        if value is not None and _timestamp(value, field) > now:
+            return True
+    return False
+
+
 def _account_capable(account: dict, family: str, allowed: set[str] | None) -> bool:
     if account["type"] != "oauth":
         return False
@@ -462,6 +479,7 @@ def _account_eligible(
     allowed: set[str] | None,
     fresh_probe_accounts: set[str],
     native_route_eligibility: dict[str, bool] | None,
+    now: datetime,
 ) -> bool:
     """Evaluate all quota gates independently; unknown state is ineligible."""
     if account["type"] == "oauth" and account["name"] not in fresh_probe_accounts:
@@ -471,7 +489,17 @@ def _account_eligible(
         return False
     if not _account_capable(account, family, allowed):
         return False
-    if account["disabled"] or account["status"] != "active":
+    if account["disabled"] or _future_hold(account, now):
+        return False
+    status = account["status"]
+    if status == "throttled":
+        # TeamClaude can leave the label in place until the next selection pass.
+        # Only an explicitly expired hold is enough to treat that label as
+        # recoverable; absent/future timing remains fail-closed.
+        limited_until = account.get("rateLimitedUntil")
+        if limited_until is None or _timestamp(limited_until, "rateLimitedUntil") > now:
+            return False
+    elif status != "active":
         return False
     quota = account["quota"]
     if quota.get("unifiedStatus") == "rejected":
@@ -501,8 +529,6 @@ def _account_quota_exhausted(account: dict, family: str, threshold: float) -> bo
     """Positive proof that at least one applicable quota bucket is spent."""
     del threshold
     quota = account["quota"]
-    if quota.get("unifiedStatus") == "rejected":
-        return True
     keys = ["unified5h", "unified7d"]
     family_key = FAMILY_BUCKET[family]
     if family_key != "unified7d":
@@ -520,13 +546,15 @@ def summarize_status(
     document: dict,
     *,
     subscriptions: dict | None = None,
-    models: tuple[str, ...] = ("claude-opus-5", "claude-fable-5"),
+    models: tuple[str, ...] = DEFAULT_MODELS,
+    now: datetime | None = None,
 ) -> dict:
     """Validate native status and return an identity-free aggregate."""
     document = _validate_status(document)
     declared = declared_inventory(subscriptions)
     accounts = document["accounts"]
     threshold = float(document["switchThreshold"])
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     oauth_accounts = [account for account in accounts if account["type"] == "oauth"]
     observed = {
         "account_count": len(oauth_accounts),
@@ -538,7 +566,9 @@ def summarize_status(
     }
     problems = []
     warnings = []
-    fresh_probe_accounts, probe_problems, probe_warnings = _fresh_probe_accounts(document)
+    fresh_probe_accounts, probe_problems, probe_warnings = _fresh_probe_accounts(
+        document, now=now,
+    )
     problems.extend(probe_problems)
     warnings.extend(probe_warnings)
     if observed["account_count"] > declared["account_count"]:
@@ -587,8 +617,9 @@ def summarize_status(
                 "TeamClaude quota-state persistence is degraded; live in-memory rotation remains usable"
             )
 
-    model_rows = {}
-    for requested in models:
+    model_routes = {}
+    family_rows = {}
+    for requested in dict.fromkeys(models):
         family = _family(requested)
         model = MODEL_FOR_FAMILY[family] if requested == family else requested
         allowed = _route_account_names(document, model)
@@ -602,14 +633,22 @@ def summarize_status(
         eligible = 0 if blocked else sum(
             _account_eligible(
                 account, family, threshold, allowed, fresh_probe_accounts,
-                native_route_eligibility,
+                native_route_eligibility, now,
             )
             for account in accounts
         )
+        temporarily_unavailable = sum(
+            not account["disabled"]
+            and account["status"] != "error"
+            and account["name"] in fresh_probe_accounts
+            and _future_hold(account, now)
+            for account in capable_accounts
+        )
         all_capable_quota_exhausted = bool(capable_accounts) and all(
             not account["disabled"]
-            and account["status"] in {"active", "throttled"}
+            and account["status"] in {"active", "throttled", "exhausted"}
             and account["name"] in fresh_probe_accounts
+            and not _future_hold(account, now)
             and _account_quota_exhausted(account, family, threshold)
             for account in capable_accounts
         )
@@ -621,46 +660,67 @@ def summarize_status(
                 f"({capable} > {declared_count}); that family is blocked"
             )
             eligible = 0
+            temporarily_unavailable = 0
             all_capable_quota_exhausted = False
         elif capable < declared_count:
             warnings.append(
                 f"live {family} capability is a degraded subset of declarations "
                 f"({capable} < {declared_count})"
             )
-        model_rows[family] = {
+        row = {
             "model": model,
             "declared_seat_count": declared_count,
             "capable_account_count": capable,
             "eligible_account_count": eligible,
+            "temporarily_unavailable_account_count": temporarily_unavailable,
             "all_capable_quota_exhausted": all_capable_quota_exhausted,
             "blocked_by_policy": blocked or capability_ceiling_exceeded,
             "capability_ceiling_exceeded": capability_ceiling_exceeded,
         }
+        model_routes[model] = row
+        if family not in family_rows or model == MODEL_FOR_FAMILY[family]:
+            family_rows[family] = row
 
     reconciled = not problems
-    requested_ready = bool(model_rows) and all(
-        row["eligible_account_count"] > 0 for row in model_rows.values()
+    requested_ready = bool(model_routes) and all(
+        row["eligible_account_count"] > 0 for row in model_routes.values()
     )
     available = reconciled and requested_ready
+    temporarily_unavailable = bool(model_routes) and not available and reconciled and all(
+        row["eligible_account_count"] > 0
+        or (
+            row["temporarily_unavailable_account_count"] > 0
+            and row["all_capable_quota_exhausted"] is False
+            and row["blocked_by_policy"] is False
+        )
+        for row in model_routes.values()
+    )
     return {
         "tool": "teamclaude",
         "transport_present": True,
         "service_reachable": True,
         "schema_valid": True,
         "available": available,
-        "readiness": "ready" if available else "blocked",
+        "readiness": (
+            "ready" if available
+            else "temporarily_unavailable" if temporarily_unavailable
+            else "blocked"
+        ),
         "reconciled": reconciled,
         "switch_threshold": threshold,
         "declared": declared,
         "observed": observed,
         "persistence": persistence,
-        "models": model_rows,
+        "models": family_rows,
+        "model_routes": model_routes,
         "problems": problems,
         "warnings": warnings,
         "status": (
             "live rotation ready; using the fresh anonymous fleet"
             + (" with degraded warnings" if warnings else "")
             if available
+            else "live rotation temporarily unavailable; wait for the reported hold to expire"
+            if temporarily_unavailable
             else "live rotation blocked; inspect aggregate problems and model eligibility"
         ),
     }
@@ -683,6 +743,7 @@ def _unavailable(
         "readiness": "blocked" if evaluated else "not evaluated",
         "reconciled": False,
         "models": {},
+        "model_routes": {},
         "persistence": {"reported": False, "healthy": None, "error_code": None},
         "problems": [status],
         "warnings": [],
@@ -694,7 +755,7 @@ def _unavailable(
 def inspect_status(
     *,
     subscriptions: dict | None = None,
-    models: tuple[str, ...] = ("claude-opus-5", "claude-fable-5"),
+    models: tuple[str, ...] = DEFAULT_MODELS,
     executable: str | None = None,
     runner=run_bounded,
 ) -> dict:
@@ -777,15 +838,15 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    models = tuple(args.model) if args.model else ("claude-opus-5", "claude-fable-5")
+    models = tuple(args.model) if args.model else DEFAULT_MODELS
     report = inspect_status(models=models)
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         print(f"TeamClaude: {report['status']}")
-        for family, row in report.get("models", {}).items():
+        for model, row in report.get("model_routes", {}).items():
             print(
-                f"  {family}: eligible {row['eligible_account_count']} / "
+                f"  {model}: eligible {row['eligible_account_count']} / "
                 f"capable {row['capable_account_count']} / "
                 f"declared {row['declared_seat_count']}"
             )
