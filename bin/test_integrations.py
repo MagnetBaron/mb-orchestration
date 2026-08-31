@@ -673,6 +673,14 @@ class IntegrationInventoryTests(unittest.TestCase):
         thread.join(1)
         self.assertTrue(finished.is_set())
         self.assertFalse(path.exists())
+
+    def test_inventory_lock_guard_respects_acquisition_deadline(self):
+        path = Path(self.tmp.name) / "deadline.lock"
+        with integrations.mborch.path_lock_guard(path):
+            started = time.monotonic()
+            with self.assertRaisesRegex(integrations.InventoryError, "lock timeout"):
+                integrations._lock(path, 0.02)
+            self.assertLess(time.monotonic() - started, 0.15)
         self.assertFalse(path.exists())
 
         path.write_text(json.dumps({"pid": 2_000_000_000, "owner": "dead", "created_at": "now"}))

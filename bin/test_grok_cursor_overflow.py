@@ -306,6 +306,16 @@ class RecordGrokExhaustionTests(unittest.TestCase):
         self.assertEqual(result, [True])
         self.assertFalse(lock.exists())
 
+    def test_directory_lock_guard_respects_acquisition_deadline(self):
+        lock = Path(f"{self.ledger}.deadline.lock")
+        with detect_capability.mborch.path_lock_guard(lock):
+            started = time.monotonic()
+            with self.assertRaisesRegex(TimeoutError, "timed out waiting"):
+                detect_capability.mborch.acquire_directory_lock(
+                    lock, timeout_seconds=0.02, poll_seconds=0.001,
+                )
+            self.assertLess(time.monotonic() - started, 0.15)
+
     def test_metered_monthly_cap_is_fail_closed_and_executable(self):
         seat = {
             "meter": "metered review",

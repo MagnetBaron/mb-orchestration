@@ -413,40 +413,51 @@ def _lock(path: Path, timeout: float) -> str:
     payload = json.dumps({"pid": os.getpid(), "owner": owner_token, "created_at": now_iso()}) + "\n"
     deadline = time.monotonic() + timeout
     while True:
-        with mborch.path_lock_guard(path):
-            try:
-                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            except FileExistsError:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise InventoryError("integration inventory lock timeout")
+        try:
+            with mborch.path_lock_guard(
+                path, timeout_seconds=remaining, poll_seconds=min(0.01, remaining),
+            ):
                 try:
-                    owner = _lock_owner(path)
-                    age = time.time() - path.stat().st_mtime
-                    dead_owner = owner is not None and not _pid_alive(owner["pid"])
-                    malformed_stale = owner is None and age > max(30.0, timeout * 4)
-                    recycled_pid_stale = owner is not None and age > LOCK_RECYCLED_PID_MAX_AGE_SECONDS
-                    if dead_owner or malformed_stale or recycled_pid_stale:
-                        path.unlink()
-                except FileNotFoundError:
-                    pass
-            else:
-                try:
-                    os.write(fd, payload.encode("utf-8"))
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
-                return owner_token
-            if time.monotonic() >= deadline:
-                raise InventoryError("integration inventory lock timeout")
+                    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                except FileExistsError:
+                    try:
+                        owner = _lock_owner(path)
+                        age = time.time() - path.stat().st_mtime
+                        dead_owner = owner is not None and not _pid_alive(owner["pid"])
+                        malformed_stale = owner is None and age > max(30.0, timeout * 4)
+                        recycled_pid_stale = owner is not None and age > LOCK_RECYCLED_PID_MAX_AGE_SECONDS
+                        if dead_owner or malformed_stale or recycled_pid_stale:
+                            path.unlink()
+                    except FileNotFoundError:
+                        pass
+                else:
+                    try:
+                        os.write(fd, payload.encode("utf-8"))
+                        os.fsync(fd)
+                    finally:
+                        os.close(fd)
+                    return owner_token
+        except TimeoutError:
+            raise InventoryError("integration inventory lock timeout") from None
+        if time.monotonic() >= deadline:
+            raise InventoryError("integration inventory lock timeout")
         time.sleep(0.02)
 
 
 def _unlock(path: Path, owner_token: str) -> None:
-    with mborch.path_lock_guard(path):
-        owner = _lock_owner(path)
-        if owner is not None and owner.get("owner") == owner_token:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+    try:
+        with mborch.path_lock_guard(path, timeout_seconds=1.0):
+            owner = _lock_owner(path)
+            if owner is not None and owner.get("owner") == owner_token:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+    except TimeoutError:
+        pass
 
 
 def _atomic_write(path: Path, data: dict) -> None:

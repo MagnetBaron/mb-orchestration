@@ -1,6 +1,7 @@
 # Live usage state written by wrappers/probes/owner — not policy, not committed.
 config/usage-ledger.json
 config/usage-ledger.json.lock
+config/.usage-ledger.json.lock.guard
 
 # Runtime data: usage history, learned windows, orchestration events, generated dashboard.
 # Not committed. Synthetic observability fixtures live under model-evals/fixtures/.
