@@ -182,6 +182,8 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     drain = seat.get("drain", "full")
     intake = bool(seat.get("intake"))
     billing = seat.get("billing", "included")
+    monthly_cap_usd = to_number(seat.get("monthly_cap_usd"))
+    monthly_spend_usd = to_number(entry.get("monthly_spend_usd"))
 
     su_future = spent_until if (spent_until is not None and spent_until > now_ref) else None
     over_reserve = (pct is not None and reserve_pct is not None and pct >= reserve_pct)
@@ -189,8 +191,17 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     # just a label (used for reserve sizing) — it does NOT demote a seat on its own, so a
     # solo user's single (intake) seat stays 'available' and codes normally.
     holds_reserve = (drain == "reserve")
+    # A configured metered ceiling is executable state, not prose. Unknown
+    # month-to-date spend fails closed because routing cannot prove another call
+    # stays below the owner's cap; an at/over-cap row is positively spent.
+    metered_spend_unknown = monthly_cap_usd is not None and monthly_spend_usd is None
+    over_monthly_cap = (
+        monthly_cap_usd is not None
+        and monthly_spend_usd is not None
+        and monthly_spend_usd >= monthly_cap_usd
+    )
 
-    if su_future is not None or spent_without_reset:
+    if su_future is not None or spent_without_reset or metered_spend_unknown or over_monthly_cap:
         tier = "spent"
     elif over_reserve or holds_reserve:
         tier = "reserve"
@@ -198,7 +209,12 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
         tier = "available"
 
     if tier == "spent":
-        state = "SPENT" if su_future is not None else "SPENT (reset unknown)"
+        if metered_spend_unknown:
+            state = "SPENT (metered monthly spend unknown)"
+        elif over_monthly_cap:
+            state = f"SPENT (${monthly_spend_usd:g}≥${monthly_cap_usd:g} monthly cap)"
+        else:
+            state = "SPENT" if su_future is not None else "SPENT (reset unknown)"
     elif tier == "reserve":
         why = f"{pct:g}%≥{reserve_pct}%" if over_reserve else "reserve policy"
         state = f"RESERVE ({why}) — usable as last resort"
@@ -230,6 +246,8 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
         "drain": drain,
         "intake": intake,
         "billing": billing,
+        "monthly_cap_usd": monthly_cap_usd,
+        "monthly_spend_usd": monthly_spend_usd,
         "tier": tier,
         "usable": tier != "spent",
         "available": tier == "available",

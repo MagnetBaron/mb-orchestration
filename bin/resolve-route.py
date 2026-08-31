@@ -519,11 +519,14 @@ def live_reviewers(
         state["route_live"] = bool(
             state["route_live"] or modelreg.provider_route_is_live(registry, native)
         )
-        known_seats = {r.get("seat") for r in state["backing_rows"]}
         for row in provider_seats(native_pid, providers, rows):
-            if row.get("seat") not in known_seats:
-                state["backing_rows"].append(row)
-                known_seats.add(row.get("seat"))
+            # Exact TeamClaude model receipts can intentionally map several
+            # provider models onto one anonymous physical pool.  Keep each
+            # provider/model result: deduplicating only by the rendered pool
+            # seat lets a spent Opus 5 row erase available Opus 4.8 evidence (or
+            # vice versa), corrupting the native-family availability test that
+            # controls Review E.
+            state["backing_rows"].append(row)
     native_available = {
         group for group, state in native_family_state.items()
         if state["route_live"] and any(routing.usable(r) for r in state["backing_rows"])
@@ -1027,7 +1030,15 @@ def pick_implement(providers, connectors, rows, klass, needs_connector, needs_mc
         coder = None
         on_row = None
         for row in intake:
-            pid = last_resort_coder(prov, registry, row.get("subscription"), cap_ok)
+            pid = last_resort_coder(
+                prov,
+                registry,
+                row.get("subscription"),
+                lambda candidate: cap_ok(candidate)
+                and implementation_overflow_dependency_satisfied(
+                    candidate, prov, rows,
+                ),
+            )
             if pid:
                 coder, on_row = pid, row
                 break

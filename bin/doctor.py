@@ -787,6 +787,16 @@ def check_windows(windows, subs_ids, fable_from_subs, provs=None):
         billing = w.get("billing", "included")
         if billing not in ("included", "metered"):
             err(f"usage-window seat {seat}: billing must be 'included' or 'metered', got {billing!r}")
+        monthly_cap = w.get("monthly_cap_usd")
+        if monthly_cap is not None and (
+            isinstance(monthly_cap, bool)
+            or not isinstance(monthly_cap, (int, float))
+            or monthly_cap <= 0
+        ):
+            err(f"usage-window seat {seat}: monthly_cap_usd must be positive or null, got {monthly_cap!r}")
+        provider = (provs or {}).get(seat) or {}
+        if provider.get("wired") is True and billing == "metered" and monthly_cap is None:
+            err(f"usage-window seat {seat}: wired metered provider requires monthly_cap_usd")
         rp = w.get("reserve_pct", w.get("soft_cap_pct"))
         if rp is not None and not (isinstance(rp, (int, float)) and 0 <= rp <= 100):
             err(f"usage-window seat {seat}: reserve_pct must be 0-100 or null, got {rp!r}")

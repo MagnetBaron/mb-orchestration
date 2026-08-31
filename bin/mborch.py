@@ -16,6 +16,7 @@ Data (history/observed windows/orchestration events) lives under $MB_DATA_DIR or
 """
 from __future__ import annotations
 import json
+import math
 import os
 import re
 import secrets
@@ -29,6 +30,10 @@ REPO = HERE.parent
 DEFAULT_CONFIG = REPO / "config"
 LOCK_OWNER_FILE = "owner.json"
 LOCK_STALE_GRACE_SECONDS = 1.0
+# Ledger critical sections are millisecond-scale. A live PID attached to a lock
+# this old is overwhelmingly a recycled PID after a crash, not a legitimate
+# writer. The bound prevents permanent deadlock while preserving fresh owners.
+LOCK_LIVE_PID_MAX_AGE_SECONDS = 300.0
 
 
 # ---- Opus 5 GA classifier (NOT a ban) ----------------------------------------
@@ -153,7 +158,8 @@ def _directory_lock_owner(lock: Path) -> dict | None:
             or not isinstance(owner.get("token"), str)
             or not re.fullmatch(r"[0-9a-f]{32}", owner["token"])
             or isinstance(owner.get("created"), bool)
-            or not isinstance(owner.get("created"), (int, float))):
+            or not isinstance(owner.get("created"), (int, float))
+            or not math.isfinite(owner["created"])):
         return None
     return owner
 
@@ -170,7 +176,9 @@ def _reclaim_stale_directory_lock(
         return False
     owner = _directory_lock_owner(lock)
     if owner is not None:
-        if _pid_is_live(owner["pid"]):
+        owner_age = time.time() - owner["created"]
+        if (_pid_is_live(owner["pid"])
+                and owner_age <= LOCK_LIVE_PID_MAX_AGE_SECONDS):
             return False
     elif time.time() - lock_stat.st_mtime < stale_grace_seconds:
         # The winner may be between mkdir and its owner-file write.

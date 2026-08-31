@@ -2911,6 +2911,45 @@ class DynamicDispatchAndHandoffTests(unittest.TestCase):
         self.assertIn("codex-sol", ids)
         self.assertIn("review-e", ids)
 
+    def test_exact_opus_receipts_on_one_pool_do_not_erase_each_other(self):
+        provs, registry = self._live_review_e()
+        receipt = {
+            "service_reachable": True,
+            "schema_valid": True,
+            "reconciled": True,
+            "model_routes": {
+                "claude-opus-5": {
+                    "eligible_account_count": 0,
+                    "all_capable_quota_exhausted": True,
+                    "blocked_by_policy": False,
+                },
+                "claude-opus-4-8": {
+                    "eligible_account_count": 1,
+                    "all_capable_quota_exhausted": False,
+                    "blocked_by_policy": False,
+                },
+            },
+        }
+        rows = self._rows(spent=("codex-sol",))
+        for row in rows:
+            if row.get("family") == "anthropic":
+                row["teamclaude_rotation"] = receipt
+        with self._review_e_route_probe():
+            reviewers = rr.live_reviewers(
+                provs, rows, {}, registry, dispatcher="grok-build",
+            )
+        ids = [row["provider"] for row in reviewers]
+        self.assertNotIn("opus-5", ids)
+        self.assertIn("opus-4.8", ids)
+        self.assertIn("review-e", ids,
+                      "spent Sol plus available exact Opus 4.8 opens the second-family slot")
+        review = rr.pick_review("cross-family", reviewers, True, 0)
+        self.assertTrue(review["satisfied"], review)
+        self.assertEqual(
+            {row["independence_group"] for row in review["chain"]},
+            {"anthropic", "open-weight"},
+        )
+
     def test_stale_anthropic_pool_does_not_masquerade_as_quota_exhaustion(self):
         provs, registry = self._live_review_e()
         receipt = {

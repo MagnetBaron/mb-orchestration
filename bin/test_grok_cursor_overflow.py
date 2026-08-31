@@ -259,6 +259,48 @@ class RecordGrokExhaustionTests(unittest.TestCase):
                 detect_capability.mborch.release_directory_lock(shell_lock, token)
             )
 
+    def test_recycled_live_pid_owner_does_not_wedge_shared_ledger_lock(self):
+        lock = Path(f"{self.ledger}.lock")
+        lock.mkdir()
+        (lock / "owner.json").write_text(json.dumps({
+            "pid": os.getpid(),
+            "token": "c" * 32,
+            "created": 1.0,
+        }))
+        token = detect_capability.mborch.acquire_directory_lock(
+            lock, timeout_seconds=0.1, poll_seconds=0.001,
+        )
+        try:
+            owner = json.loads((lock / "owner.json").read_text())
+            self.assertEqual(owner["pid"], os.getpid())
+            self.assertNotEqual(owner["token"], "c" * 32)
+        finally:
+            self.assertTrue(
+                detect_capability.mborch.release_directory_lock(lock, token)
+            )
+
+    def test_metered_monthly_cap_is_fail_closed_and_executable(self):
+        seat = {
+            "meter": "metered review",
+            "family": "open-weight",
+            "drain": "full",
+            "billing": "metered",
+            "monthly_cap_usd": 20,
+            "windows": [{"kind": "none"}],
+        }
+        unknown = usage_status.seat_state("review-e", seat, {})
+        self.assertEqual(unknown["tier"], "spent")
+        self.assertIn("spend unknown", unknown["state"])
+        below = usage_status.seat_state(
+            "review-e", seat, {"review-e": {"monthly_spend_usd": 19.99}},
+        )
+        self.assertTrue(below["usable"])
+        capped = usage_status.seat_state(
+            "review-e", seat, {"review-e": {"monthly_spend_usd": 20}},
+        )
+        self.assertEqual(capped["tier"], "spent")
+        self.assertIn("monthly cap", capped["state"])
+
     def test_invalid_or_past_explicit_reset_fails_without_write(self):
         for reset in ("not-a-date", "2000-01-01T00:00:00Z"):
             with self.subTest(reset=reset):
@@ -618,6 +660,32 @@ class CursorOverflowContractTests(unittest.TestCase):
             )
             overflow_step = next(row for row in overflow if not row.get("input_seat"))
             self.assertEqual(overflow_step["seat"], "cursor-grok")
+
+    def test_cursor_intake_cannot_bypass_exhaustion_gate_as_last_resort(self):
+        providers = copy.deepcopy(self.providers_root)
+        rows = [
+            {
+                "seat": "grok-heavy", "subscription": "grok-heavy",
+                "family": "xai", "tier": "spent", "billing": "included",
+                "intake": False, "window_kinds": ["weekly"],
+                "runway_seconds": None, "ledger": None,
+            },
+            {
+                "seat": "cursor-models", "subscription": "cursor-ultra",
+                "family": "cursor-pool", "tier": "available", "billing": "included",
+                "intake": True, "window_kinds": ["monthly"],
+                "runway_seconds": None, "ledger": None,
+            },
+        ]
+        with mock.patch.object(resolve.modelreg, "provider_route_is_live", return_value=True):
+            decision = resolve.pick_implement(
+                providers, {"mcp_connectors": {}}, rows, "repo-code",
+                "", "", False, 0, self.registry,
+            )
+        self.assertFalse(any(
+            step.get("seat") == "cursor-grok" and step.get("available", True)
+            for step in decision
+        ), decision)
 
     def test_doctor_rejects_cursor_contract_drift(self):
         mutations = []

@@ -106,12 +106,11 @@ Port to a different user: edit `config/subscriptions.json` (your plans), `config
 Daily: invoke `/orca` (or the identical `/orchestrate` compatibility alias), then pass the intake provider or profile. Resolver records exactly one effective dispatcher, any fallback, authors, review scope, and handoff gate. Routing-quality telemetry is append-only in `data/orchestration-events.jsonl` (gitignored); analyze with `python3 bin/observe.py report`. It never logs task bodies and never changes a routing decision. When something breaks, agents read `EDGE-CASES.md`.
 
 Before capability-sensitive routing, refresh safe local state with
-`python3 bin/detect-integrations.py --refresh`. A dispatcher that can enumerate its current
-callable tools passes a one-runtime overlay with `resolve-route.py --integration-session <file>`
-(or `-` for stdin). The trusted dispatcher creates the v1 envelope with
-`integrations.build_session_document`, sets a fresh per-process `MB_INTEGRATION_SESSION_NONCE`, and
-uses a mode-0600 file or explicit stdin; inline/reusable/stale assertions fail closed. The overlay is
-process-scoped and never cached. Suggested/installable,
+`python3 bin/detect-integrations.py --refresh`. This records a privacy-safe runtime observation; it
+does not grant dispatch authority. Do not pass caller-created `--integration-session` input: its
+nonce/HMAC proves only caller-held integrity, not product origin, and the resolver rejects it. Until
+the Codex product exposes a product-authenticated callable inventory issuer, connector-dependent
+dispatch parks. Suggested/installable,
 installed, enabled, configured, blocked/auth-health, and current-session callable states stay
 distinct. Unknown, stale, disabled, removed, malformed, or unregistered access never routes.
 
