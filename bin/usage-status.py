@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import json
+import math
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -130,9 +131,11 @@ def to_number(value):
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
     try:
-        return float(str(value).strip())
+        parsed = float(str(value).strip())
+        return parsed if math.isfinite(parsed) else None
     except (TypeError, ValueError):
         return None
 
@@ -184,6 +187,17 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     billing = seat.get("billing", "included")
     monthly_cap_usd = to_number(seat.get("monthly_cap_usd"))
     monthly_spend_usd = to_number(entry.get("monthly_spend_usd"))
+    spend_period = entry.get("monthly_spend_period")
+    spend_updated = to_aware(parse_iso(entry.get("updated")), default_tz)
+    current_period = now_ref.strftime("%Y-%m")
+    period_start = now_ref.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    spend_evidence_valid = (
+        monthly_spend_usd is not None
+        and monthly_spend_usd >= 0
+        and spend_period == current_period
+        and spend_updated is not None
+        and period_start <= spend_updated <= now_ref + timedelta(minutes=5)
+    )
 
     su_future = spent_until if (spent_until is not None and spent_until > now_ref) else None
     over_reserve = (pct is not None and reserve_pct is not None and pct >= reserve_pct)
@@ -194,10 +208,10 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
     # A configured metered ceiling is executable state, not prose. Unknown
     # month-to-date spend fails closed because routing cannot prove another call
     # stays below the owner's cap; an at/over-cap row is positively spent.
-    metered_spend_unknown = monthly_cap_usd is not None and monthly_spend_usd is None
+    metered_spend_unknown = monthly_cap_usd is not None and not spend_evidence_valid
     over_monthly_cap = (
         monthly_cap_usd is not None
-        and monthly_spend_usd is not None
+        and spend_evidence_valid
         and monthly_spend_usd >= monthly_cap_usd
     )
 
@@ -210,7 +224,7 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
 
     if tier == "spent":
         if metered_spend_unknown:
-            state = "SPENT (metered monthly spend unknown)"
+            state = "SPENT (metered monthly spend unknown, malformed, or stale)"
         elif over_monthly_cap:
             state = f"SPENT (${monthly_spend_usd:g}≥${monthly_cap_usd:g} monthly cap)"
         else:
@@ -248,6 +262,8 @@ def seat_state(name, seat, ledger, default_tz=DEFAULT_TZ, observed=None):
         "billing": billing,
         "monthly_cap_usd": monthly_cap_usd,
         "monthly_spend_usd": monthly_spend_usd,
+        "monthly_spend_period": spend_period,
+        "monthly_spend_fresh": spend_evidence_valid,
         "tier": tier,
         "usable": tier != "spent",
         "available": tier == "available",

@@ -14,6 +14,8 @@ import os
 import stat
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 from datetime import date
@@ -279,6 +281,31 @@ class RecordGrokExhaustionTests(unittest.TestCase):
                 detect_capability.mborch.release_directory_lock(lock, token)
             )
 
+    def test_directory_lock_release_is_serialized_with_generation_checks(self):
+        lock = Path(f"{self.ledger}.lock")
+        token = detect_capability.mborch.acquire_directory_lock(
+            lock, timeout_seconds=1, poll_seconds=0.001,
+        )
+        started = threading.Event()
+        finished = threading.Event()
+        result = []
+
+        def release():
+            started.set()
+            result.append(detect_capability.mborch.release_directory_lock(lock, token))
+            finished.set()
+
+        with detect_capability.mborch.path_lock_guard(lock):
+            thread = threading.Thread(target=release)
+            thread.start()
+            self.assertTrue(started.wait(1))
+            time.sleep(0.03)
+            self.assertFalse(finished.is_set(),
+                             "release cannot pass the generation guard mid-check")
+        thread.join(1)
+        self.assertEqual(result, [True])
+        self.assertFalse(lock.exists())
+
     def test_metered_monthly_cap_is_fail_closed_and_executable(self):
         seat = {
             "meter": "metered review",
@@ -291,15 +318,38 @@ class RecordGrokExhaustionTests(unittest.TestCase):
         unknown = usage_status.seat_state("review-e", seat, {})
         self.assertEqual(unknown["tier"], "spent")
         self.assertIn("spend unknown", unknown["state"])
+        now = usage_status._now(usage_status.DEFAULT_TZ)
+        fresh = {
+            "monthly_spend_period": now.strftime("%Y-%m"),
+            "updated": now.isoformat(),
+        }
         below = usage_status.seat_state(
-            "review-e", seat, {"review-e": {"monthly_spend_usd": 19.99}},
+            "review-e", seat,
+            {"review-e": {**fresh, "monthly_spend_usd": 19.99}},
         )
         self.assertTrue(below["usable"])
+        self.assertTrue(below["monthly_spend_fresh"])
         capped = usage_status.seat_state(
-            "review-e", seat, {"review-e": {"monthly_spend_usd": 20}},
+            "review-e", seat, {"review-e": {**fresh, "monthly_spend_usd": 20}},
         )
         self.assertEqual(capped["tier"], "spent")
         self.assertIn("monthly cap", capped["state"])
+
+        invalid_rows = (
+            {**fresh, "monthly_spend_usd": float("nan")},
+            {**fresh, "monthly_spend_usd": float("inf")},
+            {**fresh, "monthly_spend_usd": -1},
+            {"monthly_spend_usd": 1, "monthly_spend_period": "2020-01",
+             "updated": "2020-01-15T00:00:00+00:00"},
+            {"monthly_spend_usd": 1, "monthly_spend_period": now.strftime("%Y-%m"),
+             "updated": "2020-01-15T00:00:00+00:00"},
+        )
+        for row in invalid_rows:
+            with self.subTest(row=row):
+                state = usage_status.seat_state("review-e", seat, {"review-e": row})
+                self.assertEqual(state["tier"], "spent")
+                self.assertFalse(state["usable"])
+                self.assertFalse(state["monthly_spend_fresh"])
 
     def test_invalid_or_past_explicit_reset_fails_without_write(self):
         for reset in ("not-a-date", "2000-01-01T00:00:00Z"):

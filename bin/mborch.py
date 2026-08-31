@@ -16,6 +16,7 @@ Data (history/observed windows/orchestration events) lives under $MB_DATA_DIR or
 """
 from __future__ import annotations
 import json
+import fcntl
 import math
 import os
 import re
@@ -23,6 +24,7 @@ import secrets
 import shutil
 import stat
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -164,10 +166,36 @@ def _directory_lock_owner(lock: Path) -> dict | None:
     return owner
 
 
+@contextmanager
+def path_lock_guard(path: Path):
+    """Serialize generation checks and pathname mutations for a lock.
+
+    The persistent sidecar guard closes the read/check/unlink-or-rename ABA
+    window: every cooperating acquirer, reclaimer, and releaser holds the same
+    kernel lock while it observes and mutates the public lock pathname.
+    """
+    guard = path.with_name(f".{path.name}.guard")
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(guard, flags, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("lock guard is not a regular file")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 def _reclaim_stale_directory_lock(
     lock: Path, *, stale_grace_seconds: float = LOCK_STALE_GRACE_SECONDS,
 ) -> bool:
-    """Atomically quarantine a dead/malformed stale lock; never steal a live PID."""
+    """Quarantine a stale lock while the caller holds path_lock_guard(lock)."""
     try:
         lock_stat = lock.lstat()
     except FileNotFoundError:
@@ -218,50 +246,54 @@ def acquire_directory_lock(
     token = secrets.token_hex(16)
     deadline = time.monotonic() + timeout_seconds
     while True:
-        try:
-            os.mkdir(lock, 0o700)
-        except FileExistsError:
-            _reclaim_stale_directory_lock(
-                lock, stale_grace_seconds=stale_grace_seconds,
-            )
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("timed out waiting for the usage-ledger lock")
-            time.sleep(min(poll_seconds, remaining))
-            continue
-        owner_path = lock / LOCK_OWNER_FILE
-        try:
-            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-            if hasattr(os, "O_NOFOLLOW"):
-                flags |= os.O_NOFOLLOW
-            fd = os.open(owner_path, flags, 0o600)
-            with os.fdopen(fd, "w") as stream:
-                json.dump({"pid": pid, "token": token, "created": time.time()}, stream)
-                stream.write("\n")
-            return token
-        except Exception:
+        acquired = False
+        with path_lock_guard(lock):
             try:
-                owner_path.unlink(missing_ok=True)
-                lock.rmdir()
-            except OSError:
-                pass
-            raise
+                os.mkdir(lock, 0o700)
+                acquired = True
+            except FileExistsError:
+                _reclaim_stale_directory_lock(
+                    lock, stale_grace_seconds=stale_grace_seconds,
+                )
+            if acquired:
+                owner_path = lock / LOCK_OWNER_FILE
+                try:
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    if hasattr(os, "O_NOFOLLOW"):
+                        flags |= os.O_NOFOLLOW
+                    fd = os.open(owner_path, flags, 0o600)
+                    with os.fdopen(fd, "w") as stream:
+                        json.dump({"pid": pid, "token": token, "created": time.time()}, stream)
+                        stream.write("\n")
+                    return token
+                except Exception:
+                    try:
+                        owner_path.unlink(missing_ok=True)
+                        lock.rmdir()
+                    except OSError:
+                        pass
+                    raise
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("timed out waiting for the usage-ledger lock")
+        time.sleep(min(poll_seconds, remaining))
 
 
 def release_directory_lock(lock: Path, token: str, *, owner_pid: int | None = None) -> bool:
     """Release only the exact lock generation owned by this PID and token."""
     pid = os.getpid() if owner_pid is None else owner_pid
-    owner = _directory_lock_owner(lock)
-    if owner is None or owner.get("pid") != pid or owner.get("token") != token:
-        return False
-    try:
-        (lock / LOCK_OWNER_FILE).unlink()
-        lock.rmdir()
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
-    return True
+    with path_lock_guard(lock):
+        owner = _directory_lock_owner(lock)
+        if owner is None or owner.get("pid") != pid or owner.get("token") != token:
+            return False
+        try:
+            (lock / LOCK_OWNER_FILE).unlink()
+            lock.rmdir()
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return False
+        return True
 
 
 def data_dir() -> Path:

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -649,6 +650,29 @@ class IntegrationInventoryTests(unittest.TestCase):
         token = integrations._lock(path, 0.1)
         self.assertNotEqual(token, "live")
         integrations._unlock(path, token)
+
+    def test_inventory_unlock_is_serialized_with_generation_checks(self):
+        path = Path(self.tmp.name) / "serialized.lock"
+        token = integrations._lock(path, 0.1)
+        started = threading.Event()
+        finished = threading.Event()
+
+        def unlock():
+            started.set()
+            integrations._unlock(path, token)
+            finished.set()
+
+        with integrations.mborch.path_lock_guard(path):
+            thread = threading.Thread(target=unlock)
+            thread.start()
+            self.assertTrue(started.wait(1))
+            time.sleep(0.03)
+            self.assertFalse(finished.is_set(),
+                             "unlock cannot pass the generation guard mid-check")
+            self.assertTrue(path.exists())
+        thread.join(1)
+        self.assertTrue(finished.is_set())
+        self.assertFalse(path.exists())
         self.assertFalse(path.exists())
 
         path.write_text(json.dumps({"pid": 2_000_000_000, "owner": "dead", "created_at": "now"}))
