@@ -486,6 +486,9 @@ class ConnectorLifecycleTests(unittest.TestCase):
         # skill-gate error (luna lacks google-mcp) is the one we observe.
         roles["roles"]["seo-research"]["claude"]["mcpServers"] = []
         roles["roles"]["seo-research"]["mcp_deny_tools"] = {}
+        # The naming role likewise declares dfs-mcp (google-mcp class); drop it so the
+        # skill-gate error (luna lacks google-mcp), not a primed-connector error, is observed.
+        roles["roles"]["naming"]["claude"]["mcpServers"] = []
         orig = gen.mborch.load_config
 
         def fake(name, required=True):

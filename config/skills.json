@@ -34,6 +34,13 @@
       "required_capability": null,
       "hosts": ["claude", "grok"],
       "note": "Read-only invariants are enforced by the binding role (seo-research: read_only + every mutating gsc-indexing tool denied), not by this registry. required_capability is null because the skill's live data access is host-scoped MCP (gsc-indexing/dfs-mcp on the claude host), already vetted by the connectors.json H1 mutation map."
+    },
+    "magnet-baron-skills:naming": {
+      "description": "Request-driven, read-only generation and brandability/availability screening of business, brand, and product names against only the item's intrinsic hard limits.",
+      "kind": "read",
+      "required_capability": null,
+      "hosts": ["claude", "grok"],
+      "note": "Read-only invariants are enforced by the binding role (naming: read_only + Write/Edit/Bash/Admin/publish denied), not by this registry. required_capability is null because verification is host-scoped read-only MCP (dataforseo/dfs-mcp on the claude host, already vetted by the connectors.json H1 mutation map) plus WebSearch/WebFetch; the optional grokbot visual lane is manual, owner-gated Slack and grants no capability. Dynamic skill: it enforces only the hard limits intrinsic to the specific item being named and flexes everything else to the brief."
     }
   }
 }

@@ -79,6 +79,26 @@
       "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish"],
       "prompt": "Conduct read-only, brand-separated SEO research and reporting for Magnet Baron and Gadgetduke. Confirm brand before data pulls. Never publish, send, or edit files. Use declared host MCP connector names when present; this registry does not create credentials or live MCP connections."
     },
+    "naming": {
+      "description": "Read-only, request-driven name generation and brandability/availability screening for businesses, brands, and products.",
+      "level": "terra",
+      "seat": "grok-build",
+      "read_only": true,
+      "hosts": ["claude", "grok"],
+      "claude": {
+        "model": "inherit",
+        "effort": "medium",
+        "memory": "user",
+        "skills": ["magnet-baron-skills:naming"],
+        "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"],
+        "mcpServers": ["dfs-mcp"]
+      },
+      "grok": {
+        "tools": ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
+      },
+      "deny_tools": ["Bash", "Write", "Edit", "NotebookEdit", "Admin", "publish"],
+      "prompt": "Generate and screen names read-only. Enforce ONLY the hard limits intrinsic to the specific item being named (derive them from the item; the profile table is a starting set, not a closed list) and flex length, tone, technique, and depth to the brief. Verify availability only on the dimensions that item requires, using read-only host MCP (DataForSEO where present) and web research; the grokbot visual lane is optional and owner-gated, and no generic name-search routine is wired today. Never register a domain or handle, file or clear a trademark, publish, send, or edit. Trademark clearance is a legal task for an attorney; never invent availability data. This registry does not create credentials or live MCP connections."
+    },
     "shopify-theme-build": {
       "description": "Grok Build implementing Shopify theme change-sets with the shopify-theme skill.",
       "level": "terra",
