@@ -60,8 +60,9 @@ every seat inherits:
 - **Never invent availability data.** Every availability or collision claim must come from a named
   tool call (a DataForSEO tool, a web fetch, or a grokbot ticket reply). If a check did not run or
   returned nothing, say so — never estimate, guess, or fill from memory.
-- **Be honest about the grokbot lane** (Step 4C): it is optional and owner-gated. Never claim a
-  name-search routine exists when it does not.
+- **Be honest about the grokbot lane** (Step 4B): grokbot is the designated web-search/visual
+  research agent, but no name-search routine is wired today. Never claim a name-search routine exists,
+  or that grokbot ran, when it did not — fall back to WebSearch/WebFetch and say so.
 
 ## Step 1 — Scope the brief (establish what flexes)
 
@@ -124,7 +125,7 @@ law.
 
 Run a **read-only** verification pass **only on the dimensions the matched profile actually
 requires** — do not check a package registry for a legal-entity name, or a stock exchange for a
-campaign title. Three lanes:
+campaign title. Two research lanes feed a legal hand-off:
 
 **A) DataForSEO** — always-on where the connector is active (claude host; `dataforseo` / `dfs-mcp`):
 - **SERP collision** — does the term already surface a dominant existing brand (`serp_organic_live_advanced`).
@@ -132,21 +133,30 @@ campaign title. Three lanes:
 - **Marketplace/product collision** — existing products under the name (`merchant_amazon_products_live_advanced`, `dataforseo_labs_amazon_*`).
 - **Demand/footprint** — is the term already a heavily-branded keyword (`dataforseo_labs_google_keyword_overview`, `..._keyword_ideas`).
 - **Domain registration signal** — WHOIS status (`domain_analytics_whois_overview`). WHOIS shows
-  registration, not a purchase quote — confirm true availability at a registrar via lane B.
+  registration, not a purchase quote — confirm true availability on the live web (lane B).
 
-**B) Web research** — WebSearch/WebFetch, any host: registrar domain-availability confirmation ·
-social-handle availability · app-store / package-registry name checks · USPTO or other public-register
-trademark **knockout** (preliminary only) · quick cross-language slang check. Cite the fetch for every
-claim.
-
-**C) grokbot visual lane** — OPTIONAL, owner-gated (Website Visual QA in Slack `#visual-qa`): a
-read-only visual/web look (logo or design collision, "see it rendered"). **Honest constraints:**
-grokbot is app-only — no CLI/API/webhook — and reacts only to content posted in the public
-`#visual-qa` channel through owner-configured **narrow routines**. Today only two routines exist
-(a `shopifypreview.com` preview token and a `visual-qa: live-audit` token); **there is no generic
-name-search routine.** So use this lane only if the owner has first created a narrow name-search
-routine/token — otherwise post nothing, and record the lane as unavailable. Never reuse the
-storefront tokens for name search, and never claim an unwired routine exists.
+**B) grokbot — the web-search and visual research agent** (Website Visual QA, via Slack `#visual-qa`).
+Grokbot browses the live web read-only and replies in-thread with findings **and screenshots**, so —
+once the owner wires a name-search token (see below) — it is the lane for every check that needs a real
+look at the open web: whether the name is already in use as a brand
+or on its domain, whether the social handle is taken, whether the app store or package registry
+already carries it, a public-register trademark **knockout** (preliminary only), and logo/visual/design
+collision.
+- **How it is reached (honest wiring).** Grokbot is **app-only — no CLI/API/webhook.** It runs only
+  when a ticket posted to the public `#visual-qa` channel matches an **owner-configured narrow
+  routine/token**, then browses read-only and replies in-thread. The read-only naming role never posts
+  to Slack: it **drafts** the web-search ticket (candidate names, the exact questions, and a read-only
+  instruction), and the **dispatcher/owner posts it** and hands grokbot's threaded reply back as brief
+  input (`must_read`) — the same handoff used for Review D and for MCP snapshots.
+- **Precondition — not wired today.** A generic name/web-search routine must be created by the owner
+  first. Today only the storefront routines exist (a `shopifypreview.com` preview token and a
+  `visual-qa: live-audit` token); **there is no name-search routine, and the storefront tokens must
+  never be reused for name search.** Until the owner wires a narrow name-search token, this lane is
+  **unavailable**.
+- **Fallback (so the skill still works today).** When the grokbot name-search routine is not wired, or
+  `#visual-qa` is unavailable, run the same web checks directly with **WebSearch/WebFetch**, cite each
+  fetch, and record that the grokbot lane was unavailable. **Never** claim grokbot ran, or that a
+  name-search routine exists, when it did not, and never fabricate a grokbot result.
 
 **Legal lane** — always out of scope: full trademark clearance, likelihood-of-confusion analysis,
 class selection, and comprehensive common-law + native-speaker linguistic screening go to the
